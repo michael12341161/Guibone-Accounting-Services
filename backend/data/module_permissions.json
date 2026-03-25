@@ -1,0 +1,190 @@
+{
+    "dashboard": {
+        "admin": true,
+        "secretary": true,
+        "accountant": true,
+        "client": false
+    },
+    "user-management": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "view": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "edit": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "add-user": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "permissions": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false
+    },
+    "settings": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false
+    },
+    "client-management": {
+        "admin": true,
+        "secretary": true,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "view": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "edit": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "add-new-client": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "location": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "new-client-management": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false
+    },
+    "appointments": {
+        "admin": true,
+        "secretary": true,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "approve": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "decline": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "view-files": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "scheduling": {
+        "admin": true,
+        "secretary": true,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "approve": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "decline": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "reschedule": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "configure-times": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "tasks": {
+        "admin": true,
+        "secretary": true,
+        "accountant": true,
+        "client": false
+    },
+    "calendar": {
+        "admin": true,
+        "secretary": true,
+        "accountant": true,
+        "client": false
+    },
+    "work-update": {
+        "admin": true,
+        "secretary": true,
+        "accountant": true,
+        "client": false
+    },
+    "my-tasks": {
+        "admin": true,
+        "secretary": false,
+        "accountant": true,
+        "client": false
+    },
+    "messaging": {
+        "admin": true,
+        "secretary": true,
+        "accountant": true,
+        "client": true
+    },
+    "invoices": {
+        "admin": true,
+        "secretary": false,
+        "accountant": true,
+        "client": false
+    },
+    "reports": {
+        "admin": true,
+        "secretary": true,
+        "accountant": true,
+        "client": false
+    },
+    "client-account": {
+        "admin": true,
+        "secretary": true,
+        "accountant": false,
+        "client": true
+    }
+}

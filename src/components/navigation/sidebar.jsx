@@ -1,0 +1,470 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Menu } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import { findMatchingNavItem } from "../layout/layout_utils";
+
+function classNames(...values) {
+  return values.filter(Boolean).join(" ");
+}
+
+export function Sidebar({
+  items,
+  headerTitle = "Menu",
+  headerSubtitle = "Navigation",
+  headerVariant = "default",
+  icon,
+  headerAction,
+  profileLabel = "Signed in as",
+  profileName,
+  profileTitle,
+  profileMeta,
+  profileAvatarSrc,
+  profileAvatarAlt,
+  showProfileAvatar = true,
+  profilePlacement = "top",
+  footerLabel,
+  footerValue,
+  routeLoading = false,
+  onItemClick,
+  collapsed = false,
+  onExpandFromCollapsed,
+}) {
+  const location = useLocation();
+  const [expandedGroups, setExpandedGroups] = useState(() => {
+    const initialOpenGroups = new Set();
+
+    (items || []).forEach((item) => {
+      if (!item?.children?.length || !item.key) {
+        return;
+      }
+
+      if (findMatchingNavItem(location.pathname, [item])) {
+        initialOpenGroups.add(item.key);
+      }
+    });
+
+    return initialOpenGroups;
+  });
+
+  useEffect(() => {
+    const nextOpenGroups = new Set();
+
+    (items || []).forEach((item) => {
+      if (!item?.children?.length || !item.key) {
+        return;
+      }
+
+      if (findMatchingNavItem(location.pathname, [item])) {
+        nextOpenGroups.add(item.key);
+      }
+    });
+
+    if (!nextOpenGroups.size) {
+      return;
+    }
+
+    setExpandedGroups((current) => {
+      let changed = false;
+      const next = new Set(current);
+
+      nextOpenGroups.forEach((key) => {
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      });
+
+      return changed ? next : current;
+    });
+  }, [items, location.pathname]);
+
+  const profileInitials = useMemo(() => {
+    const seed = [profileName, profileMeta, headerTitle].find((value) => String(value || "").trim()) || "User";
+
+    return (
+      String(seed)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "U"
+    );
+  }, [headerTitle, profileMeta, profileName]);
+  const hasProfileSummary = Boolean(profileName || profileTitle || profileMeta || profileAvatarSrc);
+  const shouldShowProfileAvatar = showProfileAvatar && Boolean(profileAvatarSrc || profileInitials);
+  const showProfileName = Boolean(profileName);
+  const showProfileMeta = Boolean(profileMeta && profileMeta !== profileName);
+
+  const renderProfileSummary = (position = "top") => (
+    <div className={position === "bottom" ? "border-t border-slate-200 px-4 py-4" : "border-b border-slate-200 px-4 py-4"}>
+      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+        <div className={classNames("flex", shouldShowProfileAvatar ? "items-start gap-3" : "flex-col")}>
+          {shouldShowProfileAvatar ? (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-sm font-semibold text-white shadow-sm ring-1 ring-white/40">
+              {profileAvatarSrc ? (
+                <img
+                  src={profileAvatarSrc}
+                  alt={profileAvatarAlt || profileName || profileTitle || profileMeta || "Profile"}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span>{profileInitials}</span>
+              )}
+            </div>
+          ) : null}
+
+          <div className={classNames("min-w-0", shouldShowProfileAvatar ? "flex-1" : "space-y-2")}>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+              {profileLabel}
+            </div>
+            {showProfileName ? <div className="truncate text-sm font-semibold text-slate-900">{profileName}</div> : null}
+            {profileTitle ? (
+              <div className="inline-flex max-w-full items-center rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                {profileTitle}
+              </div>
+            ) : null}
+            {showProfileMeta ? <div className="truncate text-xs text-slate-500">{profileMeta}</div> : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const toggleGroup = (groupKey) => {
+    if (!groupKey) {
+      return;
+    }
+
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  };
+  const ensureGroupExpanded = (groupKey) => {
+    if (!groupKey) {
+      return;
+    }
+
+    setExpandedGroups((current) => {
+      if (current.has(groupKey)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(groupKey);
+      return next;
+    });
+  };
+
+  const isRoleCardHeader = headerVariant === "card";
+  const roleHeaderStyle = isRoleCardHeader
+    ? {
+        borderColor: "var(--theme-border)",
+        background:
+          "linear-gradient(90deg, var(--theme-surface-muted) 0%, var(--theme-surface) 55%, var(--theme-surface-muted) 100%)",
+      }
+    : undefined;
+  const roleCardStyle = isRoleCardHeader
+    ? {
+        borderColor: "var(--theme-border-strong)",
+        backgroundColor: "var(--theme-surface)",
+        color: "var(--theme-text-primary)",
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
+      }
+    : undefined;
+
+  return (
+    <aside
+      className={classNames(
+        "flex h-full shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-slate-50/95 text-slate-700 transition-[width] duration-200",
+        collapsed ? "w-20" : "w-64"
+      )}
+    >
+      <div
+        className={classNames(
+          "flex h-16 shrink-0 items-center border-b px-4",
+          isRoleCardHeader ? "" : "border-slate-200"
+        )}
+        style={roleHeaderStyle}
+      >
+        {collapsed ? (
+          <div className="flex w-full items-center justify-center">
+            {headerAction ? (
+              <button
+                type="button"
+                onClick={headerAction.onClick}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                style={roleCardStyle}
+                aria-label={headerAction.label || "Toggle sidebar"}
+                title={headerAction.label || "Toggle sidebar"}
+              >
+                {headerAction.icon || (
+                  <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+                )}
+              </button>
+            ) : (
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+                {icon || (
+                  <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+                )}
+              </span>
+            )}
+          </div>
+        ) : isRoleCardHeader ? (
+          <div className="flex w-full items-center justify-between gap-3">
+            {headerTitle ? (
+              <div className="inline-flex items-center rounded-xl border px-4 py-2 text-sm font-semibold" style={roleCardStyle}>
+                {headerTitle}
+              </div>
+            ) : null}
+
+            {headerAction ? (
+              <button
+                type="button"
+                onClick={headerAction.onClick}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                style={roleCardStyle}
+                aria-label={headerAction.label || "Toggle sidebar"}
+              >
+                {headerAction.icon || (
+                  <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+                )}
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
+              {icon || (
+                <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+              )}
+            </span>
+
+            <div className="leading-tight">
+              <div className="text-sm font-semibold text-slate-900">{headerTitle}</div>
+              {headerSubtitle ? <div className="text-xs text-slate-500">{headerSubtitle}</div> : null}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {hasProfileSummary && !collapsed && profilePlacement !== "bottom" ? renderProfileSummary("top") : null}
+
+      <nav
+        className={classNames(
+          "flex-1 min-h-0 overflow-y-auto py-4",
+          collapsed ? "px-2" : "px-3"
+        )}
+        aria-label={`${headerTitle} navigation`}
+      >
+        <ul className={collapsed ? "space-y-2" : "space-y-4"}>
+          {items?.map((item) => (
+            <li key={item.key || item.to}>
+              {collapsed ? (
+                Array.isArray(item?.children) && item.children.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      ensureGroupExpanded(item.key);
+
+                      if (typeof onExpandFromCollapsed === "function") {
+                        onExpandFromCollapsed();
+                        return;
+                      }
+
+                      toggleGroup(item.key);
+                    }}
+                    className={classNames(
+                      "flex h-11 w-full items-center justify-center rounded-xl border-l-4 px-3 transition-all duration-150 ring-1 ring-transparent",
+                      findMatchingNavItem(location.pathname, [item])
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
+                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                      routeLoading && "pointer-events-none opacity-60"
+                    )}
+                    disabled={routeLoading}
+                    aria-label={item.label}
+                    title={item.label}
+                  >
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
+                      {item.icon || <span className="h-0 w-0" />}
+                    </span>
+                    <span className="sr-only">{item.label}</span>
+                  </button>
+                ) : (
+                  <NavLink
+                    to={item.to}
+                    end={item?.key === "dashboard"}
+                    onClick={(event) => {
+                      if (typeof onItemClick === "function") {
+                        onItemClick(item, event, {
+                          currentPath: location.pathname,
+                        });
+                      }
+                    }}
+                    className={({ isActive }) =>
+                      classNames(
+                        "group relative flex h-11 w-full items-center justify-center rounded-xl border-l-4 px-3 transition-all duration-150 ring-1 ring-transparent",
+                        isActive
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
+                          : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                        routeLoading && "pointer-events-none opacity-60"
+                      )
+                    }
+                    aria-disabled={routeLoading}
+                    tabIndex={routeLoading ? -1 : 0}
+                    aria-label={item.label}
+                    title={item.label}
+                  >
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
+                      {item.icon || <span className="h-0 w-0" />}
+                    </span>
+
+                    <span className="sr-only">{item.label}</span>
+                  </NavLink>
+                )
+              ) : Array.isArray(item?.children) && item.children.length > 0 ? (
+                <div className="space-y-2">
+                  {item.sectionLabel ? (
+                    <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      {item.sectionLabel}
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(item.key)}
+                    aria-expanded={expandedGroups.has(item.key)}
+                    aria-controls={`sidebar-group-${item.key}`}
+                    className={classNames(
+                      "flex h-11 w-full items-center justify-between rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                      findMatchingNavItem(location.pathname, [item])
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
+                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                      routeLoading && "pointer-events-none opacity-60"
+                    )}
+                    disabled={routeLoading}
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
+                        {item.icon || <span className="h-0 w-0" />}
+                      </span>
+                      <span className="truncate">{item.label}</span>
+                    </span>
+
+                    <ChevronDown
+                      className={classNames(
+                        "h-4 w-4 shrink-0 transition-transform duration-200",
+                        expandedGroups.has(item.key) ? "rotate-180 text-current" : "text-slate-400"
+                      )}
+                      strokeWidth={1.5}
+                      aria-hidden="true"
+                    />
+                  </button>
+
+                  {expandedGroups.has(item.key) ? (
+                    <div id={`sidebar-group-${item.key}`} className="space-y-1 pl-8">
+                      {item.children.map((child) => (
+                        <NavLink
+                          key={child.key || child.to}
+                          to={child.to}
+                          onClick={(event) => {
+                            if (typeof onItemClick === "function") {
+                              onItemClick(child, event, {
+                                currentPath: location.pathname,
+                              });
+                            }
+                          }}
+                          className={({ isActive }) =>
+                            classNames(
+                              "group flex h-10 w-full items-center gap-2 rounded-lg border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                              isActive
+                                ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
+                                : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                              routeLoading && "pointer-events-none opacity-60"
+                            )
+                          }
+                          aria-disabled={routeLoading}
+                          tabIndex={routeLoading ? -1 : 0}
+                        >
+                          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-current">
+                            {child.icon || <span className="h-0 w-0" />}
+                          </span>
+
+                          <span className="truncate">{child.label}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {item.sectionLabel ? (
+                    <div className="px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      {item.sectionLabel}
+                    </div>
+                  ) : null}
+
+                  <NavLink
+                    to={item.to}
+                    end={item?.key === "dashboard"}
+                    onClick={(event) => {
+                      if (typeof onItemClick === "function") {
+                        onItemClick(item, event, {
+                          currentPath: location.pathname,
+                        });
+                      }
+                    }}
+                    className={({ isActive }) =>
+                      classNames(
+                        "group relative flex h-11 w-full items-center gap-3 rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                        isActive
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
+                          : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                        routeLoading && "pointer-events-none opacity-60"
+                      )
+                    }
+                    aria-disabled={routeLoading}
+                    tabIndex={routeLoading ? -1 : 0}
+                  >
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
+                      {item.icon || <span className="h-0 w-0" />}
+                    </span>
+
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {hasProfileSummary && !collapsed && profilePlacement === "bottom" ? renderProfileSummary("bottom") : null}
+
+      {!collapsed && (footerLabel || footerValue) ? (
+        <div className={profilePlacement === "bottom" && hasProfileSummary ? "border-t border-slate-200 px-4 py-4" : "border-t border-slate-200 px-4 py-4"}>
+          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+            {footerLabel ? (
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                {footerLabel}
+              </div>
+            ) : null}
+
+            {footerValue ? (
+              <div className="mt-1 break-all text-sm font-medium text-slate-800">
+                {footerValue}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </aside>
+  );
+}
