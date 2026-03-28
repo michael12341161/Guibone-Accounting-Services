@@ -1,11 +1,104 @@
 import axios from "axios";
+import { jwtDecode } from "jwt-decode";
 import { mergePermissions } from "../utils/module_permissions";
 
 // Configure to hit the PHP backend served by XAMPP.
 // Adjust this baseURL if your Apache virtual host differs.
 const baseURL = "http://localhost/Monitoring/monitoring/backend/api/";
+const AUTH_TOKEN_KEY = "auth:jwt";
+const JWT_REFRESH_HEADER = "x-monitoring-jwt";
+export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
 
-// Default API client. Authenticated requests use the PHP session cookie.
+function dispatchAuthInvalidEvent() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent(MONITORING_AUTH_INVALID_EVENT));
+}
+
+function readTokenStorage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage;
+  } catch (_) {
+    return null;
+  }
+}
+
+export function clearStoredAuthToken() {
+  const storage = readTokenStorage();
+  storage?.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function storeAuthToken(token) {
+  const normalized = String(token ?? "").trim();
+  if (!normalized) {
+    clearStoredAuthToken();
+    return;
+  }
+
+  const storage = readTokenStorage();
+  storage?.setItem(AUTH_TOKEN_KEY, normalized);
+}
+
+function isExpiredToken(token) {
+  try {
+    const decoded = jwtDecode(token);
+    const exp = Number(decoded?.exp ?? 0);
+    if (!Number.isFinite(exp) || exp <= 0) {
+      return true;
+    }
+
+    return exp * 1000 <= Date.now() + 5000;
+  } catch (_) {
+    return true;
+  }
+}
+
+export function getStoredAuthToken() {
+  const storage = readTokenStorage();
+  const token = String(storage?.getItem(AUTH_TOKEN_KEY) ?? "").trim();
+  if (!token) {
+    return "";
+  }
+
+  if (isExpiredToken(token)) {
+    clearStoredAuthToken();
+    return "";
+  }
+
+  return token;
+}
+
+function syncTokenFromResponse(response) {
+  const token = String(response?.headers?.[JWT_REFRESH_HEADER] ?? "").trim();
+  if (token) {
+    storeAuthToken(token);
+  }
+
+  return response;
+}
+
+function attachJwtAuthorization(config) {
+  const nextConfig = { ...config };
+  const headers = { ...(nextConfig.headers || {}) };
+  const token = getStoredAuthToken();
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  } else {
+    delete headers.Authorization;
+  }
+
+  nextConfig.headers = headers;
+  return nextConfig;
+}
+
+// Authenticated requests use JWT bearer headers with PHP sessions kept for compatibility flows.
 export const api = axios.create({
   baseURL,
   withCredentials: true,
@@ -15,6 +108,25 @@ export const api = axios.create({
 export const apiSession = axios.create({
   baseURL,
   withCredentials: true,
+});
+
+[api, apiSession].forEach((client) => {
+  client.interceptors.request.use(attachJwtAuthorization);
+  client.interceptors.response.use(
+    (response) => syncTokenFromResponse(response),
+    (error) => {
+      if (error?.response) {
+        syncTokenFromResponse(error.response);
+      }
+
+      if (error?.response?.status === 401) {
+        clearStoredAuthToken();
+        dispatchAuthInvalidEvent();
+      }
+
+      return Promise.reject(error);
+    }
+  );
 });
 
 export function normalizeServiceOptions(rows) {

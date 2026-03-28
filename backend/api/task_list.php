@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/client_service_steps_schema.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -69,6 +70,7 @@ try {
     $sessionUser = monitoring_require_auth();
     $clientId = isset($_GET['client_id']) ? (int)$_GET['client_id'] : 0;
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    monitoring_ensure_client_service_steps_column_supports_long_text($conn);
     $filters = [];
     $params = [];
     $roleId = (int)($sessionUser['role_id'] ?? 0);

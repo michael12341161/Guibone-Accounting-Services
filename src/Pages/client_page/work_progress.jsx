@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../../services/api";
+import { Modal } from "../../components/UI/modal";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
+import {
+  formatStepDateTime,
+  parseStepCompletionTimestamps,
+  parseStepRemarks,
+  parseStepRemarkTimestamps,
+} from "../../utils/task_step_metadata";
+
+const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
+const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
 
 function clampPercent(n) {
   const num = Number(n);
@@ -23,6 +33,52 @@ function parseDeclinedReasonFromDescription(desc) {
   return (m?.[1] ?? "").trim();
 }
 
+function normalizeStepAssignee(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "owner" || normalized === "admin") return "Owner";
+  if (normalized === "secretary") return "Secretary";
+  return "Accountant";
+}
+
+function parseTaskSteps(desc) {
+  const lines = String(desc || "").split(/\r?\n/);
+  const steps = [];
+
+  for (const line of lines) {
+    const match = String(line || "").match(STEP_LINE_RE);
+    if (!match) continue;
+
+    const text = String(match[3] || "").trim();
+    if (!text) continue;
+
+    steps.push({
+      number: steps.length + 1,
+      assignee: normalizeStepAssignee(match[2]),
+      text,
+    });
+  }
+
+  return steps;
+}
+
+function parseCompletedStepNumbers(desc) {
+  const lines = String(desc || "").split(/\r?\n/);
+  const completed = new Set();
+
+  for (const line of lines) {
+    const match = String(line || "").match(STEP_DONE_RE);
+    if (!match) continue;
+
+    String(match[1] || "")
+      .split(/[,\s]+/)
+      .map((token) => parseInt(token, 10))
+      .filter((value) => Number.isInteger(value) && value > 0)
+      .forEach((value) => completed.add(value));
+  }
+
+  return completed;
+}
+
 function statusMeta(statusText, progress) {
   const s = (statusText || "").toLowerCase();
   if (s.includes("declin")) {
@@ -41,6 +97,7 @@ export default function WorkProgress() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tasks, setTasks] = useState([]);
+  const [stepsTaskId, setStepsTaskId] = useState(null);
 
   const user = useMemo(() => {
     try {
@@ -124,6 +181,7 @@ export default function WorkProgress() {
     return (tasks || []).map((t) => {
       const progress = parseProgressFromDescription(t.description);
       const reason = parseDeclinedReasonFromDescription(t.description);
+      const steps = parseTaskSteps(t.description);
       const meta = statusMeta(t.status, progress);
       return {
         id: t.id,
@@ -135,9 +193,31 @@ export default function WorkProgress() {
         barColor: meta.bar,
         progress,
         declinedReason: meta.label === "Declined" ? reason : "",
+        steps,
+        completedSteps: parseCompletedStepNumbers(t.description),
+        stepCompletionTimestamps: parseStepCompletionTimestamps(t.description),
+        stepRemarks: parseStepRemarks(t.description),
+        stepRemarkTimestamps: parseStepRemarkTimestamps(t.description),
       };
     });
   }, [tasks]);
+
+  const selectedStepsTask = useMemo(
+    () => normalized.find((row) => String(row.id) === String(stepsTaskId)) || null,
+    [normalized, stepsTaskId]
+  );
+  const nextIncompleteStep = useMemo(
+    () => selectedStepsTask?.steps.find((item) => !selectedStepsTask.completedSteps.has(item.number))?.number ?? null,
+    [selectedStepsTask]
+  );
+
+  const openSteps = (taskId) => {
+    setStepsTaskId(taskId);
+  };
+
+  const closeSteps = () => {
+    setStepsTaskId(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -190,6 +270,24 @@ export default function WorkProgress() {
                       Assigned accountant: <span className="font-medium text-slate-800">{row.accountantName}</span>
                     </div>
 
+                    {row.steps.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openSteps(row.id)}
+                          className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <span>View all steps</span>
+                          <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+                            {row.steps.length}
+                          </span>
+                        </button>
+                        <span className="text-xs text-slate-500">
+                          {row.steps.length} step{row.steps.length === 1 ? "" : "s"} available
+                        </span>
+                      </div>
+                    ) : null}
+
                     {row.declinedReason ? (
                       <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
                         <div className="font-semibold">Declined reason</div>
@@ -231,7 +329,124 @@ export default function WorkProgress() {
         )}
       </div>
 
-      
+      <Modal
+        open={Boolean(selectedStepsTask)}
+        onClose={closeSteps}
+        title={selectedStepsTask ? `${selectedStepsTask.serviceName} Steps` : "Service Steps"}
+        description={
+          selectedStepsTask
+            ? `Review all steps for this service and see which ones are already completed.`
+            : undefined
+        }
+        size="lg"
+        footer={
+          <button
+            type="button"
+            onClick={closeSteps}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        }
+      >
+        {selectedStepsTask ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progress</div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    {selectedStepsTask.progress}% complete
+                  </div>
+                </div>
+                <div className="text-sm font-medium text-slate-700">
+                  {selectedStepsTask.completedSteps.size} of {selectedStepsTask.steps.length} step
+                  {selectedStepsTask.steps.length === 1 ? "" : "s"} completed
+                </div>
+              </div>
+              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-white ring-1 ring-slate-200">
+                <div
+                  className={`h-full ${selectedStepsTask.barColor}`}
+                  style={{ width: `${selectedStepsTask.progress}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {selectedStepsTask.steps.map((step) => {
+                const completed = selectedStepsTask.completedSteps.has(step.number);
+                const isCurrent = !completed && step.number === nextIncompleteStep;
+                const completionLabel = formatStepDateTime(selectedStepsTask.stepCompletionTimestamps?.[step.number]);
+                const stepRemark = String(selectedStepsTask.stepRemarks?.[step.number] || "").trim();
+                const stepRemarkTimeLabel = formatStepDateTime(selectedStepsTask.stepRemarkTimestamps?.[step.number]);
+
+                return (
+                  <div
+                    key={`step-${selectedStepsTask.id}-${step.number}`}
+                    className={`rounded-xl border px-4 py-3 ${
+                      completed
+                        ? "border-emerald-200 bg-emerald-50/60"
+                        : isCurrent
+                          ? "border-sky-200 bg-sky-50/60"
+                          : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                          Step {step.number}
+                        </span>
+                        <span>{step.assignee}</span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          completed
+                            ? "bg-emerald-100 text-emerald-700"
+                            : isCurrent
+                              ? "bg-sky-100 text-sky-700"
+                              : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {completed ? "Completed" : isCurrent ? "Current" : "Pending"}
+                      </span>
+                    </div>
+
+                    <div
+                      className={`mt-2 text-sm leading-6 ${
+                        completed ? "text-slate-500 line-through" : "text-slate-800"
+                      }`}
+                    >
+                      {step.text}
+                    </div>
+
+                    {completed && completionLabel ? (
+                      <div className="mt-2 text-xs font-medium text-emerald-700">
+                        Completed on {completionLabel}
+                      </div>
+                    ) : null}
+
+                    {stepRemark ? (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                          Emergency remark
+                        </div>
+                        {stepRemarkTimeLabel ? (
+                          <div className="mt-1 text-[11px] font-medium text-amber-700">
+                            Updated on {stepRemarkTimeLabel}
+                          </div>
+                        ) : null}
+                        <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">
+                          {stepRemark}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

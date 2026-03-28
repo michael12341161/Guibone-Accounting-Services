@@ -7,6 +7,13 @@ const MONITORING_ROLE_CLIENT = 4;
 const MONITORING_SESSION_KEY = 'monitoring_auth';
 const MONITORING_IMPERSONATION_KEY = 'monitoring_impersonation';
 const MONITORING_SIGNUP_UPLOAD_KEY = 'monitoring_signup_uploads';
+const MONITORING_JWT_RESPONSE_HEADER = 'X-Monitoring-JWT';
+const MONITORING_JWT_LOCAL_CONFIG_FILE = __DIR__ . '/jwt_config.php';
+const MONITORING_JWT_SECRET_FILE = __DIR__ . '/../data/jwt_secret.php';
+const MONITORING_JWT_ALGORITHM = 'HS256';
+const MONITORING_JWT_LEEWAY_SECONDS = 5;
+
+require_once __DIR__ . '/auth_jwt.php';
 
 function monitoring_is_https(): bool
 {
@@ -81,6 +88,7 @@ function monitoring_bootstrap_api(array $methods, array $options = []): void
         $requestedHeaders = implode(', ', $defaultHeaders);
     }
     header('Access-Control-Allow-Headers: ' . $requestedHeaders);
+    header('Access-Control-Expose-Headers: ' . MONITORING_JWT_RESPONSE_HEADER);
     header('Access-Control-Max-Age: 86400');
 
     if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'OPTIONS') {
@@ -168,16 +176,8 @@ function monitoring_prepare_session_user(array $user): array
 
 function monitoring_store_session_user(array $user): void
 {
-    monitoring_start_session();
-    session_regenerate_id(true);
-
-    $preparedUser = monitoring_prepare_session_user($user);
-    $preparedUser['session_timeout_minutes'] = monitoring_normalize_session_timeout_minutes(
-        $preparedUser['security_settings']['sessionTimeoutMinutes'] ?? null
-    );
-    $preparedUser['last_activity_at'] = time();
-
-    $_SESSION[MONITORING_SESSION_KEY] = $preparedUser;
+    $preparedUser = monitoring_persist_session_user($user, true);
+    monitoring_queue_jwt_response_header($preparedUser, monitoring_read_impersonation_state());
 }
 
 function monitoring_store_impersonation_state(array $originalUser): void
@@ -194,15 +194,7 @@ function monitoring_read_impersonation_state(): ?array
 {
     monitoring_start_session();
     $raw = $_SESSION[MONITORING_IMPERSONATION_KEY] ?? null;
-    if (!is_array($raw) || !is_array($raw['original_user'] ?? null)) {
-        return null;
-    }
-
-    return [
-        'active' => true,
-        'original_user' => monitoring_prepare_session_user($raw['original_user']),
-        'started_at' => isset($raw['started_at']) ? (int)$raw['started_at'] : time(),
-    ];
+    return monitoring_normalize_impersonation_state($raw);
 }
 
 function monitoring_clear_impersonation_state(): void
@@ -223,43 +215,18 @@ function monitoring_update_session_timeout(int $minutes): void
         $_SESSION[MONITORING_SESSION_KEY]['security_settings'] = [];
     }
     $_SESSION[MONITORING_SESSION_KEY]['security_settings']['sessionTimeoutMinutes'] = monitoring_normalize_session_timeout_minutes($minutes);
+
+    monitoring_queue_jwt_response_header($_SESSION[MONITORING_SESSION_KEY], monitoring_read_impersonation_state());
 }
 
 function monitoring_read_session_user(bool $enforceTimeout = true): ?array
 {
-    monitoring_start_session();
-    $raw = $_SESSION[MONITORING_SESSION_KEY] ?? null;
-    if (!is_array($raw)) {
-        return null;
+    $jwtUser = monitoring_read_session_user_from_jwt();
+    if ($jwtUser !== null) {
+        return $jwtUser;
     }
 
-    $userId = isset($raw['id']) ? (int)$raw['id'] : 0;
-    $roleId = isset($raw['role_id']) ? (int)$raw['role_id'] : 0;
-    if ($userId <= 0 || $roleId <= 0) {
-        unset($_SESSION[MONITORING_SESSION_KEY]);
-        return null;
-    }
-
-    $timeoutMinutes = monitoring_normalize_session_timeout_minutes($raw['session_timeout_minutes'] ?? null);
-    $lastActivityAt = isset($raw['last_activity_at']) ? (int)$raw['last_activity_at'] : 0;
-    if ($enforceTimeout && $lastActivityAt > 0 && (time() - $lastActivityAt) > ($timeoutMinutes * 60)) {
-        monitoring_destroy_session();
-        return null;
-    }
-
-    $_SESSION[MONITORING_SESSION_KEY]['last_activity_at'] = time();
-    $raw['last_activity_at'] = $_SESSION[MONITORING_SESSION_KEY]['last_activity_at'];
-    $raw['session_timeout_minutes'] = $timeoutMinutes;
-    $raw['client_id'] = array_key_exists('client_id', $raw) && $raw['client_id'] !== null ? (int)$raw['client_id'] : null;
-    $raw['email'] = isset($raw['email']) && $raw['email'] !== '' ? (string)$raw['email'] : null;
-    $raw['first_name'] = isset($raw['first_name']) && $raw['first_name'] !== '' ? (string)$raw['first_name'] : null;
-    $raw['middle_name'] = isset($raw['middle_name']) && $raw['middle_name'] !== '' ? (string)$raw['middle_name'] : null;
-    $raw['last_name'] = isset($raw['last_name']) && $raw['last_name'] !== '' ? (string)$raw['last_name'] : null;
-    $raw['profile_image'] = isset($raw['profile_image']) && $raw['profile_image'] !== '' ? (string)$raw['profile_image'] : null;
-    $raw['registration_source'] = isset($raw['registration_source']) && $raw['registration_source'] !== '' ? (string)$raw['registration_source'] : null;
-    $raw['approval_status'] = isset($raw['approval_status']) && $raw['approval_status'] !== '' ? (string)$raw['approval_status'] : null;
-    $raw['impersonation'] = monitoring_read_impersonation_state();
-    return $raw;
+    return monitoring_read_session_user_from_session($enforceTimeout, true);
 }
 
 function monitoring_require_auth(): array

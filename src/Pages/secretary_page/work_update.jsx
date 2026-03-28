@@ -1,7 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Swal from "sweetalert2";
 import { api, fetchAvailableServices } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import ArchiveTasksCompletedSecretary from "./archive_tasks_completed_secretary";
+import {
+  createLocalStepTimestamp,
+  formatStepDateTime,
+  parseStepCompletionTimestamps,
+  parseStepRemarks,
+  parseStepRemarkTimestamps,
+  setStepCompletionTimestamp,
+  setStepRemark,
+  setStepRemarkTimestamp,
+} from "../../utils/task_step_metadata";
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
 const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
@@ -370,6 +381,7 @@ const cleanDescription = (desc) => {
   // [Priority] Medium
   // [Deadline] 25/02/2026
   d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|Archived|SecretaryArchived)\]\s*.*$/gim, "");
+  d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   d = d.replace(/\s*\[Done\]\s*/gi, " ");
 
   // Remove step-by-step lines from the CARD description preview.
@@ -451,6 +463,8 @@ export default function WorkUpdate() {
   // Steps floating card state
   const [stepsOpen, setStepsOpen] = useState(false);
   const [stepsTask, setStepsTask] = useState(null);
+  const [stepRemarkEditor, setStepRemarkEditor] = useState(null);
+  const [stepRemarkSaving, setStepRemarkSaving] = useState(false);
 
   // Edit modal state
   const [editOpen, setEditOpen] = useState(false);
@@ -466,12 +480,65 @@ export default function WorkUpdate() {
 
   const openSteps = (task) => {
     setStepsTask(task);
+    setStepRemarkEditor(null);
     setStepsOpen(true);
   };
 
   const closeSteps = () => {
     setStepsOpen(false);
     setStepsTask(null);
+    setStepRemarkEditor(null);
+  };
+
+  const beginStepRemarkEdit = (task, stepNumber, currentValue = "") => {
+    const taskId = Number(task?.id || 0);
+    if (!taskId) return;
+
+    setStepRemarkEditor({
+      taskId,
+      stepNumber: Number(stepNumber),
+      value: String(currentValue || ""),
+    });
+  };
+
+  const cancelStepRemarkEdit = () => {
+    if (stepRemarkSaving) return;
+    setStepRemarkEditor(null);
+  };
+
+  const isEditingStepRemark = (taskId, stepNumber) =>
+    String(stepRemarkEditor?.taskId || "") === String(taskId || "") &&
+    Number(stepRemarkEditor?.stepNumber) === Number(stepNumber);
+
+  const saveStepRemark = async (task, stepNumber) => {
+    const taskId = Number(task?.id || 0);
+    if (!taskId || !isEditingStepRemark(taskId, stepNumber)) return;
+    if (parseCompletedStepNumbers(task?.description).has(stepNumber)) return;
+
+    const nextRemark = String(stepRemarkEditor?.value || "");
+    let updatedDesc = setStepRemark(String(task?.description || ""), stepNumber, nextRemark);
+    updatedDesc = setStepRemarkTimestamp(
+      updatedDesc,
+      stepNumber,
+      nextRemark.trim() ? createLocalStepTimestamp() : ""
+    );
+
+    try {
+      setStepRemarkSaving(true);
+      setError("");
+      await api.post("task_update_status.php", { task_id: taskId, description: updatedDesc });
+      setStepRemarkEditor((current) =>
+        String(current?.taskId || "") === String(taskId) && Number(current?.stepNumber) === Number(stepNumber)
+          ? null
+          : current
+      );
+      await refresh({ silent: true });
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to save remark.");
+      await refresh({ silent: true });
+    } finally {
+      setStepRemarkSaving(false);
+    }
   };
 
   const updateStep = async (task, index, value) => {
@@ -494,9 +561,24 @@ export default function WorkUpdate() {
     if (!step) return;
     if (!roleCanCompleteStep(step.assignee, "secretary")) return;
 
+    const confirmation = await Swal.fire({
+      title: `Complete Step ${index + 1}?`,
+      text: "Are you sure you want to check this step as completed?",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Yes, complete it",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#2563eb",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+      focusCancel: true,
+    });
+    if (!confirmation.isConfirmed) return;
+
     const nextDone = new Set(doneSet);
     nextDone.add(index + 1);
     let updatedDesc = setCompletedStepNumbers(String(task?.description || ""), nextDone);
+    updatedDesc = setStepCompletionTimestamp(updatedDesc, index + 1, createLocalStepTimestamp());
     const nextProgress = Math.round((nextDone.size / steps.length) * 100);
     updatedDesc = setProgress(updatedDesc, nextProgress);
 
@@ -765,6 +847,23 @@ export default function WorkUpdate() {
       await refresh({ silent: true });
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  const markDone = async (task) => {
+    const id = task?.id;
+    if (!id) return;
+    if (getProgress(task) < 100) return;
+
+    const prevStatus = task.status;
+    setTasks((prev) => (prev || []).map((t) => (String(t.id) === String(id) ? { ...t, status: "Done" } : t)));
+
+    try {
+      await api.post("task_update_status.php", { task_id: id, status: "Done" });
+      await refresh({ silent: true });
+    } catch (e) {
+      setTasks((prev) => (prev || []).map((t) => (String(t.id) === String(id) ? { ...t, status: prevStatus } : t)));
+      setError(e?.response?.data?.message || e?.message || "Failed to update status.");
     }
   };
 
@@ -1151,19 +1250,39 @@ export default function WorkUpdate() {
                         <div />
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => openEdit(t)}
-                        disabled={!canEditTask(t)}
-                        className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
-                          canEditTask(t)
-                            ? "border-slate-300 text-slate-600 hover:bg-slate-50"
-                            : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                        }`}
-                        title={canEditTask(t) ? "Edit task" : "Declined/Completed tasks cannot be edited"}
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(t)}
+                          disabled={!canEditTask(t)}
+                          className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
+                            canEditTask(t)
+                              ? "border-slate-300 text-slate-600 hover:bg-slate-50"
+                              : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                          }`}
+                          title={canEditTask(t) ? "Edit task" : "Declined/Completed tasks cannot be edited"}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => markDone(t)}
+                          disabled={(["done", "completed"].includes(String(t.status || "").toLowerCase())) || getProgress(t) < 100}
+                          className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
+                            (["done", "completed"].includes(String(t.status || "").toLowerCase()))
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 cursor-not-allowed"
+                              : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                          } ${getProgress(t) < 100 ? "opacity-60 cursor-not-allowed" : ""}`}
+                          title={
+                            (["done", "completed"].includes(String(t.status || "").toLowerCase()))
+                              ? "Already Done"
+                              : (getProgress(t) < 100 ? "Progress must be 100% to mark Done" : "Mark as Done")
+                          }
+                        >
+                          Done
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1180,7 +1299,7 @@ export default function WorkUpdate() {
               {/* Floating card container */}
               <div className="absolute inset-0 p-4 sm:p-6 pointer-events-none">
                 <div className="mx-auto w-full max-w-lg pointer-events-none">
-                  <div className="pointer-events-auto rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+                  <div className="pointer-events-auto flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]">
                     <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
                       <div className="min-w-0">
                         <div className="text-xs text-slate-500">Work Update • Step-by-step</div>
@@ -1198,7 +1317,7 @@ export default function WorkUpdate() {
                       </button>
                     </div>
 
-                    <div className="p-4">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
                       {(() => {
                         const liveTask = tasks.find((x) => String(x?.id) === String(stepsTask?.id)) || stepsTask;
                         const steps = parseTaskSteps(liveTask?.description);
@@ -1207,6 +1326,9 @@ export default function WorkUpdate() {
                         }
 
                         const doneSet = parseCompletedStepNumbers(liveTask?.description);
+                        const completionTimestamps = parseStepCompletionTimestamps(liveTask?.description);
+                        const stepRemarks = parseStepRemarks(liveTask?.description);
+                        const stepRemarkTimestamps = parseStepRemarkTimestamps(liveTask?.description);
                         const nextRequiredIndex = (() => {
                           for (let i = 0; i < steps.length; i++) if (!doneSet.has(i + 1)) return i;
                           return steps.length;
@@ -1216,10 +1338,16 @@ export default function WorkUpdate() {
                         return (
                           <div className="space-y-2">
                             {steps.map((step, i) => {
-                              const done = doneSet.has(i + 1);
+                              const stepNumber = i + 1;
+                              const done = doneSet.has(stepNumber);
                               const canCompleteByOrder = i === nextRequiredIndex;
                               const isAssignedToSecretary = roleCanCompleteStep(step.assignee, "secretary");
                               const canComplete = !taskLocked && !done && canCompleteByOrder && isAssignedToSecretary;
+                              const canEditRemark = !taskLocked && !done && isAssignedToSecretary;
+                              const stepRemark = String(stepRemarks[stepNumber] || "").trim();
+                              const completionLabel = formatStepDateTime(completionTimestamps[stepNumber]);
+                              const stepRemarkTimeLabel = formatStepDateTime(stepRemarkTimestamps[stepNumber]);
+                              const remarkEditorOpen = isEditingStepRemark(liveTask?.id, stepNumber);
                               return (
                                 <div
                                   key={`step-${stepsTask.id}-${i}`}
@@ -1234,14 +1362,14 @@ export default function WorkUpdate() {
                                         if (e.target.checked) updateStep(liveTask, i, "done");
                                       }}
                                       className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 ${done ? "opacity-60" : "opacity-100"}`}
-                                      aria-label={`Step ${i + 1}`}
+                                      aria-label={`Step ${stepNumber}`}
                                     />
                                   </div>
 
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                        <span>{`Step ${i + 1}`}</span>
+                                        <span>{`Step ${stepNumber}`}</span>
                                         <StepAssigneeIdentity assignee={step.assignee} />
                                       </div>
                                       {done ? (
@@ -1260,6 +1388,100 @@ export default function WorkUpdate() {
                                     >
                                       {step.text}
                                     </div>
+
+                                    {done && completionLabel ? (
+                                      <div className="mt-2 text-[11px] font-medium text-emerald-700">
+                                        Completed on {completionLabel}
+                                      </div>
+                                    ) : null}
+
+                                    {stepRemark ? (
+                                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                          Emergency remark
+                                        </div>
+                                        {stepRemarkTimeLabel ? (
+                                          <div className="mt-1 text-[11px] font-medium text-amber-700">
+                                            Updated on {stepRemarkTimeLabel}
+                                          </div>
+                                        ) : null}
+                                        <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">
+                                          {stepRemark}
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={!canEditRemark || stepRemarkSaving}
+                                        onClick={() => beginStepRemarkEdit(liveTask, stepNumber, stepRemark)}
+                                        title={
+                                          canEditRemark
+                                            ? (stepRemark ? "Edit remark" : "Add remark")
+                                            : done
+                                              ? "Completed steps cannot add remarks"
+                                              : "Only secretary-assigned steps can add remarks"
+                                        }
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                                          !canEditRemark || stepRemarkSaving
+                                            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                            : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                                        }`}
+                                      >
+                                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                                        </svg>
+                                        <span>{stepRemark ? "Edit remark" : "Add remark"}</span>
+                                      </button>
+                                    </div>
+
+                                    {remarkEditorOpen ? (
+                                      <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                        <div className="text-[11px] font-semibold text-slate-700">Emergency remark</div>
+                                        <textarea
+                                          value={stepRemarkEditor?.value || ""}
+                                          onChange={(e) =>
+                                            setStepRemarkEditor((current) =>
+                                              current &&
+                                              String(current?.taskId || "") === String(liveTask?.id || "") &&
+                                              Number(current?.stepNumber) === Number(stepNumber)
+                                                ? { ...current, value: e.target.value }
+                                                : current
+                                            )
+                                          }
+                                          rows={3}
+                                          placeholder="Example: BIR is closed today, continue processing tomorrow."
+                                          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                        />
+                                        <div className="mt-2 flex items-center justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={stepRemarkSaving}
+                                            onClick={cancelStepRemarkEdit}
+                                            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={stepRemarkSaving}
+                                            onClick={() => saveStepRemark(liveTask, stepNumber)}
+                                            className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white ${
+                                              stepRemarkSaving ? "bg-amber-300" : "bg-amber-600 hover:bg-amber-700"
+                                            }`}
+                                          >
+                                            {stepRemarkSaving
+                                              ? "Saving..."
+                                              : (stepRemarkEditor?.value || "").trim()
+                                                ? "Save remark"
+                                                : stepRemark
+                                                  ? "Remove remark"
+                                                  : "Save remark"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </div>
                               );

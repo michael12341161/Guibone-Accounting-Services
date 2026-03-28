@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 20, 2026 at 03:55 PM
+-- Generation Time: Mar 26, 2026 at 09:44 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -78,7 +78,40 @@ CREATE TABLE `audit_logs` (
 INSERT INTO `audit_logs` (`audit_logs_ID`, `user_id`, `action`, `ip_address`, `location`, `device`, `browser`, `os`, `created_at`) VALUES
 (1, 23, 'Blocked login due to client approval status', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-20 13:25:24'),
 (2, 23, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-20 13:25:52'),
-(3, 24, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-20 14:24:05');
+(3, 24, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-20 14:24:05'),
+(4, 1, 'Login successful', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:30:06'),
+(5, 1, 'Logged out', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:35:16'),
+(6, 1, 'Failed login attempt', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:45:34'),
+(7, 1, 'Login successful', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:45:57'),
+(8, 1, 'Logged out', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:49:59'),
+(9, 21, 'Failed login attempt', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:50:08'),
+(10, 21, 'Login successful', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:50:17'),
+(11, 21, 'Logged out', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:50:25'),
+(12, 22, 'Failed login attempt', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:50:44'),
+(13, 22, 'Failed login attempt', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:50:51'),
+(14, 22, 'Login successful', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:51:00'),
+(15, 22, 'Logged out', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:51:39'),
+(16, 24, 'Login successful', '180.190.44.96', 'Maramag, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-25 10:51:54'),
+(17, 1, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 03:42:07'),
+(18, 21, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 03:58:24'),
+(19, 21, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 03:58:31'),
+(20, 22, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 03:58:51'),
+(21, 22, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 03:59:06'),
+(22, 24, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 04:00:01'),
+(23, 24, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 04:00:09'),
+(24, 24, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 04:00:17'),
+(25, 24, 'Failed login attempt', '202.61.110.254', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 05:34:22'),
+(26, 24, 'Login successful', '202.61.110.254', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 05:34:29'),
+(27, 21, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 06:26:19'),
+(28, 21, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 06:26:26'),
+(29, 22, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 06:37:13'),
+(30, 22, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 06:37:24'),
+(31, 1, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:09:13'),
+(32, 22, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:54:19'),
+(33, 22, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:54:29'),
+(34, 21, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:10'),
+(35, 21, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:19'),
+(36, 21, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:29');
 
 -- --------------------------------------------------------
 
@@ -109,7 +142,17 @@ CREATE TABLE `business` (
 
 INSERT INTO `business` (`Business_id`, `Client_ID`, `Brand_name`, `Business_type_ID`, `Status_id`, `Province`, `Municipality`, `Postal_code`, `Barangay`, `Street_address`, `Email_address`, `TIN_number`, `Contact_number`, `Date_added`) VALUES
 (11, 10, 'FDMR', 1, 17, 'Agusan Del Norte', 'Butuan City (Capital)', '8600', 'Agao Pob. (Bgy. 3)', 'Zone 1', 'nacaya.michael123@gmail.com', '12323', '09354786152', '2026-03-20 13:25:13'),
-(12, 11, 'O.G Old Gamer', 2, 18, 'Misamis Oriental', 'Cagayan De Oro City (Capital)', '9000', 'Bonbon', 'zone 1', 'domingo.ancog42@gmail.com', '123', '09354786152', '2026-03-20 14:22:53');
+(12, 11, 'O.G Old Gamer', 2, 18, 'Misamis Oriental', 'Cagayan De Oro City (Capital)', '9000', 'Bonbon', 'zone 1', 'domingo.ancog42@gmail.com', '123', '09354786152', '2026-03-20 14:22:53'),
+(13, 12, 'Northstar Retail Hub', 1, 18, 'Metro Manila', 'Quezon City', '1105', 'Batasan Hills', 'Lot 12, Phase 3', 'elaine.santos@example.com', '120000001201', '09170000001', '2026-03-21 08:15:00'),
+(14, 13, 'Castro Logistics Services', 2, 18, 'Cebu', 'Cebu City', '6000', 'Lahug', 'Unit 4, Logistics Park', 'jose.castro@example.com', '120000001202', '09170000002', '2026-03-21 08:30:00'),
+(15, 14, 'Reyes Food Corner', 1, 18, 'Davao del Sur', 'Davao City', '8000', 'Buhangin', 'Door 5, Market Lane', 'maria.reyes@example.com', '120000001203', '09170000003', '2026-03-21 08:45:00'),
+(16, 15, 'PDC Digital Solutions', 3, 18, 'Iloilo', 'Iloilo City', '5000', 'Mandurriao', '3rd Floor, Tech Arcade', 'paolo.delacruz@example.com', '120000001204', '09170000004', '2026-03-21 09:00:00'),
+(17, 16, 'Flores Wellness Studio', 1, 18, 'Cavite', 'Bacoor', '4102', 'Molino III', 'Blk 8 Lot 4', 'andrea.flores@example.com', '120000001205', '09170000005', '2026-03-22 09:15:00'),
+(18, 17, 'Ramos Hardware Trading', 2, 18, 'Laguna', 'Calamba City', '4027', 'Palo Alto', 'Warehouse 2, National Road', 'miguel.ramos@example.com', '120000001206', '09170000006', '2026-03-22 09:30:00'),
+(19, 18, 'Mendoza Creative Prints', 1, 18, 'Bulacan', 'Malolos City', '3000', 'Santo Rosario', 'Print Hub Building', 'sofia.mendoza@example.com', '120000001207', '09170000007', '2026-03-22 09:45:00'),
+(20, 19, 'Garcia Agri Supply', 3, 18, 'Pangasinan', 'Urdaneta City', '2428', 'Nancalobasaan', 'Zone 2, Highway Frontage', 'daniel.garcia@example.com', '120000001208', '09170000008', '2026-03-23 10:00:00'),
+(21, 20, 'Torres Home Essentials', 2, 18, 'Rizal', 'Antipolo City', '1870', 'San Isidro', 'Sitio Centro, Block 6', 'camille.torres@example.com', '120000001209', '09170000009', '2026-03-23 10:15:00'),
+(22, 21, 'Navarro Auto Care', 1, 18, 'Pampanga', 'San Fernando City', '2000', 'Sindalan', 'MacArthur Highway', 'adrian.navarro@example.com', '120000001210', '09170000010', '2026-03-23 10:30:00');
 
 -- --------------------------------------------------------
 
@@ -189,7 +232,17 @@ CREATE TABLE `client` (
 
 INSERT INTO `client` (`Client_ID`, `User_id`, `First_name`, `Middle_name`, `Last_name`, `Email`, `Profile_Image`, `Phone`, `Date_of_Birth`, `civil_status_type_ID`, `Province`, `Municipality`, `Postal_code`, `Barangay`, `Street_address`, `Tin_no`, `Status_id`, `action_by`, `Rejection_reason`, `Registered_at`) VALUES
 (10, 23, 'Michael', 'I.', 'Nacaya', 'nacaya.michael123@gmail.com', NULL, '09354786152', '2026-03-20', 1, 'Agusan Del Norte', 'Butuan City (Capital)', '8600', 'Agao Pob. (Bgy. 3)', 'Zone 1', '12342', 1, 1, NULL, '2026-03-20 13:25:12'),
-(11, 24, 'Francis', 'G.', 'Alaba', 'michaelnacaya86@gmail.com', NULL, '0954343245', '2026-03-20', 1, 'Misamis Oriental', 'Cagayan De Oro City (Capital)', '9000', 'Bonbon', 'zone 1', '12334', 1, 1, NULL, '2026-03-20 14:22:53');
+(11, 24, 'Francis', 'G.', 'Alaba', 'michaelnacaya86@gmail.com', NULL, '0954343245', '2026-03-20', 1, 'Misamis Oriental', 'Cagayan De Oro City (Capital)', '9000', 'Bonbon', 'zone 1', '12334', 1, 1, NULL, '2026-03-20 14:22:53'),
+(12, 25, 'Elaine', 'M.', 'Santos', 'elaine.santos@example.com', NULL, '09170000001', '1994-05-12', 1, 'Metro Manila', 'Quezon City', '1105', 'Batasan Hills', 'Lot 12, Phase 3', '120000001201', 1, 1, NULL, '2026-03-21 08:10:00'),
+(13, 26, 'Jose', 'P.', 'Castro', 'jose.castro@example.com', NULL, '09170000002', '1990-09-21', 2, 'Cebu', 'Cebu City', '6000', 'Lahug', 'Unit 4, Logistics Park', '120000001202', 1, 1, NULL, '2026-03-21 08:25:00'),
+(14, 27, 'Maria', 'L.', 'Reyes', 'maria.reyes@example.com', NULL, '09170000003', '1996-02-14', 1, 'Davao del Sur', 'Davao City', '8000', 'Buhangin', 'Door 5, Market Lane', '120000001203', 1, 1, NULL, '2026-03-21 08:40:00'),
+(15, 28, 'Paolo', 'D.', 'Dela Cruz', 'paolo.delacruz@example.com', NULL, '09170000004', '1989-11-30', 2, 'Iloilo', 'Iloilo City', '5000', 'Mandurriao', '3rd Floor, Tech Arcade', '120000001204', 1, 1, NULL, '2026-03-21 08:55:00'),
+(16, 29, 'Andrea', 'S.', 'Flores', 'andrea.flores@example.com', NULL, '09170000005', '1993-07-08', 1, 'Cavite', 'Bacoor', '4102', 'Molino III', 'Blk 8 Lot 4', '120000001205', 1, 1, NULL, '2026-03-22 09:10:00'),
+(17, 30, 'Miguel', 'A.', 'Ramos', 'miguel.ramos@example.com', NULL, '09170000006', '1988-03-17', 2, 'Laguna', 'Calamba City', '4027', 'Palo Alto', 'Warehouse 2, National Road', '120000001206', 1, 1, NULL, '2026-03-22 09:25:00'),
+(18, 31, 'Sofia', 'C.', 'Mendoza', 'sofia.mendoza@example.com', NULL, '09170000007', '1995-12-03', 1, 'Bulacan', 'Malolos City', '3000', 'Santo Rosario', 'Print Hub Building', '120000001207', 1, 1, NULL, '2026-03-22 09:40:00'),
+(19, 32, 'Daniel', 'T.', 'Garcia', 'daniel.garcia@example.com', NULL, '09170000008', '1991-06-26', 2, 'Pangasinan', 'Urdaneta City', '2428', 'Nancalobasaan', 'Zone 2, Highway Frontage', '120000001208', 1, 1, NULL, '2026-03-23 09:55:00'),
+(20, 33, 'Camille', 'R.', 'Torres', 'camille.torres@example.com', NULL, '09170000009', '1997-01-19', 1, 'Rizal', 'Antipolo City', '1870', 'San Isidro', 'Sitio Centro, Block 6', '120000001209', 1, 1, NULL, '2026-03-23 10:10:00'),
+(21, 34, 'Adrian', 'V.', 'Navarro', 'adrian.navarro@example.com', NULL, '09170000010', '1987-10-11', 2, 'Pampanga', 'San Fernando City', '2000', 'Sindalan', 'MacArthur Highway', '120000001210', 1, 1, NULL, '2026-03-23 10:25:00');
 
 -- --------------------------------------------------------
 
@@ -204,10 +257,19 @@ CREATE TABLE `client_services` (
   `Name` varchar(150) NOT NULL,
   `created_by` int(11) DEFAULT NULL,
   `User_ID` int(11) DEFAULT NULL,
-  `Steps` varchar(255) DEFAULT NULL,
+  `Steps` text DEFAULT NULL,
   `Date` date DEFAULT NULL,
   `Status_ID` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `client_services`
+--
+
+INSERT INTO `client_services` (`Client_services_ID`, `Client_ID`, `Services_type_Id`, `Name`, `created_by`, `User_ID`, `Steps`, `Date`, `Status_ID`) VALUES
+(8, 11, 3, 'Book Keeping', 1, 22, '[Progress] 100\n[Priority] Medium\n[Deadline] 2026-04-08\nStep 1 (Accountant): kwaon data\nStep 2 (Accountant): lihokon\nStep 3 (Secretary): lihokon\nStep 4 (Owner): dsadsad\n[StepDone] 1,2,3,4\n[Done]', '2026-04-08', 12),
+(9, 11, 3, 'Book Keeping', 1, 22, '[Progress] 0\n[Priority] Low\n[Deadline] 2026-04-09', '2026-04-09', 10),
+(10, 11, 3, 'Book Keeping', 1, 22, '[Progress] 20\n[Priority] Low\nStep 1 (Secretary): Collect bookkeeping documents, receipts, and supporting files from the client.\nStep 2 (Accountant): Record and categorize the transactions for the covered period.\nStep 3 (Accountant): Reconcile the bank records and subsidiary ledgers.\nStep 4 (Accountant): Prepare the bookkeeping summary and draft reports.\nStep 5 (Owner): Review the reports and confirm the bookkeeping output.\n[StepDone] 1\n[StepCompletedAt 1] 2026-03-26T14:26:52+08:00\n[StepRemark 2] brbdsadsad\n[StepRemarkAt 2] 2026-03-26T15:08:51+08:00', '2026-04-09', 10);
 
 -- --------------------------------------------------------
 
@@ -310,7 +372,13 @@ CREATE TABLE `notifications` (
 
 INSERT INTO `notifications` (`notifications_ID`, `user_id`, `sender_id`, `type`, `message`, `is_read`, `created_at`) VALUES
 (8, 1, NULL, 'client_signup', 'New Client Registration\nMichael I. Nacaya has submitted a registration request. Please review and approve or reject the application.', 0, '2026-03-20 13:25:13'),
-(9, 1, NULL, 'client_signup', 'New Client Registration\nFrancis G. Alaba has submitted a registration request. Please review and approve or reject the application.', 0, '2026-03-20 14:22:53');
+(9, 1, NULL, 'client_signup', 'New Client Registration\nFrancis G. Alaba has submitted a registration request. Please review and approve or reject the application.', 0, '2026-03-20 14:22:53'),
+(10, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-03-25 10:49:04'),
+(11, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-03-25 10:49:04'),
+(12, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-03-26 04:48:40'),
+(13, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-03-26 04:48:40'),
+(14, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-03-26 05:26:01'),
+(15, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-03-26 05:26:01');
 
 -- --------------------------------------------------------
 
@@ -476,11 +544,21 @@ CREATE TABLE `user` (
 --
 
 INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `Failed_login_attempts`, `Locked_until`, `Role_id`, `Email`, `first_name`, `middle_name`, `last_name`, `Profile_Image`, `date_of_birth`, `phone_number`, `specialization_type_ID`, `sss_account_number`, `pagibig_account_number`, `philhealth_account_number`, `Created_at`, `updated_at`) VALUES
-(1, 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '2026-02-14 01:18:12', 0, NULL, 1, 'admin@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-02-14 01:18:12', '2026-02-14 01:18:12'),
-(21, 'dong', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:23:17', 0, NULL, 2, 'dong@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2026-03-20', '4234324', 4, '313213', '21212', NULL, '2026-03-20 13:23:17', '2026-03-20 13:23:17'),
-(22, 'roberth', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 21:23:52', 0, NULL, 3, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2026-03-20', '4234324', 3, '313213', '21212', NULL, '2026-03-20 13:23:52', '2026-03-20 13:23:52'),
+(1, 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '2026-02-14 01:18:12', 0, NULL, 1, 'admin@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-02-14 01:18:12', '2026-03-25 10:45:57'),
+(21, 'dong', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:23:17', 0, NULL, 2, 'dong@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2026-03-20', '4234324', 4, '313213', '21212', NULL, '2026-03-20 13:23:17', '2026-03-26 07:55:29'),
+(22, 'roberth', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 21:23:52', 0, NULL, 3, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2026-03-20', '4234324', 3, '313213', '21212', NULL, '2026-03-20 13:23:52', '2026-03-26 07:54:29'),
 (23, 'nacaya.michael123@gmail.com', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:25:13', 0, NULL, 4, 'nacaya.michael123@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 13:25:13', '2026-03-20 13:25:13'),
-(24, 'michaelnacaya86@gmail.com', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 22:22:53', 0, NULL, 4, 'michaelnacaya86@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 14:22:53', '2026-03-20 14:22:53');
+(24, 'michaelnacaya86@gmail.com', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 22:22:53', 0, NULL, 4, 'michaelnacaya86@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 14:22:53', '2026-03-26 05:34:29'),
+(25, 'elaine.santos@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:10:00', 0, NULL, 4, 'elaine.santos@example.com', 'Elaine', 'M.', 'Santos', NULL, '1994-05-12', '09170000001', NULL, NULL, NULL, NULL, '2026-03-21 08:10:00', '2026-03-21 08:10:00'),
+(26, 'jose.castro@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:25:00', 0, NULL, 4, 'jose.castro@example.com', 'Jose', 'P.', 'Castro', NULL, '1990-09-21', '09170000002', NULL, NULL, NULL, NULL, '2026-03-21 08:25:00', '2026-03-21 08:25:00'),
+(27, 'maria.reyes@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:40:00', 0, NULL, 4, 'maria.reyes@example.com', 'Maria', 'L.', 'Reyes', NULL, '1996-02-14', '09170000003', NULL, NULL, NULL, NULL, '2026-03-21 08:40:00', '2026-03-21 08:40:00'),
+(28, 'paolo.delacruz@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:55:00', 0, NULL, 4, 'paolo.delacruz@example.com', 'Paolo', 'D.', 'Dela Cruz', NULL, '1989-11-30', '09170000004', NULL, NULL, NULL, NULL, '2026-03-21 08:55:00', '2026-03-21 08:55:00'),
+(29, 'andrea.flores@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:10:00', 0, NULL, 4, 'andrea.flores@example.com', 'Andrea', 'S.', 'Flores', NULL, '1993-07-08', '09170000005', NULL, NULL, NULL, NULL, '2026-03-22 09:10:00', '2026-03-22 09:10:00'),
+(30, 'miguel.ramos@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:25:00', 0, NULL, 4, 'miguel.ramos@example.com', 'Miguel', 'A.', 'Ramos', NULL, '1988-03-17', '09170000006', NULL, NULL, NULL, NULL, '2026-03-22 09:25:00', '2026-03-22 09:25:00'),
+(31, 'sofia.mendoza@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:40:00', 0, NULL, 4, 'sofia.mendoza@example.com', 'Sofia', 'C.', 'Mendoza', NULL, '1995-12-03', '09170000007', NULL, NULL, NULL, NULL, '2026-03-22 09:40:00', '2026-03-22 09:40:00'),
+(32, 'daniel.garcia@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 09:55:00', 0, NULL, 4, 'daniel.garcia@example.com', 'Daniel', 'T.', 'Garcia', NULL, '1991-06-26', '09170000008', NULL, NULL, NULL, NULL, '2026-03-23 09:55:00', '2026-03-23 09:55:00'),
+(33, 'camille.torres@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 10:10:00', 0, NULL, 4, 'camille.torres@example.com', 'Camille', 'R.', 'Torres', NULL, '1997-01-19', '09170000009', NULL, NULL, NULL, NULL, '2026-03-23 10:10:00', '2026-03-23 10:10:00'),
+(34, 'adrian.navarro@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 10:25:00', 0, NULL, 4, 'adrian.navarro@example.com', 'Adrian', 'V.', 'Navarro', NULL, '1987-10-11', '09170000010', NULL, NULL, NULL, NULL, '2026-03-23 10:25:00', '2026-03-23 10:25:00');
 
 --
 -- Indexes for dumped tables
@@ -653,13 +731,13 @@ ALTER TABLE `appointment`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=37;
 
 --
 -- AUTO_INCREMENT for table `business`
 --
 ALTER TABLE `business`
-  MODIFY `Business_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  MODIFY `Business_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `business_type`
@@ -677,13 +755,13 @@ ALTER TABLE `civil_status_type`
 -- AUTO_INCREMENT for table `client`
 --
 ALTER TABLE `client`
-  MODIFY `Client_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `Client_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
 
 --
 -- AUTO_INCREMENT for table `client_services`
 --
 ALTER TABLE `client_services`
-  MODIFY `Client_services_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `Client_services_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `consultation`
@@ -713,7 +791,7 @@ ALTER TABLE `messages`
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `role`
@@ -731,7 +809,7 @@ ALTER TABLE `services_type`
 -- AUTO_INCREMENT for table `settings`
 --
 ALTER TABLE `settings`
-  MODIFY `Settings_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=847;
+  MODIFY `Settings_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1037;
 
 --
 -- AUTO_INCREMENT for table `specialization_type`
@@ -749,7 +827,7 @@ ALTER TABLE `status`
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `User_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+  MODIFY `User_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=35;
 
 --
 -- Constraints for dumped tables

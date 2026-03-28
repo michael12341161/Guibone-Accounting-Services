@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
+require_once __DIR__ . '/client_service_steps_schema.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -151,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 try {
     $sessionUser = monitoring_require_auth();
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    monitoring_ensure_client_service_steps_column_supports_long_text($conn);
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);

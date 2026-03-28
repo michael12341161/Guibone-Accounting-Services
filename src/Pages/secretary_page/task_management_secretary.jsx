@@ -9,6 +9,7 @@ import { Modal } from "../../components/UI/modal";
 import ArchiveTasksCompletedSecretary from "./archive_tasks_completed_secretary";
 import { getAutoDueDateForService, getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { joinPersonName } from "../../utils/person_name";
+import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
 const ADMIN_ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
@@ -341,6 +342,7 @@ const cleanDescription = (desc) => {
       if (/^\[Declined reason\]\s*/i.test(l)) return false;
       if (/^\[(?:SecretaryArchived|Archived)\]\s*/i.test(l)) return false;
       if (/^\[StepDone\]\s*/i.test(l)) return false;
+      if (/^\[(?:StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*/i.test(l)) return false;
       if (/^Step\s+\d+(?:\s*\((?:Owner|Accountant|Secretary)\))?\s*:/i.test(l)) return false;
       return true;
     })
@@ -1707,6 +1709,10 @@ export default function SecretaryTaskManagement() {
 
               let nextDescription = replaceTaskSteps(baseDescription, filteredSteps);
               nextDescription = setCompletedStepNumbers(nextDescription, nextDone);
+              nextDescription = remapIndexedStepMeta(nextDescription, (oldNumber) => {
+                if (oldNumber === stepIndex + 1) return null;
+                return oldNumber < stepIndex + 1 ? oldNumber : oldNumber - 1;
+              });
               const nextProgress = filteredSteps.length ? Math.round((nextDone.size / filteredSteps.length) * 100) : 0;
               nextDescription = setProgress(nextDescription, nextProgress);
 

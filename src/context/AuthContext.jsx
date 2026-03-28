@@ -1,6 +1,12 @@
 import React, { createContext, useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { api, DEFAULT_SECURITY_SETTINGS, normalizeSecuritySettings } from "../services/api";
+import {
+  api,
+  clearStoredAuthToken,
+  DEFAULT_SECURITY_SETTINGS,
+  MONITORING_AUTH_INVALID_EVENT,
+  normalizeSecuritySettings,
+} from "../services/api";
 import { getUserRole, hasRole as userHasRole } from "../utils/helpers";
 
 const SESSION_USER_KEY = "session:user";
@@ -92,6 +98,7 @@ function clearStoredAuth() {
   localStorage.removeItem(LOGIN_STATE_KEY);
   localStorage.removeItem(USER_ROLE_KEY);
   localStorage.removeItem(USER_ID_KEY);
+  clearStoredAuthToken();
 }
 
 export function getHomePathForRole(roleId) {
@@ -106,6 +113,19 @@ export function AuthProvider({ children }) {
     1,
     Number(user?.security_settings?.sessionTimeoutMinutes || DEFAULT_SECURITY_SETTINGS.sessionTimeoutMinutes)
   );
+
+  const clearActiveClientAuth = () => {
+    if (sessionWarningVisibleRef.current) {
+      sessionWarningVisibleRef.current = false;
+      void Swal.close();
+    }
+
+    setUser(null);
+
+    try {
+      clearStoredAuth();
+    } catch (_) {}
+  };
 
   const login = (nextUser) => {
     const normalizedUser = normalizeSessionUser(nextUser);
@@ -127,17 +147,8 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    if (sessionWarningVisibleRef.current) {
-      sessionWarningVisibleRef.current = false;
-      void Swal.close();
-    }
-
     void api.post("logout.php").catch(() => {});
-    setUser(null);
-
-    try {
-      clearStoredAuth();
-    } catch (_) {}
+    clearActiveClientAuth();
   };
 
   useEffect(() => {
@@ -174,15 +185,7 @@ export function AuthProvider({ children }) {
       sessionCleared = true;
       warningVisible = false;
       clearTimers();
-      if (sessionWarningVisibleRef.current) {
-        sessionWarningVisibleRef.current = false;
-        void Swal.close();
-      }
-      setUser(null);
-
-      try {
-        clearStoredAuth();
-      } catch (_) {}
+      clearActiveClientAuth();
     };
 
     const resetTimer = () => {
@@ -278,8 +281,7 @@ export function AuthProvider({ children }) {
 
         const nextUser = normalizeSessionUser(response?.data?.user);
         if (!nextUser) {
-          setUser(null);
-          clearStoredAuth();
+          clearActiveClientAuth();
           return;
         }
 
@@ -291,8 +293,7 @@ export function AuthProvider({ children }) {
         }
 
         if (error?.response?.status === 401) {
-          setUser(null);
-          clearStoredAuth();
+          clearActiveClientAuth();
         }
       }
     };
@@ -301,6 +302,18 @@ export function AuthProvider({ children }) {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleAuthInvalid = () => {
+      clearActiveClientAuth();
+    };
+
+    window.addEventListener(MONITORING_AUTH_INVALID_EVENT, handleAuthInvalid);
+
+    return () => {
+      window.removeEventListener(MONITORING_AUTH_INVALID_EVENT, handleAuthInvalid);
     };
   }, []);
 
