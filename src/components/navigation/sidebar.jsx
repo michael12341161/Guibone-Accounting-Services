@@ -7,6 +7,28 @@ function classNames(...values) {
   return values.filter(Boolean).join(" ");
 }
 
+function getMatchingGroupKeys(items, pathname) {
+  const matchedGroups = new Set();
+
+  (items || []).forEach((item) => {
+    if (!item?.children?.length || !item.key) {
+      return;
+    }
+
+    if (findMatchingNavItem(pathname, [item])) {
+      matchedGroups.add(item.key);
+    }
+  });
+
+  return matchedGroups;
+}
+
+const activeNavItemClasses =
+  "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm dark:border-transparent dark:bg-white dark:text-slate-950 dark:ring-white/80";
+
+const inactiveNavItemClasses =
+  "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:hover:ring-slate-700";
+
 export function Sidebar({
   items,
   headerTitle = "Menu",
@@ -30,51 +52,22 @@ export function Sidebar({
   onExpandFromCollapsed,
 }) {
   const location = useLocation();
-  const [expandedGroups, setExpandedGroups] = useState(() => {
-    const initialOpenGroups = new Set();
-
-    (items || []).forEach((item) => {
-      if (!item?.children?.length || !item.key) {
-        return;
-      }
-
-      if (findMatchingNavItem(location.pathname, [item])) {
-        initialOpenGroups.add(item.key);
-      }
-    });
-
-    return initialOpenGroups;
-  });
+  const [expandedGroups, setExpandedGroups] = useState(() =>
+    getMatchingGroupKeys(items, location.pathname)
+  );
 
   useEffect(() => {
-    const nextOpenGroups = new Set();
-
-    (items || []).forEach((item) => {
-      if (!item?.children?.length || !item.key) {
-        return;
-      }
-
-      if (findMatchingNavItem(location.pathname, [item])) {
-        nextOpenGroups.add(item.key);
-      }
-    });
-
-    if (!nextOpenGroups.size) {
-      return;
-    }
+    const nextOpenGroups = getMatchingGroupKeys(items, location.pathname);
 
     setExpandedGroups((current) => {
-      let changed = false;
-      const next = new Set(current);
+      if (
+        current.size === nextOpenGroups.size &&
+        Array.from(current).every((key) => nextOpenGroups.has(key))
+      ) {
+        return current;
+      }
 
-      nextOpenGroups.forEach((key) => {
-        if (!next.has(key)) {
-          next.add(key);
-          changed = true;
-        }
-      });
-
-      return changed ? next : current;
+      return nextOpenGroups;
     });
   }, [items, location.pathname]);
 
@@ -284,8 +277,8 @@ export function Sidebar({
                     className={classNames(
                       "flex h-11 w-full items-center justify-center rounded-xl border-l-4 px-3 transition-all duration-150 ring-1 ring-transparent",
                       findMatchingNavItem(location.pathname, [item])
-                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
-                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                        ? activeNavItemClasses
+                        : inactiveNavItemClasses,
                       routeLoading && "pointer-events-none opacity-60"
                     )}
                     disabled={routeLoading}
@@ -311,9 +304,7 @@ export function Sidebar({
                     className={({ isActive }) =>
                       classNames(
                         "group relative flex h-11 w-full items-center justify-center rounded-xl border-l-4 px-3 transition-all duration-150 ring-1 ring-transparent",
-                        isActive
-                          ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
-                          : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                        isActive ? activeNavItemClasses : inactiveNavItemClasses,
                         routeLoading && "pointer-events-none opacity-60"
                       )
                     }
@@ -345,8 +336,8 @@ export function Sidebar({
                     className={classNames(
                       "flex h-11 w-full items-center justify-between rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
                       findMatchingNavItem(location.pathname, [item])
-                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
-                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                        ? activeNavItemClasses
+                        : inactiveNavItemClasses,
                       routeLoading && "pointer-events-none opacity-60"
                     )}
                     disabled={routeLoading}
@@ -384,9 +375,7 @@ export function Sidebar({
                           className={({ isActive }) =>
                             classNames(
                               "group flex h-10 w-full items-center gap-2 rounded-lg border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
-                              isActive
-                                ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
-                                : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                              isActive ? activeNavItemClasses : inactiveNavItemClasses,
                               routeLoading && "pointer-events-none opacity-60"
                             )
                           }
@@ -424,9 +413,7 @@ export function Sidebar({
                     className={({ isActive }) =>
                       classNames(
                         "group relative flex h-11 w-full items-center gap-3 rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
-                        isActive
-                          ? "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm"
-                          : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900 hover:ring-slate-200 hover:shadow-sm",
+                        isActive ? activeNavItemClasses : inactiveNavItemClasses,
                         routeLoading && "pointer-events-none opacity-60"
                       )
                     }
