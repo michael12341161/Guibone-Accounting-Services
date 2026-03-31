@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Building2, CheckCircle2, Clock3, FileText, Search } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader } from "../../components/UI/card";
 import { DataTable } from "../../components/UI/table";
+import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
 import { getDocumentStatusBadgeClass } from "../../utils/document_management";
+import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
 import { joinPersonName } from "../../utils/person_name";
 
 function fullName(client) {
@@ -35,13 +38,23 @@ function getBusinessStatus(client) {
 const PAGE_SIZE = 10;
 
 export default function ClientBusinessStatusPage() {
+  const { user } = useAuth();
+  const { permissions } = useModulePermissions();
   const navigate = useNavigate();
+  const location = useLocation();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const documentsBasePath = useMemo(
+    () => (location.pathname.startsWith("/secretary") ? "/secretary" : "/admin"),
+    [location.pathname]
+  );
+  const canOpenDocuments = hasModuleAccess(user, "documents", permissions);
+  const canUploadDocuments = hasFeatureActionAccess(user, "documents", "upload", permissions);
+  const documentButtonLabel = canUploadDocuments ? "Manage Permit" : "View Documents";
 
   const loadClients = async ({ silent } = { silent: false }) => {
     try {
@@ -199,18 +212,22 @@ export default function ClientBusinessStatusPage() {
           <Button
             variant={row.business_status === "Registered" ? "secondary" : "success"}
             size="sm"
+            disabled={!canOpenDocuments}
             onClick={(event) => {
               event.stopPropagation();
-              navigate(`/admin/documents?client_id=${row.id}`);
+              if (!canOpenDocuments) {
+                return;
+              }
+              navigate(`${documentsBasePath}/documents?client_id=${row.id}`);
             }}
           >
             <FileText className="h-4 w-4" />
-            Manage Permit
+            {documentButtonLabel}
           </Button>
         ),
       },
     ],
-    [navigate]
+    [canOpenDocuments, documentButtonLabel, documentsBasePath, navigate]
   );
 
   return (

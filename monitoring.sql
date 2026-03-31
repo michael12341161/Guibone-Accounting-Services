@@ -333,7 +333,10 @@ INSERT INTO `document_type` (`Document_type_ID`, `Document_name`) VALUES
 (1, 'valid_id'),
 (2, 'birth_certificate'),
 (3, 'marriage_contract'),
-(4, 'business_permit');
+(4, 'business_permit'),
+(5, 'dti'),
+(6, 'sec'),
+(7, 'lgu');
 
 -- --------------------------------------------------------
 
@@ -779,7 +782,7 @@ ALTER TABLE `documents`
 -- AUTO_INCREMENT for table `document_type`
 --
 ALTER TABLE `document_type`
-  MODIFY `Document_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `Document_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `messages`

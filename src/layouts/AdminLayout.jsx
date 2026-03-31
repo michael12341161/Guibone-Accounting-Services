@@ -20,7 +20,9 @@ import {
 import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
+import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
 import { getUserFirstName } from "../components/layout/layout_utils";
+import { adminBreadcrumbConfig } from "../config/adminBreadcrumbConfig";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { resolveBackendAssetUrl } from "../services/api";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
@@ -69,14 +71,14 @@ export const adminNavItems = [
         label: "Documents",
         to: "/admin/documents",
         icon: <FileText {...sidebarIconProps} />,
-        accessKey: "client-management",
+        accessKey: "documents",
       },
       {
         key: "business-status",
         label: "Business Status",
         to: "/admin/business-status",
         icon: <Building2 {...sidebarIconProps} />,
-        accessKey: "client-management",
+        accessKey: "business-status",
       },
     ],
   },
@@ -206,7 +208,10 @@ export default function AdminLayout({ user, onLogout, children }) {
       desktopSidebarCollapsible
       desktopSidebarCollapseMode="icons"
     >
-      {children}
+      <>
+        <RouteBreadcrumbs config={adminBreadcrumbConfig} />
+        {children}
+      </>
     </DashboardShell>
   );
 }

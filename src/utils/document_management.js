@@ -17,6 +17,9 @@ export function formatDocumentTypeLabel(value) {
   if (key === "birth_certificate" || key === "psa_birth_certificate") return "PSA Birth Certificate";
   if (key === "marriage_contract") return "Marriage Contract (if applicable)";
   if (key === "business_permit") return "Business Permit";
+  if (key === "dti") return "DTI";
+  if (key === "sec") return "SEC";
+  if (key === "lgu") return "LGU";
 
   return String(value || "")
     .trim()

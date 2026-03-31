@@ -64,6 +64,9 @@ try {
             ['id' => 2, 'name' => 'birth_certificate'],
             ['id' => 3, 'name' => 'marriage_contract'],
             ['id' => 4, 'name' => 'business_permit'],
+            ['id' => 5, 'name' => 'dti'],
+            ['id' => 6, 'name' => 'sec'],
+            ['id' => 7, 'name' => 'lgu'],
         ]
     );
     $documentTypes = monitoring_document_merge_known_types($documentTypes);

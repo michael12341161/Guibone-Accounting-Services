@@ -69,6 +69,12 @@
             },
             "location": {
                 "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "file-upload": {
+                "admin": true,
                 "secretary": false,
                 "accountant": false,
                 "client": false
@@ -76,6 +82,32 @@
         }
     },
     "new-client-management": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false
+    },
+    "documents": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "upload": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "view-only": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "business-status": {
         "admin": true,
         "secretary": false,
         "accountant": false,
@@ -143,7 +175,27 @@
         "admin": true,
         "secretary": true,
         "accountant": true,
-        "client": false
+        "client": false,
+        "actions": {
+            "create-task": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            },
+            "edit-step": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            },
+            "remove-step": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            }
+        }
     },
     "calendar": {
         "admin": true,

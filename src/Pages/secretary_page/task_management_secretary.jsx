@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Swal from "sweetalert2";
 import { api, fetchAvailableServices } from "../../services/api";
+import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotification } from "../../hooks/useNotification";
 import { Button } from "../../components/UI/buttons";
@@ -8,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Modal } from "../../components/UI/modal";
 import ArchiveTasksCompletedSecretary from "./archive_tasks_completed_secretary";
 import { getAutoDueDateForService, getEstimatedServiceDuration } from "../../utils/serviceDurations";
+import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 
@@ -413,6 +415,104 @@ function normalizeServiceMatchKey(value) {
   return compact;
 }
 
+const TASK_BUNDLE_TEMPLATES = [
+  {
+    key: "taxfiling",
+    label: "Tax Filing Bundle",
+    serviceName: "Tax Filing",
+    summary: "Ready-made filing workflow from document collection up to submission proof.",
+    steps: [
+      { assignee: "secretary", text: "Collect and validate the client's tax source documents for the filing period." },
+      { assignee: "accountant", text: "Review records and reconcile transactions that affect the tax filing." },
+      { assignee: "accountant", text: "Prepare the tax return and compute the amount due or refund." },
+      { assignee: "owner", text: "Review the prepared return and approve it before submission." },
+      { assignee: "secretary", text: "Submit the filing and save the official proof of submission." },
+    ],
+  },
+  {
+    key: "auditing",
+    label: "Auditing Bundle",
+    serviceName: "Auditing",
+    summary: "Standard audit flow for requirements, testing, review, and report release.",
+    steps: [
+      { assignee: "secretary", text: "Request the audit requirements and prior records from the client." },
+      { assignee: "accountant", text: "Organize the working papers and supporting schedules." },
+      { assignee: "accountant", text: "Perform audit testing and document the findings." },
+      { assignee: "owner", text: "Review the findings and approve the final audit report." },
+      { assignee: "secretary", text: "Release the completed audit report to the client." },
+    ],
+  },
+  {
+    key: "bookkeeping",
+    label: "Book Keeping Bundle",
+    serviceName: "Book Keeping",
+    summary: "Recurring bookkeeping flow for encoding, reconciliation, and report review.",
+    steps: [
+      { assignee: "secretary", text: "Collect bookkeeping documents, receipts, and supporting files from the client." },
+      { assignee: "accountant", text: "Record and categorize the transactions for the covered period." },
+      { assignee: "accountant", text: "Reconcile the bank records and subsidiary ledgers." },
+      { assignee: "accountant", text: "Prepare the bookkeeping summary and draft reports." },
+      { assignee: "owner", text: "Review the reports and confirm the bookkeeping output." },
+    ],
+  },
+  {
+    key: "taxcomputation",
+    label: "Tax Computation Bundle",
+    serviceName: "Tax Computation",
+    summary: "Template for validating records, computing taxes due, and final client-ready output.",
+    steps: [
+      { assignee: "secretary", text: "Gather income, expense, and deductible documents needed for tax computation." },
+      { assignee: "accountant", text: "Validate the source records and prepare the tax computation worksheet." },
+      { assignee: "accountant", text: "Compute taxes due and document adjustments or discrepancies." },
+      { assignee: "owner", text: "Review the computation and approve the finalized figures." },
+      { assignee: "secretary", text: "Send the approved tax computation summary to the client." },
+    ],
+  },
+  {
+    key: "processing",
+    label: "Processing Bundle",
+    serviceName: "Processing",
+    summary: "Default processing flow for requirements checking, forms, review, and submission tracking.",
+    steps: [
+      { assignee: "secretary", text: "Confirm the client's requirements and identify missing documents." },
+      { assignee: "secretary", text: "Prepare the processing checklist and required forms." },
+      { assignee: "accountant", text: "Review the submitted details and attachments for completeness." },
+      { assignee: "secretary", text: "Submit the processed documents and track the status update." },
+    ],
+  },
+];
+
+function findTaskBundleTemplate(bundleKey) {
+  return TASK_BUNDLE_TEMPLATES.find((template) => template.key === bundleKey) || null;
+}
+
+function cloneBundleSteps(steps) {
+  return (Array.isArray(steps) ? steps : []).map((step) => ({
+    assignee: normalizeStepAssignee(step?.assignee, "accountant"),
+    text: String(step?.text || ""),
+  }));
+}
+
+function getTaskBundleTemplateKey(serviceName) {
+  const serviceKey = normalizeServiceMatchKey(serviceName);
+  if (!serviceKey) return "";
+
+  return (
+    TASK_BUNDLE_TEMPLATES.find(
+      (template) => normalizeServiceMatchKey(template.serviceName) === serviceKey
+    )?.key || ""
+  );
+}
+
+function resolveTaskBundleServiceName(bundle, availableServices) {
+  const bundleKey = normalizeServiceMatchKey(bundle?.serviceName);
+  const matchedService = (Array.isArray(availableServices) ? availableServices : []).find(
+    (service) => normalizeServiceMatchKey(service?.name || "") === bundleKey
+  );
+
+  return String(matchedService?.name || bundle?.serviceName || "").trim();
+}
+
 function getAccountantSpecialization(accountant) {
   return String(accountant?.employee_specialization_type_name || "").trim();
 }
@@ -763,6 +863,7 @@ function AccountantPicker({ accountants, value, onChange, serviceName }) {
 
 export default function SecretaryTaskManagement() {
   const { user } = useAuth();
+  const { permissions } = useModulePermissions();
   const { notifyTaskCreated } = useNotification();
   const [tasks, setTasks] = useState([]);
   // Per (accountant_id + client_id + service_name) step counter for inline "Next Step" tasks
@@ -786,6 +887,10 @@ export default function SecretaryTaskManagement() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [staffWorkloadOpen, setStaffWorkloadOpen] = useState(false);
   const [staffWorkloadSearch, setStaffWorkloadSearch] = useState("");
+  const [bundlePickerOpen, setBundlePickerOpen] = useState(false);
+  const [selectedBundleKey, setSelectedBundleKey] = useState("");
+  const [editingBundleKey, setEditingBundleKey] = useState("");
+  const [bundleDraftSteps, setBundleDraftSteps] = useState({});
 
   // Create form
   // title = selected service/task type (Tax Filing, Auditing, Book Keeping, Tax Computation)
@@ -795,6 +900,7 @@ export default function SecretaryTaskManagement() {
     title: "",
     // Single-select service (validated by backend via `status`)
     service_name: "",
+    accountant_id: "",
     priority: "Low",
     period_date: "",
     start_date: "",
@@ -814,9 +920,38 @@ export default function SecretaryTaskManagement() {
       accountantMatchesService(accountant, form.service_name || form.title)
     );
   }, [accountants, form.service_name, form.title]);
+  const canCreateTask = hasFeatureActionAccess(user, "tasks", "create-task", permissions);
+  const canEditStep = hasFeatureActionAccess(user, "tasks", "edit-step", permissions);
+  const canRemoveStep = hasFeatureActionAccess(user, "tasks", "remove-step", permissions);
   const selectedServiceDuration = useMemo(
     () => getEstimatedServiceDuration(form.service_name || form.title),
     [form.service_name, form.title]
+  );
+  const suggestedBundleKey = useMemo(
+    () => getTaskBundleTemplateKey(form.service_name || form.title),
+    [form.service_name, form.title]
+  );
+  const bundleTemplates = useMemo(() => {
+    return TASK_BUNDLE_TEMPLATES.map((template) => {
+      const resolvedServiceName = resolveTaskBundleServiceName(template, services);
+      const isAvailable = !form.client_id || Boolean(resolvedServiceName);
+      const draftSteps = bundleDraftSteps[template.key];
+
+      return {
+        ...template,
+        serviceName: resolvedServiceName || template.serviceName,
+        isAvailable,
+        steps: cloneBundleSteps(draftSteps || template.steps),
+      };
+    });
+  }, [bundleDraftSteps, form.client_id, services]);
+  const selectedBundle = useMemo(
+    () => bundleTemplates.find((bundle) => bundle.key === selectedBundleKey) || null,
+    [bundleTemplates, selectedBundleKey]
+  );
+  const hasSelectedBundleDraft = useMemo(
+    () => Boolean(selectedBundle && bundleDraftSteps[selectedBundle.key]),
+    [bundleDraftSteps, selectedBundle]
   );
   const allTaskIds = useMemo(
     () => normalizeTaskIds((Array.isArray(tasks) ? tasks : []).map((task) => getTaskKey(task))),
@@ -931,12 +1066,87 @@ export default function SecretaryTaskManagement() {
 
   const handleServiceSelection = (value) => {
     const autoDueDate = getAutoDueDateForService(value);
+    const autoBundleKey = getTaskBundleTemplateKey(value);
     setForm((current) => ({
       ...current,
       title: value,
       service_name: value,
       due_date: autoDueDate || "",
     }));
+    setSelectedBundleKey(autoBundleKey);
+    setEditingBundleKey("");
+  };
+
+  const applyTaskBundle = (bundleKey) => {
+    const bundle = bundleTemplates.find((item) => item.key === bundleKey);
+    if (!bundle) return;
+    if (!bundle.isAvailable) {
+      setError("The selected bundle is not available for the current client.");
+      return;
+    }
+
+    handleServiceSelection(bundle.serviceName);
+    setSelectedBundleKey(bundle.key);
+    setBundlePickerOpen(false);
+    setError("");
+    setSuccess(`${bundle.label} applied. You can still add more steps later if needed.`);
+    window.setTimeout(() => setSuccess(""), 1800);
+  };
+
+  const startBundleEditing = (bundleKey) => {
+    setBundleDraftSteps((current) => {
+      if (current[bundleKey]) return current;
+      return {
+        ...current,
+        [bundleKey]: cloneBundleSteps(findTaskBundleTemplate(bundleKey)?.steps),
+      };
+    });
+    setEditingBundleKey(bundleKey);
+  };
+
+  const updateBundleStep = (bundleKey, stepIndex, changes) => {
+    setBundleDraftSteps((current) => {
+      const source = cloneBundleSteps(current[bundleKey] || findTaskBundleTemplate(bundleKey)?.steps);
+      if (!source[stepIndex]) return current;
+
+      source[stepIndex] = {
+        ...source[stepIndex],
+        ...changes,
+        assignee:
+          changes && Object.prototype.hasOwnProperty.call(changes, "assignee")
+            ? normalizeStepAssignee(changes.assignee, "accountant")
+            : source[stepIndex].assignee,
+        text:
+          changes && Object.prototype.hasOwnProperty.call(changes, "text")
+            ? String(changes.text || "")
+            : source[stepIndex].text,
+      };
+
+      return {
+        ...current,
+        [bundleKey]: source,
+      };
+    });
+  };
+
+  const addBundleStep = (bundleKey) => {
+    setBundleDraftSteps((current) => {
+      const source = cloneBundleSteps(current[bundleKey] || findTaskBundleTemplate(bundleKey)?.steps);
+      source.push({ assignee: "accountant", text: "New bundle step" });
+      return {
+        ...current,
+        [bundleKey]: source,
+      };
+    });
+    setEditingBundleKey(bundleKey);
+  };
+
+  const resetBundleDraft = (bundleKey) => {
+    setBundleDraftSteps((current) => {
+      const next = { ...current };
+      delete next[bundleKey];
+      return next;
+    });
   };
 
   const resetForm = () => {
@@ -950,12 +1160,19 @@ export default function SecretaryTaskManagement() {
       due_date: "",
       accountant_id: "",
     });
+    setSelectedBundleKey("");
+    setBundlePickerOpen(false);
+    setEditingBundleKey("");
     setError("");
     setSuccess("");
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!canCreateTask) {
+      setError("You do not have permission to create tasks.");
+      return;
+    }
     setError("");
     setSuccess("");
 
@@ -1017,7 +1234,13 @@ export default function SecretaryTaskManagement() {
     try {
       setCreatingTask(true);
       const priority = (form.priority || "Low").trim();
-      const descWithPriority = `[Priority] ${priority}`;
+      const baseDescription = `[Priority] ${priority}`;
+      const selectedBundleSteps = (Array.isArray(selectedBundle?.steps) ? selectedBundle.steps : []).filter((step) =>
+        String(step?.text || "").trim()
+      );
+      const descWithPriority = selectedBundle?.steps?.length
+        ? replaceTaskSteps(baseDescription, selectedBundleSteps)
+        : baseDescription;
 
       // Backend validates `status` against tblservices.Name.
       // When using the inline quick-add input, `form.title` can be a free-text task title.
@@ -1094,6 +1317,8 @@ export default function SecretaryTaskManagement() {
           due_date: "",
           accountant_id: "",
         });
+        setSelectedBundleKey("");
+        setEditingBundleKey("");
         setTimeout(() => setSuccess(""), 1500);
       } else {
         setError(res?.data?.message || "Failed to create task.");
@@ -1346,6 +1571,10 @@ export default function SecretaryTaskManagement() {
   };
 
   const saveStepEdit = async () => {
+    if (!canEditStep) {
+      setError("You do not have permission to edit task steps.");
+      return;
+    }
     if (!stepEditCtx) return;
 
     const statusLocked = ["done", "completed"].includes(String(stepEditCtx.taskStatus || "").toLowerCase());
@@ -1401,7 +1630,7 @@ export default function SecretaryTaskManagement() {
         <CardHeader>
           <CardTitle>Create Task</CardTitle>
           <CardDescription>
-            Fill out the details below. Title comes from Services list; choose assignee, priority, and due date.
+            Fill out the details below. Choose a service, assignee, priority, due date, and optionally apply a bundle to preload steps.
           </CardDescription>
         </CardHeader>
 
@@ -1471,21 +1700,39 @@ export default function SecretaryTaskManagement() {
               </div>
 
               <div className="md:col-span-4 md:col-start-9 md:row-start-2 md:pt-6">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setStaffWorkloadOpen(true)}
-                  className="w-full justify-center gap-2"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0-3-3.87" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                  <span>Staff Workload</span>
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setBundlePickerOpen(true)}
+                    className="w-full justify-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7.5h16" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 12h16" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16.5h10" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18 16.5h2" />
+                    </svg>
+                    <span>{selectedBundle ? "Change Bundle" : "Bundle Tasks"}</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setStaffWorkloadOpen(true)}
+                    className="w-full justify-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0-3-3.87" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span>Staff Workload</span>
+                  </Button>
+                </div>
               </div>
 
               <div className="md:col-span-4">
@@ -1521,6 +1768,60 @@ export default function SecretaryTaskManagement() {
               </div>
             </div>
 
+            {selectedBundle ? (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                      Bundle Tasks
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {selectedBundle.label}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      This bundle is automatically loaded from the selected service. Add Step will stay optional afterward.
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      Auto applied
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-xs font-medium text-indigo-700">
+                      {selectedBundle.steps.length} step{selectedBundle.steps.length === 1 ? "" : "s"}
+                    </span>
+                    {hasSelectedBundleDraft ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => resetBundleDraft(selectedBundle.key)}
+                      >
+                        Reset Edited Steps
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {selectedBundle.steps.map((step, index) => (
+                    <div
+                      key={`${selectedBundle.key}-preview-${index}`}
+                      className="rounded-lg border border-indigo-100 bg-white px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                          Step {index + 1}
+                        </span>
+                        <span>{stepAssigneeLabel(step.assignee)}</span>
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700">{step.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {/* Actions */}
             <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs">
@@ -1532,12 +1833,14 @@ export default function SecretaryTaskManagement() {
                 <Button type="button" variant="secondary" size="sm" onClick={resetForm}>
                   Reset
                 </Button>
-                <Button type="submit" size="sm" disabled={creatingTask} className="gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
-                    <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2h5Z" />
-                  </svg>
-                  <span>{creatingTask ? "Creating..." : "Create Task"}</span>
-                </Button>
+                {canCreateTask ? (
+                  <Button type="submit" size="sm" disabled={creatingTask} className="gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
+                      <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2h5Z" />
+                    </svg>
+                    <span>{creatingTask ? "Creating..." : "Create Task"}</span>
+                  </Button>
+                ) : null}
               </div>
             </div>
           </form>
@@ -1694,6 +1997,11 @@ export default function SecretaryTaskManagement() {
             };
 
             const removeStepLine = async (stepIndex) => {
+              if (!canRemoveStep) {
+                setError("You do not have permission to remove task steps.");
+                return;
+              }
+
               const baseDescription = String(t.description || "");
               const doneSet = parseCompletedStepNumbers(baseDescription);
               const filteredSteps = steps.filter((_, idx) => idx !== stepIndex);
@@ -1854,73 +2162,79 @@ export default function SecretaryTaskManagement() {
 
                         <div className="col-span-2 px-3 py-2" />
 
-                        <div className="col-span-2 px-3 py-2 flex items-center justify-end">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={stepLocked || stepLoading}
-                              onClick={() => {
-                                if (stepLocked) return;
-                                setStepEditCtx({
-                                  taskId: Number(taskId),
-                                  taskStatus: String(t.status || ""),
-                                  isCompleted,
-                                  stepIndex: idx,
-                                  currentText: stepText,
-                                });
-                                setStepEditValue(stepText);
-                                setStepEditAssignee(stepAssignee);
-                                setStepEditOpen(true);
-                              }}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
-                                stepLocked
-                                  ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
-                                  : "border-slate-300 bg-white text-indigo-700 hover:bg-indigo-50"
-                              }`}
-                              title={stepLocked ? "Task completed" : "Edit step"}
-                            >
-                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.5 17.79 4 19l1.21-4.5L16.862 3.487Z" />
-                              </svg>
-                              <span className="hidden sm:inline">Edit</span>
-                            </button>
+                        {canEditStep || canRemoveStep ? (
+                          <div className="col-span-2 px-3 py-2 flex items-center justify-end">
+                            <div className="flex items-center gap-2">
+                              {canEditStep ? (
+                                <button
+                                  type="button"
+                                  disabled={stepLocked || stepLoading}
+                                  onClick={() => {
+                                    if (stepLocked) return;
+                                    setStepEditCtx({
+                                      taskId: Number(taskId),
+                                      taskStatus: String(t.status || ""),
+                                      isCompleted,
+                                      stepIndex: idx,
+                                      currentText: stepText,
+                                    });
+                                    setStepEditValue(stepText);
+                                    setStepEditAssignee(stepAssignee);
+                                    setStepEditOpen(true);
+                                  }}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
+                                    stepLocked
+                                      ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                                      : "border-slate-300 bg-white text-indigo-700 hover:bg-indigo-50"
+                                  }`}
+                                  title={stepLocked ? "Task completed" : "Edit step"}
+                                >
+                                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.5 17.79 4 19l1.21-4.5L16.862 3.487Z" />
+                                  </svg>
+                                  <span className="hidden sm:inline">Edit</span>
+                                </button>
+                              ) : null}
 
-                            <button
-                              type="button"
-                              disabled={stepLocked || stepLoading}
-                              onClick={async () => {
-                                if (stepLocked || stepLoading) return;
+                              {canRemoveStep ? (
+                                <button
+                                  type="button"
+                                  disabled={stepLocked || stepLoading}
+                                  onClick={async () => {
+                                    if (stepLocked || stepLoading) return;
 
-                                const res = await Swal.fire({
-                                  title: `Remove Step ${idx + 1}?`,
-                                  text: "This action cannot be undone.",
-                                  icon: "warning",
-                                  showCancelButton: true,
-                                  confirmButtonText: "Remove",
-                                  cancelButtonText: "Cancel",
-                                  confirmButtonColor: "#dc2626",
-                                  cancelButtonColor: "#64748b",
-                                  reverseButtons: true,
-                                  focusCancel: true,
-                                });
+                                    const res = await Swal.fire({
+                                      title: `Remove Step ${idx + 1}?`,
+                                      text: "This action cannot be undone.",
+                                      icon: "warning",
+                                      showCancelButton: true,
+                                      confirmButtonText: "Remove",
+                                      cancelButtonText: "Cancel",
+                                      confirmButtonColor: "#dc2626",
+                                      cancelButtonColor: "#64748b",
+                                      reverseButtons: true,
+                                      focusCancel: true,
+                                    });
 
-                                if (!res.isConfirmed) return;
-                                await removeStepLine(idx);
-                              }}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
-                                stepLocked
-                                  ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
-                                  : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                              }`}
-                              title={stepLocked ? "Task completed" : "Remove step"}
-                            >
-                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6m4-6v6M9 7l1-2h4l1 2m-9 0 1 14h10l1-14" />
-                              </svg>
-                              <span className="hidden sm:inline">Remove</span>
-                            </button>
+                                    if (!res.isConfirmed) return;
+                                    await removeStepLine(idx);
+                                  }}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
+                                    stepLocked
+                                      ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                                      : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                  }`}
+                                  title={stepLocked ? "Task completed" : "Remove step"}
+                                >
+                                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6m4-6v6M9 7l1-2h4l1 2m-9 0 1 14h10l1-14" />
+                                  </svg>
+                                  <span className="hidden sm:inline">Remove</span>
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -2016,6 +2330,187 @@ export default function SecretaryTaskManagement() {
         }
       >
         <ArchiveTasksCompletedSecretary tasks={archivedTaskRows} />
+      </Modal>
+
+      <Modal
+        open={bundlePickerOpen}
+        onClose={() => setBundlePickerOpen(false)}
+        title="Bundle Tasks"
+        description="The bundle that matches the selected service is applied automatically. Use this card to edit steps, add new ones, and change assignees."
+        size="lg"
+        footer={
+          <Button type="button" variant="secondary" onClick={() => setBundlePickerOpen(false)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-medium text-slate-600">
+              Bundles: {bundleTemplates.length}
+            </span>
+            {form.service_name || form.title ? (
+              <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 font-medium text-indigo-700">
+                Selected service: {form.service_name || form.title}
+              </span>
+            ) : null}
+            {selectedBundle ? (
+              <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+                Applied: {selectedBundle.label}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4">
+            {bundleTemplates.map((bundle) => {
+              const isSelected = selectedBundleKey === bundle.key;
+              const isSuggested = suggestedBundleKey === bundle.key;
+              const isEditing = editingBundleKey === bundle.key;
+              return (
+                <div
+                  key={bundle.key}
+                  className={`rounded-xl border p-4 ${
+                    isSelected
+                      ? "border-indigo-200 bg-indigo-50/60"
+                      : bundle.isAvailable
+                        ? "border-slate-200 bg-white"
+                        : "border-slate-200 bg-slate-50/70 opacity-70"
+                  }`}
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-semibold text-slate-900">{bundle.label}</div>
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                          {bundle.serviceName}
+                        </span>
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                          {bundle.steps.length} step{bundle.steps.length === 1 ? "" : "s"}
+                        </span>
+                        {isSuggested ? (
+                          <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                            Matches selected service
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-1 text-sm text-slate-600">{bundle.summary}</div>
+                      {!bundle.isAvailable ? (
+                        <div className="mt-2 text-xs text-amber-700">
+                          This bundle is unavailable for the currently selected client.
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!bundle.isAvailable}
+                        onClick={() => {
+                          if (isEditing) {
+                            setEditingBundleKey("");
+                            return;
+                          }
+                          startBundleEditing(bundle.key);
+                        }}
+                      >
+                        {isEditing ? "Done Editing" : "Edit Steps"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!bundle.isAvailable}
+                        onClick={() => addBundleStep(bundle.key)}
+                      >
+                        Add Step
+                      </Button>
+                      {isEditing ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => resetBundleDraft(bundle.key)}
+                        >
+                          Reset Steps
+                        </Button>
+                      ) : null}
+                      {suggestedBundleKey ? (
+                        isSelected ? (
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            Auto Applied
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                            Different service
+                          </span>
+                        )
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={!bundle.isAvailable}
+                          onClick={() => applyTaskBundle(bundle.key)}
+                        >
+                          {isSelected ? "Reapply Bundle" : "Use Bundle"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-2">
+                    {bundle.steps.map((step, index) => (
+                      <div
+                        key={`${bundle.key}-step-${index}`}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                            Step {index + 1}
+                          </span>
+                          {isEditing ? (
+                            <select
+                              value={step.assignee}
+                              onChange={(e) =>
+                                updateBundleStep(bundle.key, index, { assignee: e.target.value })
+                              }
+                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                              <option value="accountant">Accountant</option>
+                              <option value="secretary">Secretary</option>
+                              <option value="owner">Owner</option>
+                            </select>
+                          ) : (
+                            <span>{stepAssigneeLabel(step.assignee)}</span>
+                          )}
+                        </div>
+                        {isEditing ? (
+                          <textarea
+                            rows={2}
+                            value={step.text}
+                            onChange={(e) =>
+                              updateBundleStep(bundle.key, index, { text: e.target.value })
+                            }
+                            className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                          />
+                        ) : (
+                          <div className="mt-1 text-sm text-slate-700">{step.text}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+            Bundled steps are created with the task automatically. The inline Add Step action will still be available after creation if you need extra custom steps.
+          </div>
+        </div>
       </Modal>
 
       <Modal

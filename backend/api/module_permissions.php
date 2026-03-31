@@ -74,9 +74,21 @@ function module_permissions_definitions(): array
                 'edit' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
                 'add-new-client' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
                 'location' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'file-upload' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
             ],
         ],
         'new-client-management' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+        'documents' => [
+            'admin' => true,
+            'secretary' => false,
+            'accountant' => false,
+            'client' => false,
+            'actions' => [
+                'upload' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
+                'view-only' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
+            ],
+        ],
+        'business-status' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
         'appointments' => [
             'admin' => true,
             'secretary' => true,
@@ -100,7 +112,17 @@ function module_permissions_definitions(): array
                 'configure-times' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
             ],
         ],
-        'tasks' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
+        'tasks' => [
+            'admin' => true,
+            'secretary' => true,
+            'accountant' => true,
+            'client' => false,
+            'actions' => [
+                'create-task' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
+                'edit-step' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
+                'remove-step' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
+            ],
+        ],
         'calendar' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
         'work-update' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
         'my-tasks' => ['admin' => true, 'secretary' => false, 'accountant' => true, 'client' => false],
@@ -190,12 +212,15 @@ function module_permissions_normalize(array $permissions): array
             $featureActions = isset($featurePermissions['actions']) && is_array($featurePermissions['actions'])
                 ? $featurePermissions['actions']
                 : [];
+            $hasStoredActions = count($featureActions) > 0;
 
             $normalized[$featureKey]['actions'] = [];
             foreach ($featureDefinition['actions'] as $actionKey => $actionDefinition) {
                 $actionPermissions = isset($featureActions[$actionKey]) && is_array($featureActions[$actionKey])
                     ? $featureActions[$actionKey]
-                    : [];
+                    : (($featureKey === 'tasks' && isset($featureActions['show-actions']) && is_array($featureActions['show-actions']))
+                        ? $featureActions['show-actions']
+                        : (!$hasStoredActions ? $featurePermissions : []));
                 $defaultActionPermissions = $defaults[$featureKey]['actions'][$actionKey] ?? module_permissions_role_defaults($actionDefinition);
 
                 $normalized[$featureKey]['actions'][$actionKey] = [

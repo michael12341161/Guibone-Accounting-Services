@@ -94,6 +94,12 @@ export const FEATURE_SECTIONS = [
             description: "Allow the role to open saved business locations for clients.",
             defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
+          {
+            key: "file-upload",
+            label: "File Upload",
+            description: "Allow the role to upload files in Required Documents.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
         ],
       },
       {
@@ -101,6 +107,32 @@ export const FEATURE_SECTIONS = [
         label: "New Client Management",
         description: "Handle newly created client records.",
         defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+      },
+      {
+        key: "documents",
+        label: "Documents",
+        description: "Manage Business Permit, DTI, SEC, and LGU files for client businesses.",
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+        actions: [
+          {
+            key: "upload",
+            label: "Can Upload",
+            description: "Allow the role to upload or replace Business Permit, DTI, SEC, and LGU files.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+          {
+            key: "view-only",
+            label: "View Only",
+            description: "Allow the role to open the Documents page and review uploaded files without uploading changes.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+        ],
+      },
+      {
+        key: "business-status",
+        label: "Business Status",
+        description: "Review which client businesses are registered and which still need a Business Permit.",
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
       },
       {
         key: "appointments",
@@ -170,6 +202,26 @@ export const FEATURE_SECTIONS = [
         label: "Task Management",
         description: "Create, assign, and track tasks.",
         defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+        actions: [
+          {
+            key: "create-task",
+            label: "Create Task",
+            description: "Allow the role to create tasks from task management.",
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+          },
+          {
+            key: "edit-step",
+            label: "Edit Step",
+            description: "Allow the role to edit task steps.",
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+          },
+          {
+            key: "remove-step",
+            label: "Remove Step",
+            description: "Allow the role to remove task steps.",
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+          },
+        ],
       },
       {
         key: "calendar",
@@ -326,9 +378,13 @@ export function mergePermissions(storedPermissions) {
 
       if (Array.isArray(feature.actions) && feature.actions.length > 0) {
         const storedActions = storedFeature?.actions && typeof storedFeature.actions === "object" ? storedFeature.actions : {};
+        const hasStoredActions = Object.keys(storedActions).length > 0;
         mergedFeature.actions = feature.actions.reduce((actionAccumulator, action) => {
           const defaultActionPermissions = defaults[feature.key]?.actions?.[action.key] || createRolePermissions(action?.defaultAccess);
-          const storedActionPermissions = storedActions?.[action.key];
+          const storedActionPermissions =
+            storedActions?.[action.key] ||
+            (feature.key === "tasks" && storedActions?.["show-actions"] ? storedActions["show-actions"] : null) ||
+            (!hasStoredActions && storedFeature && typeof storedFeature === "object" ? storedFeature : null);
 
           actionAccumulator[action.key] = {
             admin: Boolean(storedActionPermissions?.admin ?? defaultActionPermissions.admin),

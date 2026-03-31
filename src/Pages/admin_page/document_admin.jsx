@@ -4,14 +4,20 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
+import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
 import { joinPersonName } from "../../utils/person_name";
 import {
   buildDocumentSlots,
   getDocumentStatusBadgeClass,
   getRegistrationStatusFromSlots,
+  normalizeDocumentKey,
   resolveDocumentUrl,
 } from "../../utils/document_management";
+import { hasFeatureActionAccess } from "../../utils/module_permissions";
+
+const MANAGED_DOCUMENT_KEYS = new Set(["business_permit", "dti", "sec", "lgu"]);
 
 function fullName(client) {
   return joinPersonName([client?.first_name, client?.middle_name, client?.last_name]) || "-";
@@ -48,6 +54,8 @@ function formatDateTime(value) {
 }
 
 export default function DocumentAdminPage() {
+  const { user } = useAuth();
+  const { permissions } = useModulePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedClientId = searchParams.get("client_id");
   const [clients, setClients] = useState([]);
@@ -59,8 +67,12 @@ export default function DocumentAdminPage() {
   const [success, setSuccess] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [pendingFiles, setPendingFiles] = useState({});
-  const [uploadingBusinessPermit, setUploadingBusinessPermit] = useState(false);
-  const [viewerOpen, setViewerOpen] = useState(false);
+  const [uploadingDocumentId, setUploadingDocumentId] = useState(null);
+  const [viewerSlot, setViewerSlot] = useState(null);
+  const canUploadDocuments = hasFeatureActionAccess(user, "documents", "upload", permissions);
+  const canViewDocuments =
+    canUploadDocuments || hasFeatureActionAccess(user, "documents", "view-only", permissions);
+  const isViewOnlyMode = canViewDocuments && !canUploadDocuments;
 
   const loadClients = async ({ silent } = { silent: false }) => {
     try {
@@ -150,7 +162,7 @@ export default function DocumentAdminPage() {
   useEffect(() => {
     if (!selectedClientId) {
       setDocuments([]);
-      setViewerOpen(false);
+      setViewerSlot(null);
       return;
     }
 
@@ -162,21 +174,36 @@ export default function DocumentAdminPage() {
     [clients, selectedClientId]
   );
 
+  const documentSlots = useMemo(() => buildDocumentSlots(documentTypes, documents), [documentTypes, documents]);
   const businessPermitSlot = useMemo(() => {
-    const slots = buildDocumentSlots(documentTypes, documents);
-    return slots.find((slot) => slot.isBusinessPermit) || null;
-  }, [documentTypes, documents]);
+    return documentSlots.find((slot) => slot.isBusinessPermit) || null;
+  }, [documentSlots]);
+  const managedDocumentSlots = useMemo(
+    () =>
+      documentSlots.filter((slot) =>
+        MANAGED_DOCUMENT_KEYS.has(normalizeDocumentKey(slot?.name || slot?.key || ""))
+      ),
+    [documentSlots]
+  );
+  const supportDocumentSlots = useMemo(
+    () => managedDocumentSlots.filter((slot) => !slot.isBusinessPermit),
+    [managedDocumentSlots]
+  );
+  const uploadedSupportDocumentCount = useMemo(
+    () => supportDocumentSlots.filter((slot) => slot.isUploaded).length,
+    [supportDocumentSlots]
+  );
 
-  const businessPermitUrl = resolveDocumentUrl(businessPermitSlot?.filepath);
+  const viewerDocumentUrl = resolveDocumentUrl(viewerSlot?.filepath);
   const registrationStatus =
     selectedClient?.document_status ||
     getRegistrationStatusFromSlots(businessPermitSlot ? [businessPermitSlot] : []);
 
   useEffect(() => {
-    if (!businessPermitUrl) {
-      setViewerOpen(false);
+    if (!viewerDocumentUrl) {
+      setViewerSlot(null);
     }
-  }, [businessPermitUrl]);
+  }, [viewerDocumentUrl]);
 
   const clientOptions = useMemo(
     () =>
@@ -204,26 +231,28 @@ export default function DocumentAdminPage() {
     }));
   };
 
-  const uploadBusinessPermit = async () => {
-    if (!selectedClient?.id || !businessPermitSlot?.id) {
-      setError("Business Permit is not configured yet.");
+  const uploadDocument = async (slot) => {
+    const documentLabel = slot?.label || "Document";
+
+    if (!selectedClient?.id || !slot?.id) {
+      setError(`${documentLabel} is not configured yet.`);
       return;
     }
 
-    const file = pendingFiles[businessPermitSlot.id];
+    const file = pendingFiles[slot.id];
     if (!file) {
-      setError("Choose a Business Permit file first.");
+      setError(`Choose a ${documentLabel} file first.`);
       return;
     }
 
     try {
       setError("");
       setSuccess("");
-      setUploadingBusinessPermit(true);
+      setUploadingDocumentId(String(slot.id));
 
       const formData = new FormData();
       formData.append("client_id", String(selectedClient.id));
-      formData.append("document_type_id", String(businessPermitSlot.id));
+      formData.append("document_type_id", String(slot.id));
       formData.append("file", file);
 
       const response = await api.post("client_upload_document.php", formData, {
@@ -236,12 +265,12 @@ export default function DocumentAdminPage() {
 
       setPendingFiles((current) => {
         const next = { ...current };
-        delete next[businessPermitSlot.id];
+        delete next[slot.id];
         return next;
       });
       setSuccess(
         response?.data?.message ||
-          `Business Permit uploaded successfully for ${fullName(selectedClient)}.`
+          `${documentLabel} ${slot.isUploaded ? "replaced" : "uploaded"} successfully for ${fullName(selectedClient)}.`
       );
 
       await Promise.all([
@@ -249,9 +278,9 @@ export default function DocumentAdminPage() {
         loadClients({ silent: true }),
       ]);
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || requestError?.message || "Unable to upload the Business Permit.");
+      setError(requestError?.response?.data?.message || requestError?.message || `Unable to upload ${documentLabel}.`);
     } finally {
-      setUploadingBusinessPermit(false);
+      setUploadingDocumentId(null);
     }
   };
 
@@ -259,8 +288,8 @@ export default function DocumentAdminPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader
-          title="Business Permit Management"
-          description="This page is specifically for the client Business Permit. Uploading it marks the client business as registered."
+          title="Business Document Management"
+          description="Manage Business Permit, DTI, SEC, and LGU files here. Only the Business Permit marks the client business as registered."
         />
         <CardContent className="space-y-4">
           {error ? (
@@ -269,6 +298,12 @@ export default function DocumentAdminPage() {
 
           {success ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
+          ) : null}
+
+          {isViewOnlyMode ? (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+              View Only access is enabled for this role. Uploaded files can be reviewed here, but upload and replace actions are disabled.
+            </div>
           ) : null}
         </CardContent>
       </Card>
@@ -331,7 +366,7 @@ export default function DocumentAdminPage() {
               </div>
 
               {selectedClient ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <Card compact variant={registrationStatus === "Registered" ? "success" : "warning"}>
                     <CardContent className="space-y-1">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Registration Status</div>
@@ -352,6 +387,16 @@ export default function DocumentAdminPage() {
                     </CardContent>
                   </Card>
 
+                  <Card compact variant={uploadedSupportDocumentCount > 0 ? "success" : undefined}>
+                    <CardContent className="space-y-1">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supporting Business Docs</div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {uploadedSupportDocumentCount} / {supportDocumentSlots.length || 3} uploaded
+                      </div>
+                      <CardDescription>DTI, SEC, and LGU are stored for reference only and do not register the business.</CardDescription>
+                    </CardContent>
+                  </Card>
+
                   <Card compact>
                     <CardContent className="space-y-1">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Client Since</div>
@@ -367,96 +412,129 @@ export default function DocumentAdminPage() {
       </Card>
 
       <Card className="min-w-0">
-            <CardHeader
-              title="Upload or Replace Business Permit"
-              description="Keep one active Business Permit per client. Replacing it updates the client view immediately."
-            />
-            <CardContent>
-              {!selectedClient ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-                  Choose a client business first.
-                </div>
-              ) : loadingDocuments ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-                  Loading the Business Permit...
-                </div>
-              ) : !businessPermitSlot ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-                  Business Permit is not configured yet in your document types.
-                </div>
-              ) : (
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
-                  <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-slate-500" />
-                        <div className="font-semibold text-slate-900">Business Permit</div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getDocumentStatusBadgeClass(businessPermitSlot.status)}`}>
-                          {businessPermitSlot.status}
-                        </span>
-                        <span className="text-xs text-slate-500">{formatDateTime(businessPermitSlot.uploadedAt)}</span>
-                      </div>
-                      <div className="mt-2 text-sm text-slate-600">
-                        {businessPermitSlot.isUploaded ? businessPermitSlot.filename || "Uploaded Business Permit" : "No Business Permit uploaded yet."}
-                      </div>
-                      {businessPermitSlot.isUploaded && businessPermitUrl ? (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="mt-2"
-                          onClick={() => setViewerOpen(true)}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          View Business Permit
-                        </Button>
-                      ) : null}
-                    </div>
+        <CardHeader
+          title={canUploadDocuments ? "Upload or Replace Business Documents" : "Business Documents"}
+          description={
+            canUploadDocuments
+              ? "Manage Business Permit, DTI, SEC, and LGU here. Only the Business Permit affects registration status."
+              : "View Business Permit, DTI, SEC, and LGU files here. Upload and replace actions are disabled for this role."
+          }
+        />
+        <CardContent>
+          {!selectedClient ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+              Choose a client business first.
+            </div>
+          ) : loadingDocuments ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+              Loading business documents...
+            </div>
+          ) : !managedDocumentSlots.length ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+              Business document types are not configured yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {managedDocumentSlots.map((slot) => {
+                const badgeClass = slot.isBusinessPermit
+                  ? getDocumentStatusBadgeClass(slot.status)
+                  : slot.isUploaded
+                    ? "border-sky-200 bg-sky-50 text-sky-700"
+                    : "border-slate-200 bg-slate-50 text-slate-700";
+                const badgeLabel = slot.isBusinessPermit ? slot.status : slot.isUploaded ? "Uploaded" : "Pending";
+                const viewerLabel = slot.label || "Document";
+                const actionLabel = slot.isUploaded ? `Replace ${viewerLabel}` : `Upload ${viewerLabel}`;
+                const helperText = slot.isBusinessPermit
+                  ? "Only this document changes the client's registration status."
+                  : "This is stored as a supporting business document only.";
 
-                    <div className="w-full max-w-full space-y-3 2xl:max-w-md">
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
-                        onChange={(event) => handleFileChange(businessPermitSlot.id, event.target.files?.[0] || null)}
-                        className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700"
-                      />
-                      <div className="text-xs text-slate-500">
-                        {pendingFiles[businessPermitSlot.id]?.name || "Choose the Business Permit file to upload or replace."}
+                return (
+                  <div key={slot.key} className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+                    <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-slate-500" />
+                          <div className="font-semibold text-slate-900">{viewerLabel}</div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
+                            {badgeLabel}
+                          </span>
+                          <span className="text-xs text-slate-500">{formatDateTime(slot.uploadedAt)}</span>
+                        </div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          {slot.isUploaded ? slot.filename || `Uploaded ${viewerLabel}` : `No ${viewerLabel} uploaded yet.`}
+                        </div>
+                        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          {helperText}
+                        </div>
+                        {canViewDocuments && slot.isUploaded && slot.filepath ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => setViewerSlot(slot)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            {`View ${viewerLabel}`}
+                          </Button>
+                        ) : null}
                       </div>
-                      <Button
-                        variant="success"
-                        size="sm"
-                        disabled={!pendingFiles[businessPermitSlot.id] || uploadingBusinessPermit}
-                        onClick={() => {
-                          void uploadBusinessPermit();
-                        }}
-                      >
-                        <Upload className="h-4 w-4" />
-                        {uploadingBusinessPermit
-                          ? "Uploading..."
-                          : businessPermitSlot.isUploaded
-                          ? "Replace Business Permit"
-                          : "Upload Business Permit"}
-                      </Button>
+
+                      {canUploadDocuments ? (
+                        <div className="w-full max-w-full space-y-3 2xl:max-w-md">
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
+                            onChange={(event) => handleFileChange(slot.id, event.target.files?.[0] || null)}
+                            className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700"
+                          />
+                          <div className="text-xs text-slate-500">
+                            {pendingFiles[slot.id]?.name || `Choose the ${viewerLabel} file to upload or replace.`}
+                          </div>
+                          <Button
+                            variant="success"
+                            size="sm"
+                            disabled={!pendingFiles[slot.id] || Boolean(uploadingDocumentId)}
+                            onClick={() => {
+                              void uploadDocument(slot);
+                            }}
+                          >
+                            <Upload className="h-4 w-4" />
+                            {String(uploadingDocumentId || "") === String(slot.id) ? "Uploading..." : actionLabel}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="w-full max-w-full 2xl:max-w-md">
+                          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                            Upload permission is disabled for this role.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Modal
-        open={viewerOpen}
-        onClose={() => setViewerOpen(false)}
-        title="Business Permit Viewer"
-        description={selectedClient ? `Previewing the permit for ${fullName(selectedClient)}.` : "Preview the uploaded Business Permit here."}
+        open={Boolean(viewerSlot)}
+        onClose={() => setViewerSlot(null)}
+        title={`${viewerSlot?.label || "Document"} Viewer`}
+        description={
+          selectedClient
+            ? `Previewing ${viewerSlot?.label || "the document"} for ${fullName(selectedClient)}.`
+            : "Preview the uploaded document here."
+        }
         size="lg"
         footer={
           <>
-            {businessPermitUrl ? (
+            {viewerDocumentUrl ? (
               <a
-                href={businessPermitUrl}
+                href={viewerDocumentUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -465,30 +543,38 @@ export default function DocumentAdminPage() {
                 Open in New Tab
               </a>
             ) : null}
-            <Button variant="secondary" onClick={() => setViewerOpen(false)}>
+            <Button variant="secondary" onClick={() => setViewerSlot(null)}>
               Close
             </Button>
           </>
         }
       >
-        {businessPermitSlot?.isUploaded && businessPermitUrl ? (
+        {viewerSlot?.isUploaded && viewerDocumentUrl ? (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${getDocumentStatusBadgeClass(businessPermitSlot.status)}`}>
-                {businessPermitSlot.status}
+              <span
+                className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${
+                  viewerSlot.isBusinessPermit
+                    ? getDocumentStatusBadgeClass(viewerSlot.status)
+                    : viewerSlot.isUploaded
+                      ? "border-sky-200 bg-sky-50 text-sky-700"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                }`}
+              >
+                {viewerSlot.isBusinessPermit ? viewerSlot.status : "Uploaded"}
               </span>
-              <span>{businessPermitSlot.filename || "Business Permit"}</span>
+              <span>{viewerSlot.filename || viewerSlot.label || "Document"}</span>
             </div>
             <iframe
-              key={businessPermitUrl}
-              src={businessPermitUrl}
-              title="Business Permit"
+              key={viewerDocumentUrl}
+              src={viewerDocumentUrl}
+              title={viewerSlot?.label || "Document"}
               className="h-[70vh] w-full rounded-xl border border-slate-200 bg-slate-50"
             />
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-            No Business Permit is available to preview right now.
+            No document is available to preview right now.
           </div>
         )}
       </Modal>

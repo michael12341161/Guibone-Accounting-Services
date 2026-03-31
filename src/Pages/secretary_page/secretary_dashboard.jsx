@@ -209,6 +209,8 @@ export default function SecretaryDashboard({ user, onLogout }) {
     <SecretaryLayout user={user} onLogout={onLogout}>
       {currentKey !== "client-management" &&
         currentKey !== "new-client-management" &&
+        currentKey !== "documents" &&
+        currentKey !== "business-status" &&
         currentKey !== "tasks" &&
         currentKey !== "appointments" &&
         currentKey !== "user-management" &&

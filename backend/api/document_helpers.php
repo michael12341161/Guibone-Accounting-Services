@@ -7,6 +7,9 @@ function monitoring_document_known_types(): array
         2 => 'birth_certificate',
         3 => 'marriage_contract',
         4 => 'business_permit',
+        5 => 'dti',
+        6 => 'sec',
+        7 => 'lgu',
     ];
 }
 

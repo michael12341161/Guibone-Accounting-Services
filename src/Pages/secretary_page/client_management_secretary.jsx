@@ -53,9 +53,11 @@ const FALLBACK_DOCUMENT_TYPES = [
   { id: 2, name: "birth_certificate" },
   { id: 3, name: "marriage_contract" },
   { id: 4, name: "business_permit" },
+  { id: 5, name: "dti" },
+  { id: 6, name: "sec" },
+  { id: 7, name: "lgu" },
 ];
 const CLIENT_LIST_PARAMS = { exclude_unapproved_self_signup: 1 };
-const canManageDocuments = false;
 
 function createEmptyForm() {
   return {
@@ -179,6 +181,9 @@ function formatDocumentTypeLabel(value) {
   if (raw === "birth_certificate") return "PSA Birth Certificate";
   if (raw === "marriage_contract") return "Marriage Contract (if applicable)";
   if (raw === "business_permit") return "Business Permit";
+  if (raw === "dti") return "DTI";
+  if (raw === "sec") return "SEC";
+  if (raw === "lgu") return "LGU";
   return raw
     .split("_")
     .filter(Boolean)
@@ -251,6 +256,7 @@ export default function ClientManagementSecretary() {
   const canEditClientManagement = hasFeatureActionAccess(user, "client-management", "edit", permissions);
   const canAddNewClient = hasFeatureActionAccess(user, "client-management", "add-new-client", permissions);
   const canViewClientLocation = hasFeatureActionAccess(user, "client-management", "location", permissions);
+  const canUploadRequiredDocuments = hasFeatureActionAccess(user, "client-management", "file-upload", permissions);
   const canAccessClientAccount = hasModuleAccess(user, "client-account", permissions);
   const {
     provinceOptions,
@@ -506,6 +512,22 @@ export default function ClientManagementSecretary() {
     }
   };
 
+  useEffect(() => {
+    if (canAddNewClient || !addOpen) {
+      return;
+    }
+
+    setAddOpen(false);
+    setForm(createEmptyForm());
+    setAddressSelection(createEmptyAddressSelection());
+    setBusinessAddressSelection(createEmptyAddressSelection());
+    setDocumentFiles({});
+    setEditDocuments([]);
+    setEditingClient(null);
+    setError("");
+    setSuccess("");
+  }, [addOpen, canAddNewClient]);
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -514,6 +536,13 @@ export default function ClientManagementSecretary() {
   const handleBizChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, business: { ...prev.business, [name]: value } }));
+  };
+
+  const handleDocumentFileChange = (documentId, file) => {
+    setDocumentFiles((prev) => ({
+      ...prev,
+      [documentId]: file || null,
+    }));
   };
 
   const closeAddModal = () => {
@@ -605,7 +634,7 @@ export default function ClientManagementSecretary() {
   };
 
   const uploadClientDocuments = async (clientId) => {
-    if (!canManageDocuments) {
+    if (!canUploadRequiredDocuments) {
       return { uploaded: [], failed: [] };
     }
 
@@ -1324,25 +1353,19 @@ export default function ClientManagementSecretary() {
       <Card compact>
         <CardHeader
           action={
-            <Button
-              variant="success"
-              size="sm"
-              onClick={() => {
-                if (canAddNewClient) {
-                  openAddModal();
-                  return;
-                }
-                void promptClientManagementAccess();
-              }}
-              aria-disabled={!canAddNewClient}
-              className={!canAddNewClient ? "cursor-not-allowed opacity-60" : ""}
-              title={canAddNewClient ? "Add Client" : "Request access"}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 6a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 12 6z" />
-              </svg>
-              Add Client
-            </Button>
+            canAddNewClient ? (
+              <Button
+                variant="success"
+                size="sm"
+                onClick={openAddModal}
+                title="Add Client"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 6a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 12 6z" />
+                </svg>
+                Add Client
+              </Button>
+            ) : null
           }
         >
           <CardTitle>Client Management</CardTitle>
@@ -1668,9 +1691,33 @@ export default function ClientManagementSecretary() {
 
           <div>
             <h4 className="mb-2 text-sm font-semibold text-slate-800">Required Documents</h4>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Document uploads are managed by the admin only. Secretaries can review uploaded files but cannot add or replace them here.
-            </div>
+            {canUploadRequiredDocuments ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {documentTypes.map((document) => (
+                  <div
+                    key={document.id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
+                  >
+                    <label className="mb-1 block text-xs font-medium text-slate-600">
+                      {formatDocumentTypeLabel(document.name)}
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
+                      onChange={(event) => handleDocumentFileChange(document.id, event.target.files?.[0] || null)}
+                      className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700"
+                    />
+                    <div className="mt-2 text-xs text-slate-500">
+                      {documentFiles[document.id]?.name || "No file selected"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Upload permission is disabled for Required Documents.
+              </div>
+            )}
           </div>
         </form>
       </Modal>
@@ -1897,9 +1944,53 @@ export default function ClientManagementSecretary() {
 
           <div>
             <h4 className="mb-2 text-sm font-semibold text-slate-800">Required Documents</h4>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Document uploads are managed by the admin only. Secretaries can review current files below but cannot replace them from this screen.
-              {editDocumentMap.size ? ` Current uploaded files: ${editDocumentMap.size}.` : " No documents have been uploaded yet."}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {documentTypes.map((documentType) => {
+                const currentDocument = editDocumentMap.get(String(documentType.id));
+                const currentDocumentUrl = toClientDocumentUrl(currentDocument?.filepath);
+
+                return (
+                  <div
+                    key={documentType.id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
+                  >
+                    <label className="mb-1 block text-xs font-medium text-slate-600">
+                      {formatDocumentTypeLabel(documentType.name)}
+                    </label>
+                    {currentDocument && currentDocumentUrl ? (
+                      <a
+                        href={currentDocumentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mb-2 block break-all text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
+                        title={currentDocument.filename || formatDocumentTypeLabel(documentType.name)}
+                      >
+                        Current: {currentDocument.filename || formatDocumentTypeLabel(documentType.name)}
+                      </a>
+                    ) : (
+                      <div className="mb-2 text-xs font-medium text-slate-500">Current: Not uploaded</div>
+                    )}
+
+                    {canUploadRequiredDocuments ? (
+                      <>
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
+                          onChange={(event) => handleDocumentFileChange(documentType.id, event.target.files?.[0] || null)}
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo-700"
+                        />
+                        <div className="mt-2 text-xs text-slate-500">
+                          {documentFiles[documentType.id]?.name || "No new file selected"}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-2 text-xs text-amber-700">
+                        Upload permission is disabled.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </form>

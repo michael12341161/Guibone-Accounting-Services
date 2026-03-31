@@ -4,8 +4,11 @@ import { api, fetchAvailableServices } from "../../services/api";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
+import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { useAuth } from "../../hooks/useAuth";
 import ArchiveTasksCompleted from "./archive_tasks_completed";
 import { getAutoDueDateForService, getEstimatedServiceDuration } from "../../utils/serviceDurations";
+import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 
@@ -843,6 +846,8 @@ function AccountantPicker({ accountants, value, onChange, serviceName }) {
 }
 
 export default function AdminAccountantTaskManagement() {
+  const { user } = useAuth();
+  const { permissions } = useModulePermissions();
   const [tasks, setTasks] = useState([]);
   // Per (accountant_id + client_id + service_name) step counter for inline "Next Step" tasks
   const [stepCounters, setStepCounters] = useState({});
@@ -898,6 +903,9 @@ export default function AdminAccountantTaskManagement() {
       accountantMatchesService(accountant, form.service_name || form.title)
     );
   }, [accountants, form.service_name, form.title]);
+  const canCreateTask = hasFeatureActionAccess(user, "tasks", "create-task", permissions);
+  const canEditStep = hasFeatureActionAccess(user, "tasks", "edit-step", permissions);
+  const canRemoveStep = hasFeatureActionAccess(user, "tasks", "remove-step", permissions);
   const selectedServiceDuration = useMemo(
     () => getEstimatedServiceDuration(form.service_name || form.title),
     [form.service_name, form.title]
@@ -1144,6 +1152,10 @@ export default function AdminAccountantTaskManagement() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!canCreateTask) {
+      setError("You do not have permission to create tasks.");
+      return;
+    }
     setError("");
     setSuccess("");
 
@@ -1526,6 +1538,10 @@ export default function AdminAccountantTaskManagement() {
   };
 
   const saveStepEdit = async () => {
+    if (!canEditStep) {
+      setError("You do not have permission to edit task steps.");
+      return;
+    }
     if (!stepEditCtx) return;
 
     const statusLocked = ["done", "completed"].includes(String(stepEditCtx.taskStatus || "").toLowerCase());
@@ -1784,12 +1800,14 @@ export default function AdminAccountantTaskManagement() {
                 <Button type="button" variant="secondary" size="sm" onClick={resetForm}>
                   Reset
                 </Button>
-                <Button type="submit" size="sm" disabled={creatingTask} className="gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
-                    <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2h5Z" />
-                  </svg>
-                  <span>{creatingTask ? "Creating..." : "Create Task"}</span>
-                </Button>
+                {canCreateTask ? (
+                  <Button type="submit" size="sm" disabled={creatingTask} className="gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
+                      <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2h5Z" />
+                    </svg>
+                    <span>{creatingTask ? "Creating..." : "Create Task"}</span>
+                  </Button>
+                ) : null}
               </div>
             </div>
           </form>
@@ -1947,6 +1965,11 @@ export default function AdminAccountantTaskManagement() {
             };
 
             const removeStepLine = async (stepIndex) => {
+              if (!canRemoveStep) {
+                setError("You do not have permission to remove task steps.");
+                return;
+              }
+
               const baseDescription = String(t.description || "");
               const doneSet = parseCompletedStepNumbers(baseDescription);
               const filteredSteps = steps.filter((_, idx) => idx !== stepIndex);
@@ -2112,73 +2135,79 @@ export default function AdminAccountantTaskManagement() {
 
                         <div className="col-span-2 px-3 py-2" />
 
-                        <div className="col-span-2 px-3 py-2 flex items-center justify-end">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={stepLocked || stepLoading}
-                              onClick={() => {
-                                if (stepLocked) return;
-                                setStepEditCtx({
-                                  taskId: Number(taskId),
-                                  taskStatus: String(t.status || ""),
-                                  isCompleted,
-                                  stepIndex: idx,
-                                  currentText: stepText,
-                                });
-                                setStepEditValue(stepText);
-                                setStepEditAssignee(stepAssignee);
-                                setStepEditOpen(true);
-                              }}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
-                                stepLocked
-                                  ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
-                                  : "border-slate-300 bg-white text-indigo-700 hover:bg-indigo-50"
-                              }`}
-                              title={stepLocked ? "Task completed" : "Edit step"}
-                            >
-                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.5 17.79 4 19l1.21-4.5L16.862 3.487Z" />
-                              </svg>
-                              <span className="hidden sm:inline">Edit</span>
-                            </button>
+                        {canEditStep || canRemoveStep ? (
+                          <div className="col-span-2 px-3 py-2 flex items-center justify-end">
+                            <div className="flex items-center gap-2">
+                              {canEditStep ? (
+                                <button
+                                  type="button"
+                                  disabled={stepLocked || stepLoading}
+                                  onClick={() => {
+                                    if (stepLocked) return;
+                                    setStepEditCtx({
+                                      taskId: Number(taskId),
+                                      taskStatus: String(t.status || ""),
+                                      isCompleted,
+                                      stepIndex: idx,
+                                      currentText: stepText,
+                                    });
+                                    setStepEditValue(stepText);
+                                    setStepEditAssignee(stepAssignee);
+                                    setStepEditOpen(true);
+                                  }}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
+                                    stepLocked
+                                      ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                                      : "border-slate-300 bg-white text-indigo-700 hover:bg-indigo-50"
+                                  }`}
+                                  title={stepLocked ? "Task completed" : "Edit step"}
+                                >
+                                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.5 17.79 4 19l1.21-4.5L16.862 3.487Z" />
+                                  </svg>
+                                  <span className="hidden sm:inline">Edit</span>
+                                </button>
+                              ) : null}
 
-                            <button
-                              type="button"
-                              disabled={stepLocked || stepLoading}
-                              onClick={async () => {
-                                if (stepLocked || stepLoading) return;
+                              {canRemoveStep ? (
+                                <button
+                                  type="button"
+                                  disabled={stepLocked || stepLoading}
+                                  onClick={async () => {
+                                    if (stepLocked || stepLoading) return;
 
-                                const res = await Swal.fire({
-                                  title: `Remove Step ${idx + 1}?`,
-                                  text: "This action cannot be undone.",
-                                  icon: "warning",
-                                  showCancelButton: true,
-                                  confirmButtonText: "Remove",
-                                  cancelButtonText: "Cancel",
-                                  confirmButtonColor: "#dc2626",
-                                  cancelButtonColor: "#64748b",
-                                  reverseButtons: true,
-                                  focusCancel: true,
-                                });
+                                    const res = await Swal.fire({
+                                      title: `Remove Step ${idx + 1}?`,
+                                      text: "This action cannot be undone.",
+                                      icon: "warning",
+                                      showCancelButton: true,
+                                      confirmButtonText: "Remove",
+                                      cancelButtonText: "Cancel",
+                                      confirmButtonColor: "#dc2626",
+                                      cancelButtonColor: "#64748b",
+                                      reverseButtons: true,
+                                      focusCancel: true,
+                                    });
 
-                                if (!res.isConfirmed) return;
-                                await removeStepLine(idx);
-                              }}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
-                                stepLocked
-                                  ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
-                                  : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                              }`}
-                              title={stepLocked ? "Task completed" : "Remove step"}
-                            >
-                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6m4-6v6M9 7l1-2h4l1 2m-9 0 1 14h10l1-14" />
-                              </svg>
-                              <span className="hidden sm:inline">Remove</span>
-                            </button>
+                                    if (!res.isConfirmed) return;
+                                    await removeStepLine(idx);
+                                  }}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-colors ${
+                                    stepLocked
+                                      ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                                      : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                  }`}
+                                  title={stepLocked ? "Task completed" : "Remove step"}
+                                >
+                                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6m4-6v6M9 7l1-2h4l1 2m-9 0 1 14h10l1-14" />
+                                  </svg>
+                                  <span className="hidden sm:inline">Remove</span>
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
+                        ) : null}
                       </div>
                     );
                   })}

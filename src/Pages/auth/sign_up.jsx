@@ -31,6 +31,9 @@ const FALLBACK_DOCUMENT_TYPES = [
   { id: 2, name: "birth_certificate" },
   { id: 3, name: "marriage_contract" },
   { id: 4, name: "business_permit" },
+  { id: 5, name: "dti" },
+  { id: 6, name: "sec" },
+  { id: 7, name: "lgu" },
 ];
 
 const REQUIRED_SIGNUP_DOCUMENT_KEYS = new Set([
@@ -112,6 +115,9 @@ function formatDocumentTypeLabel(value) {
   if (raw === "birth_certificate") return "PSA Birth Certificate";
   if (raw === "marriage_contract") return "Marriage Contract (if applicable)";
   if (raw === "business_permit") return "Business Permit";
+  if (raw === "dti") return "DTI";
+  if (raw === "sec") return "SEC";
+  if (raw === "lgu") return "LGU";
 
   return raw
     .split("_")
@@ -1127,7 +1133,7 @@ export default function SignUpPage() {
 
               <SectionPanel
                 title="Document Upload"
-                description="Upload the required documents to complete your registration. Marriage Contract and Business Permit can also be attached here when available, but they are optional."
+                description="Upload the required documents to complete your registration. Marriage Contract, Business Permit, DTI, SEC, and LGU files can also be attached here when available, but they are optional."
               >
                 <div className="grid gap-5 md:grid-cols-2">
                   {signupDocumentTypes.map((document) => (
@@ -1149,7 +1155,7 @@ export default function SignUpPage() {
                   Required: {requiredDocumentLabels.length ? requiredDocumentLabels.join(", ") : "PSA Birth Certificate, Valid ID"}.
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  Optional: Marriage Contract (if applicable) and Business Permit.
+                  Optional: Marriage Contract (if applicable), Business Permit, DTI, SEC, and LGU.
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
                   If you sign up without a Business Permit, Create Appointment will show only Processing until the admin uploads your permit and your business becomes registered.
