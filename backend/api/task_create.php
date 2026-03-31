@@ -37,6 +37,60 @@ function resolveTaskCreatedByColumn(PDO $conn): ?string {
     return null;
 }
 
+function resolveTaskCreatedAtColumn(PDO $conn): ?string {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached !== '' ? $cached : null;
+    }
+
+    foreach (['created_at', 'Created_at', 'date_created', 'created_on', 'timestamp'] as $column) {
+        try {
+            $stmt = $conn->prepare('SHOW COLUMNS FROM `client_services` LIKE :column');
+            $stmt->execute([':column' => $column]);
+            if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+                $cached = $column;
+                return $cached;
+            }
+        } catch (Throwable $__) {
+            // Try the next possible column name.
+        }
+    }
+
+    $cached = '';
+    return null;
+}
+
+function upsertDescriptionMetaLine(string $source, string $key, string $value, bool $prepend = false): string {
+    $pattern = '/^\s*\[' . preg_quote($key, '/') . '\]\s*[^\r\n]*\s*$/i';
+    $lines = preg_split('/\R/', (string)$source);
+    $next = [];
+    $written = false;
+
+    foreach ($lines as $line) {
+        if (preg_match($pattern, (string)$line)) {
+            if (!$written) {
+                $next[] = '[' . $key . '] ' . $value;
+                $written = true;
+            }
+            continue;
+        }
+        $next[] = $line;
+    }
+
+    if (!$written) {
+        if ($prepend) {
+            array_unshift($next, '[' . $key . '] ' . $value);
+        } else {
+            while (!empty($next) && trim((string)end($next)) === '') {
+                array_pop($next);
+            }
+            $next[] = '[' . $key . '] ' . $value;
+        }
+    }
+
+    return trim(implode("\n", $next));
+}
+
 function buildPersonName($first, $middle, $last): string {
     $parts = [];
     foreach ([$first, $middle, $last] as $part) {
@@ -208,6 +262,9 @@ try {
         $description = implode("\n", $next);
     }
 
+    $createdAtSeed = date('c');
+    $description = upsertDescriptionMetaLine($description, 'CreatedAt', $createdAtSeed);
+
     $serviceId = 0;
     $serviceName = $serviceNameInput;
     if ($serviceNameInput !== '') {
@@ -256,6 +313,7 @@ try {
     $notStartedId = resolveStatusId($conn, 'TASK', 'Not Started', 10);
     $createdById = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
     $createdByName = $createdById > 0 ? resolveUserDisplayName($conn, $createdById) : '';
+    $createdAtColumn = resolveTaskCreatedAtColumn($conn);
 
     $conn->beginTransaction();
 
@@ -283,6 +341,21 @@ try {
     );
     $insTask->execute($insertParams);
     $taskId = (int)$conn->lastInsertId();
+
+    $createdAtValue = null;
+    if ($createdAtColumn !== null) {
+        $createdAtStmt = $conn->prepare(
+            'SELECT ' . quoteIdentifier($createdAtColumn) . ' AS created_at
+             FROM client_services
+             WHERE Client_services_ID = :id
+             LIMIT 1'
+        );
+        $createdAtStmt->execute([':id' => $taskId]);
+        $createdAtValue = $createdAtStmt->fetchColumn() ?: null;
+    }
+    if ($createdAtValue === null) {
+        $createdAtValue = $createdAtSeed;
+    }
 
     $accountantName = null;
     if ($accountantId > 0) {
@@ -324,6 +397,8 @@ try {
             'service' => $serviceName,
             'client_id' => $clientId,
             'client_name' => $clientRow['client_name'] ?? null,
+            'created_at' => $createdAtValue,
+            'createdAt' => $createdAtValue,
             'created_by' => $createdById > 0 ? $createdById : null,
             'created_by_name' => $createdByName !== '' ? $createdByName : null,
             'accountant_id' => ($accountantId > 0 ? $accountantId : null),

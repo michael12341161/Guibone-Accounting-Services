@@ -36,6 +36,37 @@ function resolveTaskCreatedByColumn(PDO $conn): ?string {
     return null;
 }
 
+function resolveTaskCreatedAtColumn(PDO $conn): ?string {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached !== '' ? $cached : null;
+    }
+
+    foreach (['created_at', 'Created_at', 'date_created', 'created_on', 'timestamp'] as $column) {
+        try {
+            $stmt = $conn->prepare('SHOW COLUMNS FROM `client_services` LIKE :column');
+            $stmt->execute([':column' => $column]);
+            if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+                $cached = $column;
+                return $cached;
+            }
+        } catch (Throwable $__) {
+            // Try the next possible column name.
+        }
+    }
+
+    $cached = '';
+    return null;
+}
+
+function readTaskMetaLine(string $source, string $key): string {
+    $pattern = '/^\s*\[' . preg_quote($key, '/') . '\]\s*([^\r\n]*)\s*$/im';
+    if (preg_match($pattern, $source, $matches)) {
+        return trim((string)($matches[1] ?? ''));
+    }
+    return '';
+}
+
 function normalizeTaskStatus(string $statusName, string $description): string {
     $status = strtolower(trim($statusName));
 
@@ -95,9 +126,11 @@ try {
     }
 
     $createdByColumn = resolveTaskCreatedByColumn($conn);
+    $createdAtColumn = resolveTaskCreatedAtColumn($conn);
     $createdBySelect = 'NULL AS created_by,
                 NULL AS created_by_name,
                 NULL AS created_by_username';
+    $createdAtSelect = 'NULL AS created_at';
     $createdByJoin = '';
     if ($createdByColumn !== null) {
         $creatorIdExpr = 'cs.' . quoteIdentifier($createdByColumn);
@@ -106,6 +139,9 @@ try {
                 COALESCE({$creatorNameExpr}, NULLIF(TRIM(uc.Username), ''), CASE WHEN {$creatorIdExpr} IS NOT NULL THEN CONCAT('User #', {$creatorIdExpr}) ELSE NULL END) AS created_by_name,
                 uc.Username AS created_by_username";
         $createdByJoin = ' LEFT JOIN user uc ON uc.User_id = ' . $creatorIdExpr;
+    }
+    if ($createdAtColumn !== null) {
+        $createdAtSelect = 'cs.' . quoteIdentifier($createdAtColumn) . ' AS created_at';
     }
 
     $sql = 'SELECT
@@ -121,6 +157,7 @@ try {
                 CONCAT_WS(" ", c.First_name, c.Middle_name, c.Last_name) AS client_name,
                 cs.User_ID AS accountant_id,
                 u.Username AS accountant_name,
+                ' . $createdAtSelect . ',
                 ' . $createdBySelect . '
             FROM client_services cs
             LEFT JOIN services_type s ON s.Services_type_Id = cs.Services_type_Id
@@ -141,6 +178,10 @@ try {
     foreach ($rows as $row) {
         $description = (string)($row['description'] ?? '');
         $status = normalizeTaskStatus((string)($row['status_name'] ?? ''), $description);
+        $createdAt = trim((string)($row['created_at'] ?? ''));
+        if ($createdAt === '') {
+            $createdAt = readTaskMetaLine($description, 'CreatedAt');
+        }
 
         $deadline = '';
         if (preg_match('/^\s*\[Deadline\]\s*([^\r\n]+)\s*$/mi', $description, $m)) {
@@ -163,6 +204,8 @@ try {
             'service_id' => isset($row['service_id']) ? (int)$row['service_id'] : null,
             'client_id' => isset($row['client_id']) ? (int)$row['client_id'] : null,
             'client_name' => $row['client_name'] ?? null,
+            'created_at' => $createdAt !== '' ? $createdAt : null,
+            'createdAt' => $createdAt !== '' ? $createdAt : null,
             'created_by' => isset($row['created_by']) && $row['created_by'] !== null ? (int)$row['created_by'] : null,
             'created_by_name' => $row['created_by_name'] ?? null,
             'created_by_username' => $row['created_by_username'] ?? null,

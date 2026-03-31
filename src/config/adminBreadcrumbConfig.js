@@ -33,7 +33,18 @@ export const adminBreadcrumbConfig = {
     "/admin/permissions": { label: "Permissions", icon: ShieldCheck },
     "/admin/scheduling": { label: "Consultation", icon: CalendarClock },
     "/admin/settings": { label: "Settings", icon: Settings },
-    "/admin/tasks": { label: "Task Management", icon: ClipboardList },
+    "/admin/tasks": {
+      label: "Task Management",
+      icon: ClipboardList,
+      trailingItems: [
+        {
+          label: "Client Appointments",
+          path: "/admin/tasks/client-appointments",
+          icon: CalendarCheck,
+        },
+      ],
+    },
+    "/admin/tasks/client-appointments": { label: "Client Appointments", icon: CalendarCheck },
     "/admin/users": { label: "Users", icon: UserCog },
     "/admin/work-update": { label: "Task Updates", icon: FilePenLine },
   },

@@ -33,6 +33,7 @@ import Calendar from "../calendar/calendary";
 import AdminSettings from "../settings/admin_settings";
 import SchedulingManagementAdmin from "../Pages/admin_page/scheduling_management_admin";
 import { ModuleAccessGate } from "../components/layout/module_access_gate";
+import TaskClientAppointmentsPage from "../Pages/shared/task_client_appointments";
 
 function RoleProtectedRoute({ allowedRoleId, LayoutComponent }) {
   const navigate = useNavigate();
@@ -91,6 +92,7 @@ const privateRouteGroups = [
       { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
       { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
       { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
+      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],
   },
@@ -108,6 +110,7 @@ const privateRouteGroups = [
       { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
       { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
       { path: "tasks", element: withModuleAccess("tasks", <SecretaryTaskManagement />) },
+      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />) },
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
       { path: "reports", element: withModuleAccess("reports", <div style={{ padding: 20 }}>Reports page</div>) },
       { path: "work-update", element: withModuleAccess("work-update", <WorkUpdate />) },

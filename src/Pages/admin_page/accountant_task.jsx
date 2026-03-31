@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import { api, fetchAvailableServices } from "../../services/api";
 import { Button } from "../../components/UI/buttons";
@@ -9,6 +10,7 @@ import { useAuth } from "../../hooks/useAuth";
 import ArchiveTasksCompleted from "./archive_tasks_completed";
 import { getAutoDueDateForService, getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
+import { findClientById, getClientId, matchesClientId } from "../../utils/client_identity";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 
@@ -306,24 +308,28 @@ const sortTasksNewestFirst = (list) => {
 const formatDueDate = (raw) => {
   if (!raw) return "-";
 
+  const value = String(raw).trim();
   let dateValue;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    dateValue = new Date(raw);
-  } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-    const [dd, mm, yyyy] = raw.split("/");
-    dateValue = new Date(`${yyyy}-${mm}-${dd}`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    dateValue = new Date(`${value}T00:00:00`);
+  } else if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?$/.test(value)) {
+    dateValue = new Date(value.replace(" ", "T"));
+  } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    const [dd, mm, yyyy] = value.split("/");
+    dateValue = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
   } else {
-    dateValue = new Date(raw);
+    dateValue = new Date(value);
   }
 
   if (Number.isNaN(dateValue?.getTime?.())) {
     return String(raw);
   }
 
-  const mm = String(dateValue.getMonth() + 1).padStart(2, "0");
-  const dd = String(dateValue.getDate()).padStart(2, "0");
-  const yy = String(dateValue.getFullYear()).slice(-2);
-  return `${mm}/${dd}/${yy}`;
+  return dateValue.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 };
 
 const cleanDescription = (desc) => {
@@ -336,6 +342,8 @@ const cleanDescription = (desc) => {
       if (/^\[Progress\]\s*\d{0,3}\s*$/i.test(l)) return false;
       if (/^\[Priority\]\s*/i.test(l)) return false;
       if (/^\[Deadline\]\s*/i.test(l)) return false;
+      if (/^\[CreatedAt\]\s*/i.test(l)) return false;
+      if (/^\[Appointment_ID\]\s*/i.test(l)) return false;
       if (/^\[Done\]\s*$/i.test(l)) return false;
       if (/^\[Declined reason\]\s*/i.test(l)) return false;
       if (/^\[(?:SecretaryArchived|Archived)\]\s*/i.test(l)) return false;
@@ -372,11 +380,17 @@ function PriorityPill({ description }) {
 
 function getClientDisplayName(client) {
   const fullName = joinPersonName([client?.first_name, client?.middle_name, client?.last_name]);
-  return fullName || client?.email || `Client #${client?.id || ""}`;
+  const clientId = getClientId(client);
+  return fullName || client?.email || (clientId ? `Client #${clientId}` : "Client");
 }
 
 function getClientSecondaryLabel(client) {
-  return String(client?.business_trade_name || client?.email || `Client ID: ${client?.id || ""}`).trim();
+  const clientId = getClientId(client);
+  return String(
+    client?.business_trade_name ||
+      client?.email ||
+      (clientId ? `Client ID: ${clientId}` : "")
+  ).trim();
 }
 
 function isActiveClient(client) {
@@ -529,7 +543,7 @@ function ClientPicker({ clients, value, onChange }) {
   const searchInputRef = useRef(null);
 
   const selectedClient = useMemo(() => {
-    return (Array.isArray(clients) ? clients : []).find((client) => String(client.id) === String(value || ""));
+    return findClientById(clients, value);
   }, [clients, value]);
 
   const filteredClients = useMemo(() => {
@@ -541,7 +555,7 @@ function ClientPicker({ clients, value, onChange }) {
       const displayName = getClientDisplayName(client);
       const secondary = getClientSecondaryLabel(client);
       const phone = String(client?.phone || "");
-      return `${displayName} ${secondary} ${phone} ${client?.id || ""}`.toLowerCase().includes(query);
+      return `${displayName} ${secondary} ${phone} ${getClientId(client)}`.toLowerCase().includes(query);
     });
   }, [clients, search]);
 
@@ -557,8 +571,10 @@ function ClientPicker({ clients, value, onChange }) {
     };
   }, [open]);
 
-  const buttonLabel = selectedClient ? getClientDisplayName(selectedClient) : "Select Client";
-  const buttonMeta = selectedClient ? getClientSecondaryLabel(selectedClient) : "Choose a client from the list";
+  const buttonLabel = selectedClient ? getClientDisplayName(selectedClient) : "Select Client (F2F)";
+  const buttonMeta = selectedClient
+    ? getClientSecondaryLabel(selectedClient)
+    : "For face-to-face tasks. Use Client Appointments for approved requests.";
 
   return (
     <>
@@ -633,16 +649,17 @@ function ClientPicker({ clients, value, onChange }) {
           <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
             {filteredClients.length > 0 ? (
               filteredClients.map((client) => {
-                const isSelected = String(client.id) === String(value || "");
+                const clientId = getClientId(client);
+                const isSelected = matchesClientId(client, value);
                 const name = getClientDisplayName(client);
                 const secondary = getClientSecondaryLabel(client);
 
                 return (
                   <button
-                    key={client.id}
+                    key={clientId || name}
                     type="button"
                     onClick={() => {
-                      onChange?.(String(client.id));
+                      onChange?.(clientId);
                       setOpen(false);
                     }}
                     className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
@@ -712,10 +729,12 @@ function AccountantPicker({ accountants, value, onChange, serviceName }) {
     };
   }, [open]);
 
-  const buttonLabel = selectedAccountant?.username || (value ? `User #${value}` : "Select Assignee");
+  const buttonLabel = selectedAccountant?.username || (value ? `User #${value}` : "Select Accountant or Secretary");
   const helperText = selectedAccountant
     ? getReadableUserRole(selectedAccountant)
-    : (serviceName ? `Showing matching accountants and all secretaries for ${serviceName}` : "Choose an assignee from the list");
+    : (serviceName
+      ? `Showing matching accountants and all secretaries for ${serviceName}`
+      : "Choose an accountant or secretary from the list");
 
   return (
     <>
@@ -846,6 +865,8 @@ function AccountantPicker({ accountants, value, onChange, serviceName }) {
 }
 
 export default function AdminAccountantTaskManagement() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { permissions } = useModulePermissions();
   const [tasks, setTasks] = useState([]);
@@ -874,6 +895,8 @@ export default function AdminAccountantTaskManagement() {
   const [selectedBundleKey, setSelectedBundleKey] = useState("");
   const [editingBundleKey, setEditingBundleKey] = useState("");
   const [bundleDraftSteps, setBundleDraftSteps] = useState({});
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
+  const [didLoadClients, setDidLoadClients] = useState(false);
 
   // Create form
   // title = selected service/task type (Tax Filing, Auditing, Book Keeping, Tax Computation)
@@ -963,7 +986,8 @@ export default function AdminAccountantTaskManagement() {
           api.get("user_list.php"),
         ]);
         if (!stop) {
-          if (Array.isArray(c.data?.clients)) setClients(c.data.clients);
+          setClients(Array.isArray(c.data?.clients) ? c.data.clients : []);
+          setDidLoadClients(true);
           if (Array.isArray(t.data?.tasks)) setTasks(t.data.tasks);
           if (Array.isArray(u.data?.users)) {
             const accs = u.data.users.filter((x) => {
@@ -973,7 +997,11 @@ export default function AdminAccountantTaskManagement() {
             setAccountants(accs);
           }
         }
-      } catch (_) { }
+      } catch (_) {
+        if (!stop) {
+          setDidLoadClients(true);
+        }
+      }
     })();
 
     const intv = setInterval(async () => {
@@ -1042,14 +1070,78 @@ export default function AdminAccountantTaskManagement() {
     });
   }, [allTaskIdSet, archivedTaskIdSet]);
 
+  useEffect(() => {
+    const hasSelectedService = String(form.service_name || form.title || "").trim();
+    if (hasSelectedService) return;
+
+    if (selectedAppointmentId) {
+      setSelectedAppointmentId("");
+    }
+    if (selectedBundleKey) {
+      setSelectedBundleKey("");
+      setEditingBundleKey("");
+    }
+  }, [form.service_name, form.title, selectedAppointmentId, selectedBundleKey]);
+
+  useEffect(() => {
+    const appointment = location.state?.prefillTaskFromAppointment;
+    if (!appointment) return undefined;
+
+    const nextClientId = String(appointment?.clientId || "").trim();
+    const nextServiceName = String(appointment?.serviceName || "").trim();
+    const nextDueDate = String(appointment?.date || "").trim();
+
+    if (!nextClientId || !nextServiceName) {
+      setError("The selected appointment is missing a client or service.");
+      navigate(location.pathname, { replace: true, state: {} });
+      return undefined;
+    }
+
+    const autoBundleKey = getTaskBundleTemplateKey(nextServiceName);
+    const fallbackDueDate = getAutoDueDateForService(nextServiceName) || "";
+
+    setForm((current) => ({
+      ...current,
+      client_id: nextClientId,
+      title: nextServiceName,
+      service_name: nextServiceName,
+      accountant_id: "",
+      due_date: nextDueDate || fallbackDueDate,
+    }));
+    setSelectedAppointmentId(String(appointment?.id || ""));
+    setSelectedBundleKey(autoBundleKey);
+    setBundlePickerOpen(false);
+    setEditingBundleKey("");
+    setError("");
+    setSuccess(
+      `Appointment loaded for ${appointment?.clientName || "the selected client"}. Assign an accountant or secretary, then click Create Task.`
+    );
+    navigate(location.pathname, { replace: true, state: {} });
+
+    const timerId = window.setTimeout(() => setSuccess(""), 2200);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [location.pathname, location.state, navigate]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
   };
 
-  const handleServiceSelection = (value) => {
+  const handleClientSelection = (clientId, options = {}) => {
+    if (options.clearAppointment !== false) {
+      setSelectedAppointmentId("");
+    }
+    setForm((current) => ({ ...current, client_id: clientId }));
+  };
+
+  const handleServiceSelection = (value, options = {}) => {
     const autoDueDate = getAutoDueDateForService(value);
     const autoBundleKey = getTaskBundleTemplateKey(value);
+    if (options.clearAppointment !== false) {
+      setSelectedAppointmentId("");
+    }
     setForm((current) => ({
       ...current,
       title: value,
@@ -1143,6 +1235,7 @@ export default function AdminAccountantTaskManagement() {
       due_date: "",
       accountant_id: "",
     });
+    setSelectedAppointmentId("");
     setSelectedBundleKey("");
     setBundlePickerOpen(false);
     setEditingBundleKey("");
@@ -1159,19 +1252,21 @@ export default function AdminAccountantTaskManagement() {
     setError("");
     setSuccess("");
 
+    let selectedClientId = String(form.client_id || "").trim();
+
     // If there is only one client, auto-select it to avoid blocking quick-entry
-    if (!form.client_id && activeClients.length === 1 && activeClients[0]?.id) {
-      const onlyId = String(activeClients[0].id);
+    if (!selectedClientId && didLoadClients && activeClients.length === 1) {
+      const onlyId = getClientId(activeClients[0]);
+      selectedClientId = onlyId;
       setForm((f) => ({ ...f, client_id: onlyId }));
-      form.client_id = onlyId; // ensure this submission uses the value immediately
     }
 
     // Enforce single service selection (required)
-    if (!form.client_id) {
+    if (!selectedClientId) {
       setError("Please select a client.");
       return;
     }
-    if (!activeClients.some((client) => String(client.id) === String(form.client_id))) {
+    if (didLoadClients && !activeClients.some((client) => matchesClientId(client, selectedClientId))) {
       setError("Please select an active client.");
       return;
     }
@@ -1191,11 +1286,11 @@ export default function AdminAccountantTaskManagement() {
       return;
     }
     if (!String(form.accountant_id || "").trim()) {
-      setError("Please assign a user.");
+      setError("Please assign an accountant or secretary.");
       return;
     }
     if (!matchingAccountants.some((accountant) => String(accountant.id) === String(form.accountant_id))) {
-      setError("Please assign a secretary or an accountant whose specialization matches the selected service.");
+      setError("Please assign a matching accountant or secretary for the selected service.");
       return;
     }
     if (!String(form.priority || "").trim()) {
@@ -1217,7 +1312,11 @@ export default function AdminAccountantTaskManagement() {
     try {
       setCreatingTask(true);
       const priority = (form.priority || "Low").trim();
-      const baseDescription = `[Priority] ${priority}`;
+      const descriptionMetaLines = [`[Priority] ${priority}`];
+      if (selectedAppointmentId) {
+        descriptionMetaLines.push(`[Appointment_ID] ${selectedAppointmentId}`);
+      }
+      const baseDescription = descriptionMetaLines.join("\n");
       const selectedBundleSteps = (Array.isArray(selectedBundle?.steps) ? selectedBundle.steps : []).filter((step) =>
         String(step?.text || "").trim()
       );
@@ -1231,7 +1330,7 @@ export default function AdminAccountantTaskManagement() {
       // - title: the task title (free text)
       // - status: the selected service name (must be a valid service)
       const payload = {
-        client_id: parseInt(form.client_id, 10),
+        client_id: parseInt(selectedClientId, 10),
         title: form.title,
         description: descWithPriority,
         deadline: form.due_date || null,
@@ -1275,6 +1374,7 @@ export default function AdminAccountantTaskManagement() {
           due_date: "",
           accountant_id: "",
         });
+        setSelectedAppointmentId("");
         setSelectedBundleKey("");
         setEditingBundleKey("");
         setTimeout(() => setSuccess(""), 1500);
@@ -1290,18 +1390,20 @@ export default function AdminAccountantTaskManagement() {
 
   // If there is only one client, auto-select it for convenience
   useEffect(() => {
-    if (!form.client_id && activeClients.length === 1 && activeClients[0]?.id) {
-      setForm((f) => ({ ...f, client_id: String(activeClients[0].id) }));
+    if (!didLoadClients || form.client_id || activeClients.length !== 1) return;
+    const onlyId = getClientId(activeClients[0]);
+    if (onlyId) {
+      setForm((f) => ({ ...f, client_id: onlyId }));
     }
-  }, [activeClients, form.client_id]);
+  }, [activeClients, didLoadClients, form.client_id]);
 
   useEffect(() => {
-    if (!form.client_id) return;
-    const stillActive = activeClients.some((client) => String(client.id) === String(form.client_id));
+    if (!didLoadClients || !form.client_id) return;
+    const stillActive = activeClients.some((client) => matchesClientId(client, form.client_id));
     if (!stillActive) {
       setForm((current) => ({ ...current, client_id: "" }));
     }
-  }, [activeClients, form.client_id]);
+  }, [activeClients, didLoadClients, form.client_id]);
 
   useEffect(() => {
     if (!form.accountant_id) return;
@@ -1597,7 +1699,7 @@ export default function AdminAccountantTaskManagement() {
         <CardHeader>
           <CardTitle>Create Task</CardTitle>
           <CardDescription>
-            Fill out the details below. Choose a service, assignee, priority, due date, and optionally apply a bundle to preload steps.
+            Use Select Client (F2F) for walk-in tasks, or open Client Appointments to load an approved appointment here before assigning an accountant or secretary.
           </CardDescription>
         </CardHeader>
 
@@ -1606,12 +1708,17 @@ export default function AdminAccountantTaskManagement() {
             {/* Inputs */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
               <div className="md:col-span-4">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Client</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Select Client (F2F)</label>
                 <ClientPicker
                   clients={activeClients}
                   value={form.client_id}
-                  onChange={(clientId) => setForm((current) => ({ ...current, client_id: clientId }))}
+                  onChange={(clientId) => handleClientSelection(clientId)}
                 />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {selectedAppointmentId
+                    ? "Loaded from Client Appointments."
+                    : "Use this for face-to-face or walk-in task creation."}
+                </p>
               </div>
 
               <div className="md:col-span-4">
@@ -1657,13 +1764,18 @@ export default function AdminAccountantTaskManagement() {
               </div>
 
               <div className="md:col-span-4">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Assigned To</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Assign To (Accountant or Secretary)</label>
                 <AccountantPicker
                   accountants={matchingAccountants}
                   value={form.accountant_id || ""}
                   onChange={(accountantId) => setForm((current) => ({ ...current, accountant_id: accountantId }))}
                   serviceName={form.service_name || form.title}
                 />
+                {selectedAppointmentId ? (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    This approved appointment is ready. Only the accountant or secretary assignment is still needed before you click Create Task.
+                  </p>
+                ) : null}
               </div>
 
               <div className="md:col-span-4 md:col-start-9 md:row-start-2 md:pt-6">
@@ -1729,7 +1841,9 @@ export default function AdminAccountantTaskManagement() {
                 />
                 {selectedServiceDuration ? (
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Auto-filled from the selected service. You can still adjust it.
+                    {selectedAppointmentId
+                      ? "Loaded from the selected approved appointment. You can still adjust it."
+                      : "Auto-filled from the selected service. You can still adjust it."}
                   </p>
                 ) : null}
               </div>
@@ -1746,7 +1860,7 @@ export default function AdminAccountantTaskManagement() {
                       {selectedBundle.label}
                     </div>
                     <div className="mt-1 text-xs text-slate-600">
-                      This bundle is automatically loaded from the selected service. Add Step will stay optional afterward.
+                      This bundle is automatically loaded from the selected service or approved appointment. Add Step will stay optional afterward.
                     </div>
                   </div>
 
@@ -2099,10 +2213,7 @@ export default function AdminAccountantTaskManagement() {
                         if (!d || Number.isNaN(d.getTime())) {
                           return String(raw);
                         }
-                        const mm = String(d.getMonth() + 1).padStart(2, "0");
-                        const dd = String(d.getDate()).padStart(2, "0");
-                        const yy = String(d.getFullYear()).slice(-2);
-                        return `${mm}/${dd}/${yy}`;
+                        return formatDueDate(raw);
                       })()}
                     </div>
                   </div>

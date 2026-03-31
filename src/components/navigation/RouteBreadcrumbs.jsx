@@ -1,9 +1,35 @@
 import React, { useMemo } from "react";
 import { Link, matchPath, useLocation } from "react-router-dom";
+import { useRouteLoading } from "../layout/route_loading_context";
 import { normalizePath } from "../layout/layout_utils";
 
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
+}
+
+function normalizeTrailEntry(entry, context) {
+  if (!entry) return null;
+
+  if (typeof entry === "string") {
+    return null;
+  }
+
+  const label =
+    typeof entry.getLabel === "function"
+      ? entry.getLabel(context)
+      : entry.label;
+  const path =
+    typeof entry.getPath === "function"
+      ? entry.getPath(context)
+      : entry.path || entry.to;
+
+  if (!label || !path) return null;
+
+  return {
+    label,
+    path: normalizePath(path),
+    icon: entry.icon || null,
+  };
 }
 
 function humanizeSegment(segment) {
@@ -36,6 +62,11 @@ function normalizeBreadcrumbEntry(entry, context) {
   return {
     label,
     icon: entry.icon || null,
+    trailingItems: Array.isArray(entry.trailingItems)
+      ? entry.trailingItems
+          .map((item) => normalizeTrailEntry(item, context))
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -104,6 +135,17 @@ export function buildBreadcrumbItems(pathname, config = {}) {
       icon: meta?.icon || null,
       isCurrent: index === segments.length - 1,
     });
+
+    if (index === segments.length - 1 && Array.isArray(meta?.trailingItems)) {
+      meta.trailingItems.forEach((trailItem) => {
+        items.push({
+          path: trailItem.path,
+          label: trailItem.label,
+          icon: trailItem.icon || null,
+          isCurrent: false,
+        });
+      });
+    }
   });
 
   return items;
@@ -111,6 +153,7 @@ export function buildBreadcrumbItems(pathname, config = {}) {
 
 export default function RouteBreadcrumbs({ config, className }) {
   const location = useLocation();
+  const { routeLoading, startRouteLoading } = useRouteLoading();
   const items = useMemo(
     () => buildBreadcrumbItems(location.pathname, config),
     [config, location.pathname]
@@ -165,7 +208,23 @@ export default function RouteBreadcrumbs({ config, className }) {
               ) : (
                 <Link
                   to={item.path}
-                  className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                  onClick={(event) => {
+                    const currentPath = normalizePath(location.pathname);
+                    const nextPath = normalizePath(item.path);
+
+                    if (routeLoading || currentPath === nextPath) {
+                      event.preventDefault();
+                      return;
+                    }
+
+                    startRouteLoading();
+                  }}
+                  className={classNames(
+                    "inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
+                    routeLoading && "pointer-events-none opacity-60"
+                  )}
+                  aria-disabled={routeLoading}
+                  tabIndex={routeLoading ? -1 : 0}
                 >
                   {content}
                 </Link>

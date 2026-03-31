@@ -18,6 +18,8 @@ import {
 import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
+import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
+import { secretaryBreadcrumbConfig } from "../config/secretaryBreadcrumbConfig";
 import { getUserFirstName } from "../components/layout/layout_utils";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
@@ -229,7 +231,10 @@ export default function SecretaryLayout({ user, onLogout, children }) {
       desktopSidebarCollapsible
       desktopSidebarCollapseMode="icons"
     >
-      {children}
+      <>
+        <RouteBreadcrumbs config={secretaryBreadcrumbConfig} />
+        {children}
+      </>
       <SecretaryProfile
         open={profileOpen}
         onClose={() => setProfileOpen(false)}

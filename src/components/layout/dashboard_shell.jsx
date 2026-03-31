@@ -4,6 +4,7 @@ import { Navbar } from "../navigation/navbar";
 import { Sidebar } from "../navigation/sidebar";
 import { LayoutFooter } from "./layout_footer";
 import { RouteLoadingPanel } from "./route_loading_panel";
+import { RouteLoadingContext } from "./route_loading_context";
 import { normalizePath } from "./layout_utils";
 
 function classNames(...values) {
@@ -135,61 +136,63 @@ export function DashboardShell({
     : resolvedSidebarProps;
 
   return (
-    <div className={rootClassName}>
-      <Navbar {...resolvedNavbarProps} />
+    <RouteLoadingContext.Provider value={{ routeLoading, startRouteLoading }}>
+      <div className={rootClassName}>
+        <Navbar {...resolvedNavbarProps} />
 
-      {desktopSidebarVisible ? (
-        <aside
-          className={classNames(
-            "z-20 hidden lg:fixed lg:inset-y-0 lg:flex lg:pt-16",
-            showCollapsedDesktopSidebar ? "lg:w-20" : "lg:w-64"
-          )}
-        >
-          <Sidebar
-            items={navItems}
-            routeLoading={routeLoading}
-            onItemClick={onSidebarItemClick}
-            {...desktopSidebarProps}
-          />
-        </aside>
-      ) : null}
-
-      {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setMobileSidebarOpen(false)} />
-          <div className="absolute inset-y-0 left-0 w-64 pt-16 shadow-xl">
+        {desktopSidebarVisible ? (
+          <aside
+            className={classNames(
+              "z-20 hidden lg:fixed lg:inset-y-0 lg:flex lg:pt-16",
+              showCollapsedDesktopSidebar ? "lg:w-20" : "lg:w-64"
+            )}
+          >
             <Sidebar
               items={navItems}
               routeLoading={routeLoading}
               onItemClick={onSidebarItemClick}
-              {...resolvedSidebarProps}
+              {...desktopSidebarProps}
             />
-          </div>
-        </div>
-      )}
+          </aside>
+        ) : null}
 
-      <main
-        className={classNames(
-          mainClassName,
-          desktopSidebarVisible ? (showCollapsedDesktopSidebar ? "lg:ml-20" : "lg:ml-64") : "lg:ml-0"
+        {mobileSidebarOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div className="absolute inset-0 bg-black/30" onClick={() => setMobileSidebarOpen(false)} />
+            <div className="absolute inset-y-0 left-0 w-64 pt-16 shadow-xl">
+              <Sidebar
+                items={navItems}
+                routeLoading={routeLoading}
+                onItemClick={onSidebarItemClick}
+                {...resolvedSidebarProps}
+              />
+            </div>
+          </div>
         )}
-      >
-        <div className={contentClassName}>
-          {routeLoading ? <RouteLoadingPanel /> : null}
 
-          <div
-            className={
-              routeLoading
-                ? "pointer-events-none h-0 overflow-hidden opacity-0"
-                : "opacity-100 transition-opacity duration-150"
-            }
-          >
-            {children}
+        <main
+          className={classNames(
+            mainClassName,
+            desktopSidebarVisible ? (showCollapsedDesktopSidebar ? "lg:ml-20" : "lg:ml-64") : "lg:ml-0"
+          )}
+        >
+          <div className={contentClassName}>
+            {routeLoading ? <RouteLoadingPanel /> : null}
+
+            <div
+              className={
+                routeLoading
+                  ? "pointer-events-none h-0 overflow-hidden opacity-0"
+                  : "opacity-100 transition-opacity duration-150"
+              }
+            >
+              {children}
+            </div>
           </div>
-        </div>
 
-        {showFooter ? <LayoutFooter {...footerProps} /> : null}
-      </main>
-    </div>
+          {showFooter ? <LayoutFooter {...footerProps} /> : null}
+        </main>
+      </div>
+    </RouteLoadingContext.Provider>
   );
 }
