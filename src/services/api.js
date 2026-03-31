@@ -327,6 +327,65 @@ export async function saveSystemConfiguration(settings, config = {}) {
   };
 }
 
+export async function fetchBackupDataOverview(config = {}) {
+  return api.get("backup_data.php", config);
+}
+
+export async function createDatabaseBackup(config = {}) {
+  return api.post(
+    "backup_data.php",
+    {
+      action: "create_backup",
+    },
+    config
+  );
+}
+
+export async function cleanupDatabaseBackups(payload = {}, config = {}) {
+  return api.post(
+    "backup_data.php",
+    {
+      action: "cleanup_backups",
+      ...payload,
+    },
+    config
+  );
+}
+
+export async function deleteDatabaseBackup(filename, config = {}) {
+  return api.post(
+    "backup_data.php",
+    {
+      action: "delete_backup",
+      filename,
+    },
+    config
+  );
+}
+
+export async function downloadDatabaseBackup(filename, config = {}) {
+  return api.get("backup_data.php", {
+    ...config,
+    params: {
+      ...(config?.params || {}),
+      download_backup: filename,
+    },
+    responseType: "blob",
+  });
+}
+
+export async function exportDatabaseTable(tableName, format = "csv", config = {}) {
+  return api.get("backup_data.php", {
+    ...config,
+    params: {
+      ...(config?.params || {}),
+      export_table: tableName,
+      format,
+    },
+    responseType: "blob",
+  });
+}
+
 export async function fetchAuditLogs(config = {}) {
   const response = await api.get("audit_logs.php", {
     ...config,

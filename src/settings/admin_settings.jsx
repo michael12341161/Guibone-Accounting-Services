@@ -2,9 +2,15 @@ import React from "react";
 import Swal from "sweetalert2";
 import { useAuth } from "../hooks/useAuth";
 import {
+  cleanupDatabaseBackups,
+  createDatabaseBackup,
   DEFAULT_SECURITY_SETTINGS,
   DEFAULT_SYSTEM_CONFIGURATION,
+  deleteDatabaseBackup,
+  downloadDatabaseBackup,
+  exportDatabaseTable,
   fetchAuditLogs,
+  fetchBackupDataOverview,
   fetchSecuritySettings,
   fetchSystemConfiguration,
   saveSecuritySettings,
@@ -66,6 +72,12 @@ const AUDIT_RANGE_OPTIONS = [
 ];
 
 const AUDIT_PER_PAGE_OPTIONS = [10, 25, 50, 100];
+const BACKUP_RETENTION_OPTIONS = [7, 30, 90, 180];
+const BACKUP_EXPORT_FORMAT_OPTIONS = [
+  { value: "csv", label: "CSV" },
+  { value: "json", label: "JSON" },
+  { value: "sql", label: "SQL" },
+];
 
 function parseSecurityNumber(value) {
   const normalized = String(value ?? "").trim();
@@ -193,6 +205,69 @@ function buildSystemPayload(values) {
   };
 }
 
+function formatBytes(value) {
+  const bytes = Number(value ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const normalized = bytes / 1024 ** exponent;
+  const digits = normalized >= 100 || exponent === 0 ? 0 : normalized >= 10 ? 1 : 2;
+  return `${normalized.toFixed(digits)} ${units[exponent]}`;
+}
+
+function resolveDownloadFilename(headers, fallbackName) {
+  const headerValue = String(headers?.["content-disposition"] ?? headers?.["Content-Disposition"] ?? "").trim();
+  if (headerValue) {
+    const utfMatch = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utfMatch?.[1]) {
+      return decodeURIComponent(utfMatch[1]);
+    }
+
+    const basicMatch = headerValue.match(/filename="?([^";]+)"?/i);
+    if (basicMatch?.[1]) {
+      return basicMatch[1];
+    }
+  }
+
+  return fallbackName;
+}
+
+function downloadBlobResponse(response, fallbackName) {
+  const blob = response?.data;
+  if (!(blob instanceof Blob)) {
+    throw new Error("Download data is not available.");
+  }
+
+  const fileName = resolveDownloadFilename(response?.headers, fallbackName);
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(objectUrl);
+  return fileName;
+}
+
+async function readBlobErrorMessage(error, fallbackMessage) {
+  const payload = error?.response?.data;
+  if (payload instanceof Blob) {
+    try {
+      const text = await payload.text();
+      const parsed = JSON.parse(text);
+      if (parsed?.message) {
+        return parsed.message;
+      }
+    } catch (_) {}
+  }
+
+  return error?.response?.data?.message || error?.message || fallbackMessage;
+}
+
 function StatusBanner({ type, children }) {
   if (!children) return null;
 
@@ -268,6 +343,29 @@ export default function AdminSettings() {
   const [systemLoading, setSystemLoading] = React.useState(false);
   const [systemSaving, setSystemSaving] = React.useState(false);
   const [systemStatus, setSystemStatus] = React.useState({ type: "", text: "" });
+  const [backupSummary, setBackupSummary] = React.useState({
+    database_name: "",
+    table_count: 0,
+    approx_rows: 0,
+    database_size_bytes: 0,
+    backup_count: 0,
+    backup_storage_bytes: 0,
+    last_backup_at: null,
+    last_backup_name: "",
+  });
+  const [backupTables, setBackupTables] = React.useState([]);
+  const [backupFiles, setBackupFiles] = React.useState([]);
+  const [backupLoading, setBackupLoading] = React.useState(false);
+  const [backupCreating, setBackupCreating] = React.useState(false);
+  const [backupCleaning, setBackupCleaning] = React.useState(false);
+  const [backupExporting, setBackupExporting] = React.useState(false);
+  const [backupDownloading, setBackupDownloading] = React.useState("");
+  const [backupDeleting, setBackupDeleting] = React.useState("");
+  const [backupStatus, setBackupStatus] = React.useState({ type: "", text: "" });
+  const [backupExportTable, setBackupExportTable] = React.useState("");
+  const [backupExportFormat, setBackupExportFormat] = React.useState("csv");
+  const [backupCleanupDays, setBackupCleanupDays] = React.useState(30);
+  const [backupRefreshKey, setBackupRefreshKey] = React.useState(0);
   const [auditLogs, setAuditLogs] = React.useState([]);
   const [auditLoading, setAuditLoading] = React.useState(false);
   const [auditError, setAuditError] = React.useState("");
@@ -325,6 +423,64 @@ export default function AdminSettings() {
       controller.abort();
     };
   }, [showSecurity]);
+
+  React.useEffect(() => {
+    if (!showBackup) {
+      return undefined;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+
+    const loadBackupDashboard = async () => {
+      setBackupLoading(true);
+      setBackupStatus((current) => (current.type === "success" ? current : { type: "", text: "" }));
+
+      try {
+        const response = await fetchBackupDataOverview({ signal: controller.signal });
+        if (!active) return;
+
+        const nextTables = Array.isArray(response?.data?.tables) ? response.data.tables : [];
+        const nextBackups = Array.isArray(response?.data?.backups) ? response.data.backups : [];
+
+        setBackupSummary(
+          response?.data?.summary || {
+            database_name: "",
+            table_count: 0,
+            approx_rows: 0,
+            database_size_bytes: 0,
+            backup_count: 0,
+            backup_storage_bytes: 0,
+            last_backup_at: null,
+            last_backup_name: "",
+          }
+        );
+        setBackupTables(nextTables);
+        setBackupFiles(nextBackups);
+        setBackupExportTable((current) =>
+          nextTables.some((table) => table.name === current) ? current : nextTables[0]?.name || ""
+        );
+      } catch (error) {
+        if (!active) return;
+
+        setBackupStatus({
+          type: "error",
+          text: error?.response?.data?.message || "Unable to load backup tools right now.",
+        });
+      } finally {
+        if (active) {
+          setBackupLoading(false);
+        }
+      }
+    };
+
+    void loadBackupDashboard();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [showBackup, backupRefreshKey]);
 
   React.useEffect(() => {
     if (!showAudit) {
@@ -622,6 +778,201 @@ export default function AdminSettings() {
     }
   };
 
+  const handleCreateBackup = async () => {
+    setBackupCreating(true);
+    setBackupStatus({ type: "", text: "" });
+
+    try {
+      const response = await createDatabaseBackup();
+      const createdBackup = response?.data?.backup;
+      setBackupStatus({
+        type: "success",
+        text:
+          response?.data?.message ||
+          (createdBackup?.name ? `${createdBackup.name} is ready in Recent backups.` : "Database backup created."),
+      });
+      setBackupRefreshKey((value) => value + 1);
+
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "success",
+        title: "Backup created",
+        text:
+          createdBackup?.name
+            ? `${createdBackup.name} was saved successfully.`
+            : response?.data?.message || "Database backup created successfully.",
+      });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to create database backup.";
+      setBackupStatus({ type: "error", text: message });
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "error",
+        title: "Backup failed",
+        text: message,
+      });
+    } finally {
+      setBackupCreating(false);
+    }
+  };
+
+  const handleDownloadBackup = async (filename) => {
+    setBackupDownloading(filename);
+
+    try {
+      const response = await downloadDatabaseBackup(filename);
+      const downloadedName = downloadBlobResponse(response, filename);
+      setBackupStatus({
+        type: "success",
+        text: `${downloadedName} downloaded successfully.`,
+      });
+    } catch (error) {
+      const message = await readBlobErrorMessage(error, "Unable to download the selected backup.");
+      setBackupStatus({ type: "error", text: message });
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "error",
+        title: "Download failed",
+        text: message,
+      });
+    } finally {
+      setBackupDownloading("");
+    }
+  };
+
+  const handleExportTable = async () => {
+    if (!backupExportTable) {
+      setBackupStatus({ type: "error", text: "Choose a table before exporting data." });
+      return;
+    }
+
+    setBackupExporting(true);
+    setBackupStatus({ type: "", text: "" });
+
+    try {
+      const response = await exportDatabaseTable(backupExportTable, backupExportFormat);
+      const downloadedName = downloadBlobResponse(
+        response,
+        `${backupExportTable}.${backupExportFormat}`
+      );
+      setBackupStatus({
+        type: "success",
+        text: `${downloadedName} downloaded successfully.`,
+      });
+    } catch (error) {
+      const message = await readBlobErrorMessage(error, "Unable to export the selected table.");
+      setBackupStatus({ type: "error", text: message });
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "error",
+        title: "Export failed",
+        text: message,
+      });
+    } finally {
+      setBackupExporting(false);
+    }
+  };
+
+  const handleCleanupBackups = async () => {
+    const confirmation = await Swal.fire({
+      title: "Delete old backups?",
+      text: `Files older than ${backupCleanupDays} days will be removed while keeping the newest 3 backups.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete old files",
+      confirmButtonColor: "#dc2626",
+    });
+
+    if (!confirmation.isConfirmed) {
+      return;
+    }
+
+    setBackupCleaning(true);
+    setBackupStatus({ type: "", text: "" });
+
+    try {
+      const response = await cleanupDatabaseBackups({
+        days: backupCleanupDays,
+        keep_latest: 3,
+      });
+      const deletedCount = Number(response?.data?.deleted_count || 0);
+      const deletedBytes = formatBytes(response?.data?.deleted_bytes || 0);
+      setBackupStatus({
+        type: "success",
+        text:
+          deletedCount > 0
+            ? `Removed ${deletedCount} old backup file${deletedCount === 1 ? "" : "s"} and freed ${deletedBytes}.`
+            : response?.data?.message || `No backups older than ${backupCleanupDays} days were found.`,
+      });
+      setBackupRefreshKey((value) => value + 1);
+
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "success",
+        title: deletedCount > 0 ? "Cleanup completed" : "Nothing to delete",
+        text:
+          deletedCount > 0
+            ? `Deleted ${deletedCount} backup file${deletedCount === 1 ? "" : "s"}.`
+            : response?.data?.message || `No backups older than ${backupCleanupDays} days were found.`,
+      });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to clean up old backups.";
+      setBackupStatus({ type: "error", text: message });
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "error",
+        title: "Cleanup failed",
+        text: message,
+      });
+    } finally {
+      setBackupCleaning(false);
+    }
+  };
+
+  const handleDeleteBackup = async (filename) => {
+    const confirmation = await Swal.fire({
+      title: "Delete this backup?",
+      text: `${filename} will be removed from backup storage.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete backup",
+      confirmButtonColor: "#dc2626",
+    });
+
+    if (!confirmation.isConfirmed) {
+      return;
+    }
+
+    setBackupDeleting(filename);
+
+    try {
+      const response = await deleteDatabaseBackup(filename);
+      setBackupStatus({
+        type: "success",
+        text: response?.data?.message || `${filename} deleted successfully.`,
+      });
+      setBackupRefreshKey((value) => value + 1);
+
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "success",
+        title: "Backup deleted",
+        text: response?.data?.message || `${filename} was removed from storage.`,
+      });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to delete the selected backup.";
+      setBackupStatus({ type: "error", text: message });
+      void Swal.fire({
+        ...SETTINGS_TOAST,
+        icon: "error",
+        title: "Delete failed",
+        text: message,
+      });
+    } finally {
+      setBackupDeleting("");
+    }
+  };
+
   const cards = [
     {
       key: "security",
@@ -818,9 +1169,14 @@ export default function AdminSettings() {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowBackup(false)} />
           <div className="relative z-10 grid h-full w-full place-items-center p-4">
-            <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <h3 className="text-sm font-semibold text-slate-800">Backup & Data</h3>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">Backup & Data</h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Create full SQL backups, export live tables, and manage stored backup files.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowBackup(false)}
@@ -832,30 +1188,287 @@ export default function AdminSettings() {
                   </svg>
                 </button>
               </div>
-              <div className="space-y-4 p-5">
-                <div className="rounded-lg border border-slate-200 p-4">
-                  <div className="text-sm font-medium text-slate-700">Run Backup</div>
-                  <p className="mt-1 text-xs text-slate-500">Create a full database backup now.</p>
-                  <button
-                    type="button"
-                    className="mt-3 inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
-                    onClick={() => {
-                      try {
-                        console.log("Starting backup...");
-                      } catch (_) {}
-                    }}
-                  >
-                    Start Backup
-                  </button>
-                </div>
-                <div className="rounded-lg border border-slate-200 p-4">
-                  <div className="text-sm font-medium text-slate-700">Export Data</div>
-                  <p className="mt-1 text-xs text-slate-500">Download a CSV/JSON export of selected entities.</p>
-                </div>
-                <div className="rounded-lg border border-slate-200 p-4">
-                  <div className="text-sm font-medium text-slate-700">Import Data</div>
-                  <p className="mt-1 text-xs text-slate-500">Restore from a previous backup or upload records.</p>
-                </div>
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+                <StatusBanner type={backupStatus.type}>{backupStatus.text}</StatusBanner>
+
+                {backupLoading ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    Loading backup and export tools...
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Database</div>
+                        <div className="mt-2 text-lg font-semibold text-slate-800">
+                          {backupSummary.database_name || "Unknown"}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Size: {formatBytes(backupSummary.database_size_bytes)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Tables</div>
+                        <div className="mt-2 text-lg font-semibold text-slate-800">{backupSummary.table_count || 0}</div>
+                        <p className="mt-1 text-xs text-slate-500">Available for per-table export.</p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Approx. Rows</div>
+                        <div className="mt-2 text-lg font-semibold text-slate-800">
+                          {Number(backupSummary.approx_rows || 0).toLocaleString()}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">Based on MySQL table statistics.</p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Backup Storage</div>
+                        <div className="mt-2 text-lg font-semibold text-slate-800">
+                          {formatBytes(backupSummary.backup_storage_bytes)}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {backupSummary.backup_count || 0} stored backup
+                          {Number(backupSummary.backup_count || 0) === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                      <div className="space-y-4">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <h4 className="text-sm font-semibold text-slate-800">Create Full SQL Backup</h4>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                Generates a restorable `.sql` snapshot of the current database and stores it in backup
+                                history.
+                              </p>
+                              <p className="mt-3 text-xs text-slate-500">
+                                Last backup:{" "}
+                                {backupSummary.last_backup_at
+                                  ? `${formatDateTime(backupSummary.last_backup_at)}${backupSummary.last_backup_name ? ` (${backupSummary.last_backup_name})` : ""}`
+                                  : "No backups created yet."}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={handleCreateBackup}
+                              disabled={backupCreating}
+                              className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {backupCreating ? "Creating..." : "Create Backup"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                          <div className="mb-4">
+                            <h4 className="text-sm font-semibold text-slate-800">Export Live Table Data</h4>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Export a single database table in CSV, JSON, or import-ready SQL format.
+                            </p>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto] md:items-end">
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Table
+                              </label>
+                              <select
+                                value={backupExportTable}
+                                onChange={(event) => setBackupExportTable(event.target.value)}
+                                disabled={backupTables.length === 0 || backupExporting}
+                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {backupTables.length === 0 ? <option value="">No tables available</option> : null}
+                                {backupTables.map((table) => (
+                                  <option key={table.name} value={table.name}>
+                                    {table.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Format
+                              </label>
+                              <select
+                                value={backupExportFormat}
+                                onChange={(event) => setBackupExportFormat(event.target.value)}
+                                disabled={backupExporting}
+                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {BACKUP_EXPORT_FORMAT_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={handleExportTable}
+                              disabled={!backupExportTable || backupExporting}
+                              className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {backupExporting ? "Exporting..." : "Export Table"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                          <div className="mb-4">
+                            <h4 className="text-sm font-semibold text-slate-800">Backup Lifecycle</h4>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Remove older backup files to keep storage tidy. The newest 3 backups are always kept.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <div className="min-w-0 flex-1">
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Delete backups older than
+                              </label>
+                              <select
+                                value={backupCleanupDays}
+                                onChange={(event) => setBackupCleanupDays(Number(event.target.value))}
+                                disabled={backupCleaning}
+                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {BACKUP_RETENTION_OPTIONS.map((days) => (
+                                  <option key={days} value={days}>
+                                    {days} days
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={handleCleanupBackups}
+                              disabled={backupCleaning || backupFiles.length === 0}
+                              className="inline-flex items-center justify-center rounded-md border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {backupCleaning ? "Cleaning..." : "Clean Up"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                          <div className="mb-4 flex items-center justify-between gap-3">
+                            <div>
+                              <h4 className="text-sm font-semibold text-slate-800">Recent Backups</h4>
+                              <p className="mt-1 text-xs text-slate-500">
+                                Download or remove stored SQL snapshots.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setBackupRefreshKey((value) => value + 1)}
+                              disabled={backupLoading}
+                              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              Refresh
+                            </button>
+                          </div>
+
+                          {backupFiles.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                              No backup files stored yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {backupFiles.map((backup) => (
+                                <div
+                                  key={backup.name}
+                                  className="rounded-lg border border-slate-200 bg-white px-4 py-3"
+                                >
+                                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-medium text-slate-800">{backup.name}</div>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {formatDateTime(backup.created_at)} • {formatBytes(backup.size_bytes)}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDownloadBackup(backup.name)}
+                                        disabled={backupDownloading === backup.name}
+                                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                      >
+                                        {backupDownloading === backup.name ? "Downloading..." : "Download"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDeleteBackup(backup.name)}
+                                        disabled={backupDeleting === backup.name}
+                                        className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                      >
+                                        {backupDeleting === backup.name ? "Deleting..." : "Delete"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                      <div className="mb-4">
+                        <h4 className="text-sm font-semibold text-slate-800">Table Catalog</h4>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Quick visibility into the tables currently available in the database and their estimated size.
+                        </p>
+                      </div>
+
+                      {backupTables.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                          No tables were detected in the selected database.
+                        </div>
+                      ) : (
+                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          <div className="max-h-[30vh] overflow-auto">
+                            <table className="min-w-full table-fixed text-sm">
+                              <thead className="bg-slate-50 text-slate-600">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-medium">Table</th>
+                                  <th className="w-32 px-3 py-2 text-left font-medium">Engine</th>
+                                  <th className="w-36 px-3 py-2 text-right font-medium">Approx. Rows</th>
+                                  <th className="w-36 px-3 py-2 text-right font-medium">Size</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200">
+                                {backupTables.map((table) => (
+                                  <tr key={table.name}>
+                                    <td className="px-3 py-2 text-slate-800">{table.name}</td>
+                                    <td className="px-3 py-2 text-slate-600">{table.engine || "-"}</td>
+                                    <td className="px-3 py-2 text-right text-slate-700">
+                                      {Number(table.rows || 0).toLocaleString()}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-slate-700">
+                                      {formatBytes(table.size_bytes)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
                 <button
