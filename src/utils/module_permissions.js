@@ -11,6 +11,14 @@ const ROLE_KEY_BY_ID = Object.freeze({
   [ROLE_IDS.CLIENT]: "client",
 });
 
+function humanizePermissionKey(value) {
+  return String(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export const FEATURE_SECTIONS = [
   {
     label: "Core Access",
@@ -210,6 +218,18 @@ export const FEATURE_SECTIONS = [
             defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
           },
           {
+            key: "client-appointments",
+            label: "Client Appointments",
+            description: "Allow the role to open approved client appointments from Task Management.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "task-limit",
+            label: "Task Limit",
+            description: "Allow the role to view and update the active task limit from Task Management.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+          {
             key: "edit-step",
             label: "Edit Step",
             description: "Allow the role to edit task steps.",
@@ -301,11 +321,7 @@ export function getModuleLabelByKey(moduleKey) {
     }
   }
 
-  return normalizedKey
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return humanizePermissionKey(normalizedKey);
 }
 
 export function getFeatureDefinition(featureKey) {
@@ -322,6 +338,24 @@ export function getFeatureDefinition(featureKey) {
   }
 
   return null;
+}
+
+export function getFeatureActionDefinition(featureKey, actionKey) {
+  const feature = getFeatureDefinition(featureKey);
+  if (!feature || !Array.isArray(feature.actions)) {
+    return null;
+  }
+
+  return feature.actions.find((action) => action.key === String(actionKey || "").trim()) || null;
+}
+
+export function getFeatureActionLabel(featureKey, actionKey) {
+  const action = getFeatureActionDefinition(featureKey, actionKey);
+  if (action?.label) {
+    return action.label;
+  }
+
+  return humanizePermissionKey(actionKey);
 }
 
 function createRolePermissions(defaultAccess = {}) {

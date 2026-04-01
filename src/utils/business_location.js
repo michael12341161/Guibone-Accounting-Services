@@ -1,9 +1,117 @@
+import { getPostalCodeByLocation } from "../services/postalService";
 import { repairUtf8Mojibake } from "./text_normalization";
 
+export const PHILIPPINES_MAP_CENTER = [12.8797, 121.774];
+export const PHILIPPINES_DEFAULT_MAP_ZOOM = 6;
 export const DEFAULT_MAP_ZOOM = 16;
+export const MIN_LOCATION_SEARCH_LENGTH = 3;
+
+const NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
+
+function createLocationError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function normalizeText(value) {
+  return repairUtf8Mojibake(value)
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pickFirstValue(...values) {
+  for (const value of values) {
+    const normalized = normalizeText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
+}
+
+function joinParts(parts, separator = ", ") {
+  return parts.map((part) => normalizeText(part)).filter(Boolean).join(separator);
+}
+
+function buildStreetAddress(address) {
+  const houseNumber = pickFirstValue(address?.house_number, address?.housenumber);
+  const streetName = pickFirstValue(
+    address?.road,
+    address?.street,
+    address?.residential,
+    address?.pedestrian,
+    address?.footway,
+    address?.path,
+    address?.place
+  );
+  const building = pickFirstValue(
+    address?.building,
+    address?.house_name,
+    address?.office,
+    address?.commercial,
+    address?.industrial
+  );
+  const street = [houseNumber, streetName].filter(Boolean).join(" ").trim();
+
+  return street || building;
+}
+
+function extractBarangay(address) {
+  return pickFirstValue(
+    address?.barangay,
+    address?.suburb,
+    address?.quarter,
+    address?.village,
+    address?.hamlet,
+    address?.neighbourhood,
+    address?.city_district,
+    address?.district,
+    address?.borough
+  );
+}
+
+function extractCity(address) {
+  return pickFirstValue(
+    address?.city,
+    address?.town,
+    address?.municipality,
+    address?.city_district,
+    address?.county
+  );
+}
+
+function extractProvince(address) {
+  return pickFirstValue(
+    address?.province,
+    address?.state,
+    address?.region,
+    address?.state_district,
+    address?.county
+  );
+}
+
+async function fetchNominatimJson(url, params, options = {}) {
+  const { signal } = options;
+  const response = await fetch(`${url}?${params.toString()}`, {
+    headers: {
+      Accept: "application/json",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw createLocationError("Unable to load location details right now.", "NETWORK");
+  }
+
+  return response.json();
+}
 
 export function formatDisplayValue(value, fallback = "-") {
-  const normalized = repairUtf8Mojibake(value).trim();
+  const normalized = normalizeText(value);
   return normalized || fallback;
 }
 
@@ -15,7 +123,7 @@ export function buildBusinessAddress(business) {
     business?.business_province,
     business?.business_postal_code,
   ]
-    .map((part) => repairUtf8Mojibake(part).trim())
+    .map((part) => normalizeText(part))
     .filter(Boolean)
     .join(", ");
 
@@ -30,40 +138,19 @@ export function buildBusinessAddressDetails(business) {
     ["Postal Code", business?.business_postal_code],
   ]
     .map(([label, value]) => {
-      const normalizedValue = repairUtf8Mojibake(value).trim();
+      const normalizedValue = normalizeText(value);
       return normalizedValue ? `${label}: ${normalizedValue}` : "";
     })
     .filter(Boolean);
 }
 
-function normalizeGeocodePart(value) {
-  return repairUtf8Mojibake(value)
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function dedupeQueries(queries) {
-  const seen = new Set();
-
-  return queries.filter((query) => {
-    const normalized = String(query ?? "").trim().toLowerCase();
-    if (!normalized || seen.has(normalized)) {
-      return false;
-    }
-
-    seen.add(normalized);
-    return true;
-  });
-}
-
 export function buildBusinessSearchQueries(business) {
-  const street = normalizeGeocodePart(business?.business_street_address);
-  const barangay = normalizeGeocodePart(business?.business_barangay);
-  const municipality = normalizeGeocodePart(business?.business_municipality);
-  const province = normalizeGeocodePart(business?.business_province);
-  const postalCode = normalizeGeocodePart(business?.business_postal_code);
-  const fullAddress = normalizeGeocodePart(business?.business_address);
+  const street = normalizeText(business?.business_street_address);
+  const barangay = normalizeText(business?.business_barangay);
+  const municipality = normalizeText(business?.business_municipality);
+  const province = normalizeText(business?.business_province);
+  const postalCode = normalizeText(business?.business_postal_code);
+  const fullAddress = normalizeText(business?.business_address);
 
   const createQuery = (...parts) => {
     const filtered = parts.map((part) => String(part ?? "").trim()).filter(Boolean);
@@ -71,8 +158,10 @@ export function buildBusinessSearchQueries(business) {
   };
 
   const barangayLabel = barangay ? `Barangay ${barangay}` : "";
+  const deduped = [];
+  const seen = new Set();
 
-  return dedupeQueries([
+  [
     createQuery(barangayLabel, municipality, province, postalCode),
     createQuery(barangay, municipality, province, postalCode),
     createQuery(barangayLabel, municipality, province),
@@ -85,52 +174,176 @@ export function buildBusinessSearchQueries(business) {
     createQuery(municipality, province, postalCode),
     createQuery(municipality, province),
     createQuery(province),
-  ]);
+  ].forEach((query) => {
+    const key = query.toLowerCase();
+    if (!query || seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    deduped.push(query);
+  });
+
+  return deduped;
+}
+
+export function buildInteractiveBusinessSearchQuery(address) {
+  return joinParts(
+    [
+      address?.street,
+      address?.barangay,
+      address?.city,
+      address?.province,
+      address?.postalCode,
+      "Philippines",
+    ],
+    ", "
+  );
+}
+
+export function extractBusinessAddressFromNominatim(result) {
+  const address = result?.address || {};
+  const lat = Number(result?.lat);
+  const lng = Number(result?.lon);
+  const countryCode = pickFirstValue(address?.country_code).toLowerCase();
+
+  if (countryCode && countryCode !== "ph") {
+    throw createLocationError("Please choose a location within the Philippines.", "OUT_OF_COUNTRY");
+  }
+
+  const city = extractCity(address);
+  const province = extractProvince(address);
+  const postalCode =
+    pickFirstValue(address?.postcode) || getPostalCodeByLocation({ province, city });
+
+  return {
+    street: buildStreetAddress(address),
+    barangay: extractBarangay(address),
+    city,
+    province,
+    postalCode,
+    displayName: pickFirstValue(result?.display_name),
+    country: "Philippines",
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+  };
+}
+
+export async function searchPhilippineLocation(query, options = {}) {
+  const normalizedQuery = normalizeText(query);
+  if (normalizedQuery.length < MIN_LOCATION_SEARCH_LENGTH) {
+    throw createLocationError(
+      `Type at least ${MIN_LOCATION_SEARCH_LENGTH} characters to search for a location.`,
+      "QUERY_TOO_SHORT"
+    );
+  }
+
+  const suggestions = await searchPhilippineLocationSuggestions(normalizedQuery, {
+    ...options,
+    limit: 1,
+  });
+
+  if (!suggestions.length) {
+    throw createLocationError(
+      "Location not found. Try a more specific street, barangay, city, or province.",
+      "NOT_FOUND"
+    );
+  }
+
+  return suggestions[0];
+}
+
+export async function searchPhilippineLocationSuggestions(query, options = {}) {
+  const normalizedQuery = normalizeText(query);
+  const { limit = 5 } = options;
+
+  if (normalizedQuery.length < MIN_LOCATION_SEARCH_LENGTH) {
+    throw createLocationError(
+      `Type at least ${MIN_LOCATION_SEARCH_LENGTH} characters to search for a location.`,
+      "QUERY_TOO_SHORT"
+    );
+  }
+
+  const params = new URLSearchParams({
+    q: normalizedQuery,
+    format: "json",
+    countrycodes: "ph",
+    limit: String(limit),
+    addressdetails: "1",
+  });
+
+  const rows = await fetchNominatimJson(NOMINATIM_SEARCH_URL, params, options);
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      try {
+        return extractBusinessAddressFromNominatim(row);
+      } catch (_) {
+        return null;
+      }
+    })
+    .filter((location) => Number.isFinite(location?.lat) && Number.isFinite(location?.lng));
+}
+
+export async function reverseGeocodePhilippineLocation({ lat, lng }, options = {}) {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw createLocationError("The selected map location is invalid.", "INVALID_COORDINATES");
+  }
+
+  const params = new URLSearchParams({
+    lat: String(latitude),
+    lon: String(longitude),
+    format: "json",
+    addressdetails: "1",
+  });
+
+  const result = await fetchNominatimJson(NOMINATIM_REVERSE_URL, params, options);
+  if (!result || typeof result !== "object") {
+    throw createLocationError("Unable to determine the address for that map location.", "NOT_FOUND");
+  }
+
+  const location = extractBusinessAddressFromNominatim(result);
+  if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng)) {
+    return {
+      ...location,
+      lat: latitude,
+      lng: longitude,
+    };
+  }
+
+  return location;
 }
 
 export async function geocodeBusinessAddress(queries, options = {}) {
   const candidates = Array.isArray(queries) ? queries : [queries];
-  const normalizedCandidates = candidates.map((query) => String(query ?? "").trim()).filter(Boolean);
-  const { signal } = options;
+  const normalizedCandidates = candidates.map((query) => normalizeText(query)).filter(Boolean);
 
   if (!normalizedCandidates.length) {
-    throw new Error("No business address is available for the map.");
+    throw createLocationError("No business address is available for the map.", "NOT_FOUND");
   }
+
+  let lastNotFoundError = null;
 
   for (const query of normalizedCandidates) {
-    const params = new URLSearchParams({
-      q: query,
-      format: "jsonv2",
-      limit: "1",
-      addressdetails: "1",
-      countrycodes: "ph",
-    });
-
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-      headers: {
-        Accept: "application/json",
-      },
-      signal,
-    });
-
-    if (!response.ok) {
-      throw new Error("Unable to load the map location right now.");
-    }
-
-    const rows = await response.json();
-    const firstMatch = Array.isArray(rows) ? rows[0] : null;
-    const lat = Number(firstMatch?.lat);
-    const lng = Number(firstMatch?.lon);
-
-    if (firstMatch && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+    try {
+      const location = await searchPhilippineLocation(query, options);
       return {
-        lat,
-        lng,
-        label: String(firstMatch?.display_name || query).trim(),
+        lat: location.lat,
+        lng: location.lng,
+        label: location.displayName || query,
         query,
       };
+    } catch (error) {
+      if (error?.code === "NOT_FOUND") {
+        lastNotFoundError = error;
+        continue;
+      }
+
+      throw error;
     }
   }
 
-  throw new Error("We could not find this business on the map yet.");
+  throw lastNotFoundError || createLocationError("We could not find this business on the map yet.", "NOT_FOUND");
 }

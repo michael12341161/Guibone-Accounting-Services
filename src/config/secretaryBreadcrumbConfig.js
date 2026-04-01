@@ -37,6 +37,8 @@ export const secretaryBreadcrumbConfig = {
           label: "Client Appointments",
           path: "/secretary/tasks/client-appointments",
           icon: CalendarCheck,
+          accessKey: "tasks",
+          actionKey: "client-appointments",
         },
       ],
     },

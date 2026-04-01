@@ -64,8 +64,12 @@ function NotFoundPage() {
   );
 }
 
-function withModuleAccess(moduleKey, element) {
-  return <ModuleAccessGate moduleKey={moduleKey}>{element}</ModuleAccessGate>;
+function withModuleAccess(moduleKey, element, actionKey = null) {
+  return (
+    <ModuleAccessGate moduleKey={moduleKey} actionKey={actionKey}>
+      {element}
+    </ModuleAccessGate>
+  );
 }
 
 const publicRoutes = [
@@ -92,7 +96,7 @@ const privateRouteGroups = [
       { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
       { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
       { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
-      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />) },
+      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],
   },
@@ -110,7 +114,7 @@ const privateRouteGroups = [
       { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
       { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
       { path: "tasks", element: withModuleAccess("tasks", <SecretaryTaskManagement />) },
-      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />) },
+      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
       { path: "reports", element: withModuleAccess("reports", <div style={{ padding: 20 }}>Reports page</div>) },
       { path: "work-update", element: withModuleAccess("work-update", <WorkUpdate />) },

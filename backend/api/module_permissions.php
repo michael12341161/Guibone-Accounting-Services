@@ -119,6 +119,8 @@ function module_permissions_definitions(): array
             'client' => false,
             'actions' => [
                 'create-task' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
+                'client-appointments' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'task-limit' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
                 'edit-step' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
                 'remove-step' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
             ],

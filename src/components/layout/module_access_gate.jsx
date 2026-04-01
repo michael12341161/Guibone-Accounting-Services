@@ -9,25 +9,39 @@ import { RouteLoadingPanel } from "./route_loading_panel";
 import { requestModuleAccess } from "../../services/api";
 import { showErrorToast, showSuccessToast } from "../../utils/feedback";
 import {
+  getFeatureActionLabel,
   getModuleLabelByKey,
+  hasFeatureActionAccess,
   hasModuleAccess,
   MODULE_ACCESS_DENIED_MESSAGE,
 } from "../../utils/module_permissions";
 
-export function ModuleAccessGate({ moduleKey, children }) {
+export function ModuleAccessGate({ moduleKey, actionKey = null, children }) {
   const { user, role } = useAuth();
   const { permissions, isLoading, error, refreshPermissions } = useModulePermissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [requesting, setRequesting] = useState(false);
 
-  const moduleLabel = useMemo(() => getModuleLabelByKey(moduleKey), [moduleKey]);
+  const moduleLabel = useMemo(() => {
+    const featureLabel = getModuleLabelByKey(moduleKey);
+    if (!actionKey) {
+      return featureLabel;
+    }
+
+    const actionLabel = getFeatureActionLabel(moduleKey, actionKey);
+    return actionLabel ? `${featureLabel}: ${actionLabel}` : featureLabel;
+  }, [actionKey, moduleKey]);
 
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (hasModuleAccess(user, moduleKey, permissions)) {
+  const hasAccess = actionKey
+    ? hasFeatureActionAccess(user, moduleKey, actionKey, permissions)
+    : hasModuleAccess(user, moduleKey, permissions);
+
+  if (hasAccess) {
     return children;
   }
 

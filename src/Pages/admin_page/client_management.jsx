@@ -3,6 +3,7 @@ import { LogIn, MapPin } from "lucide-react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router-dom";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
+import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
 import BusinessLocationModal from "../../components/business/BusinessLocationModal";
 import { Button, IconButton } from "../../components/UI/buttons";
@@ -97,12 +98,6 @@ function createEmptyAddAddress() {
     postalCode: "",
     country: "Philippines",
   };
-}
-
-function hasAddressSelection(address, postalCode = "") {
-  return [address?.province, address?.city, address?.barangay, postalCode].some(
-    (value) => String(value ?? "").trim() !== ""
-  );
 }
 
 function getStatusPillClass(status) {
@@ -226,7 +221,6 @@ export default function ClientManagement() {
   const [editDocuments, setEditDocuments] = useState([]);
   const [form, setForm] = useState(createEmptyForm);
   const [addAddress, setAddAddress] = useState(createEmptyAddAddress);
-  const [addBusinessAddress, setAddBusinessAddress] = useState(createEmptyAddAddress);
   const [editingClient, setEditingClient] = useState(null);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
@@ -270,40 +264,6 @@ export default function ClientManagement() {
   );
   const addPostalHelperText = addAddress.city
     ? addPostalCode
-      ? "Auto-filled based on the selected province and city."
-      : "Postal code unavailable for the selected city."
-    : "Auto-filled once a province and city are selected.";
-  const {
-    provinceOptions: businessProvinceOptions,
-    cityOptions: businessCityOptions,
-    barangayOptions: businessBarangayOptions,
-    selectedProvince: addBusinessSelectedProvince,
-    selectedCity: addBusinessSelectedCity,
-    selectedBarangay: addBusinessSelectedBarangay,
-    postalCode: addBusinessPostalCode,
-    handleProvinceChange: handleAddBusinessProvinceChange,
-    handleCityChange: handleAddBusinessCityChange,
-    handleBarangayChange: handleAddBusinessBarangayChange,
-    isCityDisabled: isAddBusinessCityDisabled,
-    isBarangayDisabled: isAddBusinessBarangayDisabled,
-  } = useAddress({
-    value: addBusinessAddress,
-    onChange: setAddBusinessAddress,
-  });
-  const addBusinessProvinceName = useMemo(
-    () => addBusinessSelectedProvince?.name || addBusinessSelectedProvince?.province_name || "",
-    [addBusinessSelectedProvince]
-  );
-  const addBusinessMunicipalityName = useMemo(
-    () => addBusinessSelectedCity?.name || addBusinessSelectedCity?.city_name || "",
-    [addBusinessSelectedCity]
-  );
-  const addBusinessBarangayName = useMemo(
-    () => addBusinessSelectedBarangay?.name || addBusinessSelectedBarangay?.brgy_name || "",
-    [addBusinessSelectedBarangay]
-  );
-  const addBusinessPostalHelperText = addBusinessAddress.city
-    ? addBusinessPostalCode
       ? "Auto-filled based on the selected province and city."
       : "Postal code unavailable for the selected city."
     : "Auto-filled once a province and city are selected.";
@@ -481,7 +441,6 @@ export default function ClientManagement() {
   const resetForm = () => {
     setForm(createEmptyForm());
     setAddAddress(createEmptyAddAddress());
-    setAddBusinessAddress(createEmptyAddAddress());
     setDocumentFiles({});
     setEditDocuments([]);
     setEditingClient(null);
@@ -497,7 +456,6 @@ export default function ClientManagement() {
     setAddOpen(false);
     setForm(createEmptyForm());
     setAddAddress(createEmptyAddAddress());
-    setAddBusinessAddress(createEmptyAddAddress());
     setDocumentFiles({});
     setEditDocuments([]);
     setEditingClient(null);
@@ -539,6 +497,20 @@ export default function ClientManagement() {
   const handleBizChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, business: { ...prev.business, [name]: value } }));
+  };
+
+  const handleBusinessAddressChange = (nextAddress) => {
+    setForm((prev) => ({
+      ...prev,
+      business: {
+        ...prev.business,
+        business_street_address: nextAddress.street || "",
+        business_barangay: nextAddress.barangay || "",
+        business_municipality: nextAddress.city || "",
+        business_province: nextAddress.province || "",
+        business_postal_code: nextAddress.postalCode || "",
+      },
+    }));
   };
 
   const handleDocumentFileChange = (documentId, file) => {
@@ -864,7 +836,7 @@ export default function ClientManagement() {
 
     const businessTypeId = normalizeIdValue(form.business?.business_type_id);
     const hasSelectedBusinessType = businessTypes.some((option) => String(option.id) === String(businessTypeId ?? ""));
-    const includesBusinessDetails = hasBusinessDetails(form.business) || hasAddressSelection(addBusinessAddress, addBusinessPostalCode);
+    const includesBusinessDetails = hasBusinessDetails(form.business);
     if (includesBusinessDetails && !hasSelectedBusinessType) {
       setError("Select a valid type of business.");
       return;
@@ -878,10 +850,6 @@ export default function ClientManagement() {
           municipality: addMunicipalityName,
           postalCode: addPostalCode,
           barangay: addBarangayName,
-          businessProvince: addBusinessProvinceName,
-          businessMunicipality: addBusinessMunicipalityName,
-          businessPostalCode: addBusinessPostalCode,
-          businessBarangay: addBusinessBarangayName,
           includeBusinessDetails: includesBusinessDetails,
         }),
         registration_source: "admin",
@@ -1531,58 +1499,17 @@ export default function ClientManagement() {
                 <input type="text" name="contact_number" value={form.business.contact_number} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30" />
               </div>
               <div className="sm:col-span-2">
-                <div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-800">Business Address Details</h4>
-                    <p className="mt-1 text-xs text-slate-500">Select from the dropdowns to prevent typing errors.</p>
-                  </div>
-                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="sm:col-span-2">
-                      <label className="mb-2 block text-sm font-medium text-slate-700">Business Street Address / House No.</label>
-                      <input
-                        type="text"
-                        name="business_street_address"
-                        value={form.business.business_street_address}
-                        onChange={handleBizChange}
-                        placeholder="House no., street, subdivision"
-                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
-                      />
-                    </div>
-                    <AddressFields
-                      provinceValue={addBusinessAddress.province}
-                      cityValue={addBusinessAddress.city}
-                      barangayValue={addBusinessAddress.barangay}
-                      provinces={businessProvinceOptions}
-                      cities={businessCityOptions}
-                      barangays={businessBarangayOptions}
-                      onProvinceChange={handleAddBusinessProvinceChange}
-                      onCityChange={handleAddBusinessCityChange}
-                      onBarangayChange={handleAddBusinessBarangayChange}
-                      cityDisabled={isAddBusinessCityDisabled}
-                      barangayDisabled={isAddBusinessBarangayDisabled}
-                    />
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700">Postal Code / ZIP Code</label>
-                      <input
-                        type="text"
-                        value={addBusinessPostalCode}
-                        readOnly
-                        className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 shadow-sm outline-none"
-                      />
-                      <p className="mt-2 text-xs text-slate-500">{addBusinessPostalHelperText}</p>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="mb-2 block text-sm font-medium text-slate-700">Country</label>
-                      <input
-                        type="text"
-                        value={addBusinessAddress.country}
-                        readOnly
-                        className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 shadow-sm outline-none"
-                      />
-                      <p className="mt-2 text-xs text-slate-500">Currently limited to Philippine addresses.</p>
-                    </div>
-                  </div>
-                </div>
+                <BusinessAddressMapSelector
+                  value={{
+                    street: form.business.business_street_address,
+                    barangay: form.business.business_barangay,
+                    city: form.business.business_municipality,
+                    province: form.business.business_province,
+                    postalCode: form.business.business_postal_code,
+                    country: "Philippines",
+                  }}
+                  onChange={handleBusinessAddressChange}
+                />
               </div>
             </div>
           </div>
@@ -1750,24 +1677,17 @@ export default function ClientManagement() {
                 <input type="text" name="contact_number" value={form.business.contact_number} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" />
               </div>
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business Street Address</label>
-                <input type="text" name="business_street_address" value={form.business.business_street_address} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business Barangay</label>
-                <input type="text" name="business_barangay" value={form.business.business_barangay} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business Municipality / City</label>
-                <input type="text" name="business_municipality" value={form.business.business_municipality} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business Province</label>
-                <input type="text" name="business_province" value={form.business.business_province} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business Postal Code</label>
-                <input type="text" name="business_postal_code" value={form.business.business_postal_code} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" />
+                <BusinessAddressMapSelector
+                  value={{
+                    street: form.business.business_street_address,
+                    barangay: form.business.business_barangay,
+                    city: form.business.business_municipality,
+                    province: form.business.business_province,
+                    postalCode: form.business.business_postal_code,
+                    country: "Philippines",
+                  }}
+                  onChange={handleBusinessAddressChange}
+                />
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { appLogo } from "../../assets/branding";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
+import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
 import InputField from "../../components/UI/InputField";
 import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
@@ -365,57 +366,6 @@ export default function SignUpPage() {
       ? "Auto-filled based on your selected province and city."
       : "Postal code unavailable for the selected city."
     : "Auto-filled once a province and city are selected.";
-  const {
-    provinceOptions: businessProvinceOptions,
-    cityOptions: businessCityOptions,
-    barangayOptions: businessBarangayOptions,
-    selectedProvince: selectedBusinessProvince,
-    selectedCity: selectedBusinessCity,
-    selectedBarangay: selectedBusinessBarangay,
-    postalCode: businessPostalCode,
-    handleProvinceChange: handleBusinessProvinceChange,
-    handleCityChange: handleBusinessCityChange,
-    handleBarangayChange: handleBusinessBarangayChange,
-    isCityDisabled: isBusinessCityDisabled,
-    isBarangayDisabled: isBusinessBarangayDisabled,
-  } = useAddress({
-    value: {
-      province: form.business.business_province,
-      city: form.business.business_city,
-      barangay: form.business.business_barangay,
-      postalCode: form.business.business_postal_code,
-      country: form.business.business_country,
-    },
-    onChange: (nextAddress) =>
-      setForm((prev) => ({
-        ...prev,
-        business: {
-          ...prev.business,
-          business_province: nextAddress.province,
-          business_city: nextAddress.city,
-          business_barangay: nextAddress.barangay,
-          business_postal_code: nextAddress.postalCode,
-          business_country: nextAddress.country || prev.business.business_country || "Philippines",
-        },
-      })),
-  });
-  const businessProvinceName = useMemo(
-    () => selectedBusinessProvince?.name || selectedBusinessProvince?.province_name || "",
-    [selectedBusinessProvince]
-  );
-  const businessMunicipalityName = useMemo(
-    () => selectedBusinessCity?.name || selectedBusinessCity?.city_name || "",
-    [selectedBusinessCity]
-  );
-  const businessBarangayName = useMemo(
-    () => selectedBusinessBarangay?.name || selectedBusinessBarangay?.brgy_name || "",
-    [selectedBusinessBarangay]
-  );
-  const businessPostalHelperText = form.business.business_city
-    ? businessPostalCode
-      ? "Auto-filled based on your selected province and city."
-      : "Postal code unavailable for the selected city."
-    : "Auto-filled once a province and city are selected.";
 
   useEffect(() => {
     let active = true;
@@ -500,6 +450,21 @@ export default function SignUpPage() {
       business: {
         ...prev.business,
         [name]: value,
+      },
+    }));
+  };
+
+  const handleBusinessLocationChange = (nextAddress) => {
+    setForm((prev) => ({
+      ...prev,
+      business: {
+        ...prev.business,
+        business_address: nextAddress.street || "",
+        business_barangay: nextAddress.barangay || "",
+        business_city: nextAddress.city || "",
+        business_province: nextAddress.province || "",
+        business_postal_code: nextAddress.postalCode || "",
+        business_country: nextAddress.country || prev.business.business_country || "Philippines",
       },
     }));
   };
@@ -748,10 +713,10 @@ export default function SignUpPage() {
         barangay: barangayName,
         postalCode,
       }, {
-        province: businessProvinceName,
-        municipality: businessMunicipalityName,
-        barangay: businessBarangayName,
-        postalCode: businessPostalCode,
+        province: form.business.business_province,
+        municipality: form.business.business_city,
+        barangay: form.business.business_barangay,
+        postalCode: form.business.business_postal_code,
       });
       const res = await api.post("client_create.php", payload);
 
@@ -1082,54 +1047,17 @@ export default function SignUpPage() {
                     placeholder="+63 900 000 0000"
                   />
                   <div className="md:col-span-2 space-y-4">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-800">Business Address Details</h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Select from the dropdowns to prevent typing errors.
-                      </p>
-                    </div>
-                    <div className="grid gap-5 md:grid-cols-2">
-                      <InputField
-                        label="Business Street Address / House No."
-                        name="business_address"
-                        value={form.business.business_address}
-                        onChange={handleBusinessChange}
-                        placeholder="House no., street, subdivision"
-                        autoComplete="address-line1"
-                        containerClassName="md:col-span-2"
-                      />
-                      <AddressFields
-                        provinceValue={form.business.business_province}
-                        cityValue={form.business.business_city}
-                        barangayValue={form.business.business_barangay}
-                        provinces={businessProvinceOptions}
-                        cities={businessCityOptions}
-                        barangays={businessBarangayOptions}
-                        onProvinceChange={handleBusinessProvinceChange}
-                        onCityChange={handleBusinessCityChange}
-                        onBarangayChange={handleBusinessBarangayChange}
-                        cityDisabled={isBusinessCityDisabled}
-                        barangayDisabled={isBusinessBarangayDisabled}
-                      />
-                      <InputField
-                        label="Postal Code / ZIP Code"
-                        name="business_postal_code"
-                        value={businessPostalCode || form.business.business_postal_code}
-                        readOnly
-                        helperText={businessPostalHelperText}
-                        autoComplete="postal-code"
-                        containerClassName="md:col-span-1"
-                      />
-                      <InputField
-                        label="Country"
-                        name="business_country"
-                        value={form.business.business_country}
-                        readOnly
-                        helperText="Currently limited to Philippine addresses."
-                        autoComplete="country-name"
-                        containerClassName="md:col-span-2"
-                      />
-                    </div>
+                    <BusinessAddressMapSelector
+                      value={{
+                        street: form.business.business_address,
+                        barangay: form.business.business_barangay,
+                        city: form.business.business_city,
+                        province: form.business.business_province,
+                        postalCode: form.business.business_postal_code,
+                        country: form.business.business_country,
+                      }}
+                      onChange={handleBusinessLocationChange}
+                    />
                   </div>
                 </div>
               </SectionPanel>

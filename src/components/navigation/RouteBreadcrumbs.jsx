@@ -1,5 +1,8 @@
 import React, { useMemo } from "react";
 import { Link, matchPath, useLocation } from "react-router-dom";
+import { useAuth } from "../../hooks/useAuth";
+import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
 import { useRouteLoading } from "../layout/route_loading_context";
 import { normalizePath } from "../layout/layout_utils";
 
@@ -29,6 +32,8 @@ function normalizeTrailEntry(entry, context) {
     label,
     path: normalizePath(path),
     icon: entry.icon || null,
+    accessKey: entry.accessKey || null,
+    actionKey: entry.actionKey || null,
   };
 }
 
@@ -100,7 +105,7 @@ function resolveBreadcrumbMeta(pathname, segment, config) {
   );
 }
 
-export function buildBreadcrumbItems(pathname, config = {}) {
+export function buildBreadcrumbItems(pathname, config = {}, canAccessTrailItem = () => true) {
   const normalizedPath = normalizePath(pathname || "/");
   const basePath = normalizePath(config.basePath || "/");
   const hiddenPaths = Array.isArray(config.hiddenPaths)
@@ -138,6 +143,10 @@ export function buildBreadcrumbItems(pathname, config = {}) {
 
     if (index === segments.length - 1 && Array.isArray(meta?.trailingItems)) {
       meta.trailingItems.forEach((trailItem) => {
+        if (!canAccessTrailItem(trailItem)) {
+          return;
+        }
+
         items.push({
           path: trailItem.path,
           label: trailItem.label,
@@ -153,10 +162,23 @@ export function buildBreadcrumbItems(pathname, config = {}) {
 
 export default function RouteBreadcrumbs({ config, className }) {
   const location = useLocation();
+  const { user } = useAuth();
+  const { permissions } = useModulePermissions();
   const { routeLoading, startRouteLoading } = useRouteLoading();
   const items = useMemo(
-    () => buildBreadcrumbItems(location.pathname, config),
-    [config, location.pathname]
+    () =>
+      buildBreadcrumbItems(location.pathname, config, (trailItem) => {
+        if (!trailItem?.accessKey || !user) {
+          return true;
+        }
+
+        if (trailItem.actionKey) {
+          return hasFeatureActionAccess(user, trailItem.accessKey, trailItem.actionKey, permissions);
+        }
+
+        return hasModuleAccess(user, trailItem.accessKey, permissions);
+      }),
+    [config, location.pathname, permissions, user]
   );
 
   if (items.length === 0) {

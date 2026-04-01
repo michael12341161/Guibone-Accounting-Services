@@ -1,12 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { LoaderCircle, MapPin } from "lucide-react";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { appLogo } from "../../assets/branding";
 import DarkModeToggle from "../../components/darkmode/DarkModeToggle";
 import Footer from "../../components/footer/footer";
 import { getHomePathForRole, readStoredLoginState } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
+import { DEFAULT_MAP_ZOOM, geocodeBusinessAddress } from "../../utils/business_location";
 import { getUserRole } from "../../utils/helpers";
 
 const sectionLinks = [
@@ -18,6 +26,27 @@ const sectionLinks = [
 
 const getSectionIdFromHref = (href) => href.replace("#", "");
 const sectionIds = sectionLinks.map((item) => getSectionIdFromHref(item.href));
+
+const OFFICE_NAME = "Guibone Accounting Services";
+const OFFICE_ADDRESS = "Tiano Brothers Street, Barangay 8, Poblacion, Cagayan de Oro, Northern Mindanao, 9000, Philippines";
+const OFFICE_ADDRESS_DESCRIPTION = "Visit the office for in-person consultations, document submission, and client assistance.";
+const OFFICE_HOURS = "Mon-Fri, 8:00 AM - 5:00 PM";
+const OFFICE_MAP_QUERIES = [
+  OFFICE_ADDRESS,
+  "Tiano Brothers Street, Barangay 8, Cagayan de Oro, 9000, Philippines",
+  "Barangay 8, Poblacion, Cagayan de Oro, 9000, Philippines",
+];
+const OFFICE_MAP_SEARCH_URL = `https://www.openstreetmap.org/search?query=${encodeURIComponent(OFFICE_ADDRESS)}`;
+
+const LANDING_MARKER_ICON = L.icon({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 const serviceItems = [
   {
@@ -76,7 +105,7 @@ const contactItems = [
   },
   {
     label: "Address",
-    value: "Mabini–Tiano St., Brgy. 14, Cagayan de Oro City, Misamis Oriental 9000, Philippines",
+    value: OFFICE_ADDRESS,
     description: "Visit for in-person consultations, document submission, and assistance.",
   },
 ];
@@ -102,14 +131,15 @@ function NavLink({ href, children, active, onClick, isDarkMode }) {
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cx(
-        "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold transition-all duration-300",
+        "relative inline-flex h-10 items-center justify-center px-1 text-sm font-semibold transition-colors duration-300",
+        "after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:rounded-full after:transition-transform after:duration-300",
         active
           ? isDarkMode
-            ? "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/25"
-            : "bg-emerald-100 text-emerald-800"
+            ? "text-emerald-200 after:scale-x-100 after:bg-emerald-300"
+            : "text-emerald-800 after:scale-x-100 after:bg-emerald-600"
           : isDarkMode
-            ? "text-slate-200/90 hover:bg-white/5 hover:text-white hover:scale-105"
-            : "text-slate-700 hover:bg-slate-100 hover:text-emerald-600 hover:scale-[1.03]"
+            ? "text-slate-200/90 after:bg-emerald-300 hover:text-white hover:after:scale-x-100"
+            : "text-slate-700 after:bg-emerald-600 hover:text-emerald-700 hover:after:scale-x-100"
       )}
     >
       {children}
@@ -356,6 +386,149 @@ function ContactInfoItem({ label, value, description, href, isDarkMode }) {
   );
 }
 
+function OfficeMapCard({ isDarkMode }) {
+  const [mapLocation, setMapLocation] = useState(null);
+  const [mapLoading, setMapLoading] = useState(true);
+  const [mapError, setMapError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    setMapLoading(true);
+    setMapError("");
+
+    geocodeBusinessAddress(OFFICE_MAP_QUERIES, { signal: controller.signal })
+      .then((nextLocation) => {
+        if (!active) {
+          return;
+        }
+
+        setMapLocation(nextLocation);
+      })
+      .catch((error) => {
+        if (!active || controller.signal.aborted) {
+          return;
+        }
+
+        setMapLocation(null);
+        setMapError(error?.message || "Unable to load the office map right now.");
+      })
+      .finally(() => {
+        if (!active) {
+          return;
+        }
+
+        setMapLoading(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  const openStreetMapHref = mapLocation
+    ? `https://www.openstreetmap.org/?mlat=${mapLocation.lat}&mlon=${mapLocation.lng}#map=${DEFAULT_MAP_ZOOM}/${mapLocation.lat}/${mapLocation.lng}`
+    : OFFICE_MAP_SEARCH_URL;
+
+  return (
+    <div
+      className={cx(
+        "mt-8 rounded-[2rem] border p-5 sm:p-6",
+        isDarkMode ? "border-slate-800 bg-slate-950/35" : "border-slate-200 bg-white"
+      )}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+            Office location
+          </p>
+          <p className={cx("mt-3 text-xl font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+            {OFFICE_ADDRESS}
+          </p>
+          <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+            {OFFICE_ADDRESS_DESCRIPTION}
+          </p>
+        </div>
+
+        <a
+          href={openStreetMapHref}
+          target="_blank"
+          rel="noreferrer"
+          className={cx(
+            "inline-flex shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition",
+            isDarkMode
+              ? "border-slate-700 bg-slate-950/50 text-slate-100 hover:border-emerald-400 hover:text-emerald-200"
+              : "border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:text-emerald-700"
+          )}
+        >
+          <MapPin className="h-4 w-4" strokeWidth={1.8} />
+          Open map
+        </a>
+      </div>
+
+      <div
+        className={cx(
+          "mt-5 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium",
+          isDarkMode ? "border-white/10 bg-white/5 text-slate-200" : "border-slate-200 bg-slate-50 text-slate-600"
+        )}
+      >
+        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        <span>{OFFICE_HOURS}</span>
+      </div>
+
+      {mapLoading ? (
+        <div
+          className={cx(
+            "mt-5 flex items-center gap-2 rounded-3xl border px-4 py-4 text-sm",
+            isDarkMode ? "border-slate-800 bg-slate-950/50 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"
+          )}
+        >
+          <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} />
+          <span>Loading the office map...</span>
+        </div>
+      ) : mapError ? (
+        <div
+          className={cx(
+            "mt-5 rounded-3xl border px-4 py-4 text-sm",
+            isDarkMode ? "border-rose-500/30 bg-rose-500/10 text-rose-200" : "border-rose-200 bg-rose-50 text-rose-700"
+          )}
+        >
+          {mapError}
+        </div>
+      ) : mapLocation ? (
+        <div className="mt-5 space-y-3">
+          <div className="overflow-hidden rounded-[1.75rem] border border-slate-200">
+            <MapContainer
+              center={[mapLocation.lat, mapLocation.lng]}
+              zoom={DEFAULT_MAP_ZOOM}
+              scrollWheelZoom={false}
+              className="h-[18rem] w-full"
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <Marker position={[mapLocation.lat, mapLocation.lng]} icon={LANDING_MARKER_ICON}>
+                <Popup>
+                  <div className="max-w-[16rem] text-sm">
+                    <div className="font-semibold text-slate-900">{OFFICE_NAME}</div>
+                    <div className="mt-1 text-xs text-slate-600">{mapLocation.label}</div>
+                  </div>
+                </Popup>
+              </Marker>
+            </MapContainer>
+          </div>
+          <p className={cx("text-xs", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+            Map preview based on the office address above.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState(sectionIds[0]);
@@ -491,7 +664,7 @@ export default function LandingPage() {
               <div className={cx("h-8 w-px", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
 
               <div className="flex items-center gap-3">
-                <DarkModeToggle className="min-w-[10.5rem]" />
+                <DarkModeToggle />
                 <Link
                   to="/login"
                   onClick={handleAuthLinkClick}
@@ -742,6 +915,7 @@ export default function LandingPage() {
                         <li className={cx("rounded-2xl border px-4 py-3", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Role-based access</li>
                       </ul>
                     </div>
+
                   </div>
                 </div>
               </div>
@@ -965,11 +1139,11 @@ export default function LandingPage() {
                   Choose the best way to reach us.
                 </p>
                 <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
-                  Use these direct contact details for account support, scheduling updates, and office visits.
+                  Use these direct contact details for account support, scheduling updates, and office visits, then use the map below to find the office.
                 </p>
 
                 <div className="mt-6 grid gap-4">
-                  {contactItems.map((item) => (
+                  {contactItems.filter((item) => item.label !== "Address").map((item) => (
                     <ContactInfoItem
                       key={item.label}
                       label={item.label}
@@ -981,7 +1155,9 @@ export default function LandingPage() {
                   ))}
                 </div>
 
-                <div className={cx("mt-8 rounded-3xl border p-5", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white")}>
+                <OfficeMapCard isDarkMode={isDarkMode} />
+
+                <div className={cx("hidden rounded-3xl border p-5", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white")}>
                   <p className={cx("text-sm font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>Office hours</p>
                   <p className={cx("mt-2 text-sm", isDarkMode ? "text-slate-300" : "text-slate-600")}>Mon–Fri, 8:00 AM – 5:00 PM</p>
                 </div>

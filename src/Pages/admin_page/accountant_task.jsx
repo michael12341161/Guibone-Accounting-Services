@@ -939,9 +939,6 @@ export default function AdminAccountantTaskManagement() {
   useErrorToast(error);
   const [success, setSuccess] = useState("");
   const workloadLimit = normalizeTaskWorkloadLimit(taskWorkloadSettings?.limit, DEFAULT_TASK_WORKLOAD_SETTINGS.limit);
-  const canManageTaskWorkloadLimit =
-    Number(user?.role_id || user?.roleId || 0) === 1 ||
-    String(user?.role || user?.role_name || "").trim().toLowerCase() === "admin";
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);
   }, [clients]);
@@ -951,8 +948,17 @@ export default function AdminAccountantTaskManagement() {
     );
   }, [accountants, form.service_name, form.title]);
   const canCreateTask = hasFeatureActionAccess(user, "tasks", "create-task", permissions);
+  const canOpenClientAppointments = hasFeatureActionAccess(user, "tasks", "client-appointments", permissions);
+  const canViewTaskLimit = hasFeatureActionAccess(user, "tasks", "task-limit", permissions);
   const canEditStep = hasFeatureActionAccess(user, "tasks", "edit-step", permissions);
   const canRemoveStep = hasFeatureActionAccess(user, "tasks", "remove-step", permissions);
+  const createTaskDescription = canOpenClientAppointments
+    ? "Use Select Client (F2F) for walk-in tasks, or open Client Appointments to load an approved appointment here before assigning an accountant or secretary."
+    : "Use Select Client (F2F) for walk-in tasks, then assign an accountant or secretary here.";
+  const canManageTaskWorkloadLimit =
+    canViewTaskLimit &&
+    (Number(user?.role_id || user?.roleId || 0) === 1 ||
+      String(user?.role || user?.role_name || "").trim().toLowerCase() === "admin");
   const selectedServiceDuration = useMemo(
     () => getEstimatedServiceDuration(form.service_name || form.title),
     [form.service_name, form.title]
@@ -1788,9 +1794,7 @@ export default function AdminAccountantTaskManagement() {
       <Card compact>
         <CardHeader>
           <CardTitle>Create Task</CardTitle>
-          <CardDescription>
-            Use Select Client (F2F) for walk-in tasks, or open Client Appointments to load an approved appointment here before assigning an accountant or secretary.
-          </CardDescription>
+          <CardDescription>{createTaskDescription}</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-5">
@@ -1903,21 +1907,23 @@ export default function AdminAccountantTaskManagement() {
                     <span>{selectedBundle ? "Change Bundle" : "Bundle Tasks"}</span>
                   </Button>
 
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setStaffWorkloadOpen(true)}
-                    className="w-full justify-center gap-2"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0-3-3.87" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    <span>Staff Workload</span>
-                  </Button>
+                  {canViewTaskLimit ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setStaffWorkloadOpen(true)}
+                      className="w-full justify-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0-3-3.87" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                      <span>Staff Workload</span>
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
@@ -2704,147 +2710,149 @@ export default function AdminAccountantTaskManagement() {
         </div>
       </Modal>
 
-      <Modal
-        open={staffWorkloadOpen}
-        onClose={closeStaffWorkload}
-        title="Staff Workload"
-        description="View the total tasks assigned to each accountant and secretary."
-        size="lg"
-        footer={
-          <Button type="button" variant="secondary" onClick={closeStaffWorkload}>
-            Close
-          </Button>
-        }
-      >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-              Staff: {staffWorkloadRows.length}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-              Active tasks: {totalActiveTasksInWorkload}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-              Limit: {workloadLimit}
-            </span>
-          </div>
+      {canViewTaskLimit ? (
+        <Modal
+          open={staffWorkloadOpen}
+          onClose={closeStaffWorkload}
+          title="Staff Workload"
+          description="View the total tasks assigned to each accountant and secretary."
+          size="lg"
+          footer={
+            <Button type="button" variant="secondary" onClick={closeStaffWorkload}>
+              Close
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                Staff: {staffWorkloadRows.length}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+                Active tasks: {totalActiveTasksInWorkload}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                Limit: {workloadLimit}
+              </span>
+            </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-slate-800">Active workload limit</div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Staff are marked once they reach or go over this limit. Secretaries receive a notice when they assign past it.
-                </p>
-              </div>
-              {canManageTaskWorkloadLimit ? (
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
-                  <label className="block">
-                    <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                      Task limit
-                    </span>
-                    <input
-                      type="number"
-                      min={MIN_TASK_WORKLOAD_LIMIT}
-                      max={MAX_TASK_WORKLOAD_LIMIT}
-                      step={1}
-                      value={workloadLimitInput}
-                      onChange={(event) => setWorkloadLimitInput(event.target.value.replace(/[^\d]/g, ""))}
-                      disabled={taskWorkloadLoading || taskWorkloadSaving}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-28"
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    onClick={handleSaveTaskWorkloadLimit}
-                    disabled={
-                      taskWorkloadLoading ||
-                      taskWorkloadSaving ||
-                      String(workloadLimitInput || "").trim() === "" ||
-                      Number.parseInt(workloadLimitInput || "0", 10) === workloadLimit
-                    }
-                  >
-                    {taskWorkloadSaving ? "Saving..." : "Save Limit"}
-                  </Button>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">Active workload limit</div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Staff are marked once they reach or go over this limit. Secretaries receive a notice when they assign past it.
+                  </p>
                 </div>
-              ) : (
-                <div className="text-xs text-slate-500">Only admins can change this limit.</div>
-              )}
+                {canManageTaskWorkloadLimit ? (
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+                    <label className="block">
+                      <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                        Task limit
+                      </span>
+                      <input
+                        type="number"
+                        min={MIN_TASK_WORKLOAD_LIMIT}
+                        max={MAX_TASK_WORKLOAD_LIMIT}
+                        step={1}
+                        value={workloadLimitInput}
+                        onChange={(event) => setWorkloadLimitInput(event.target.value.replace(/[^\d]/g, ""))}
+                        disabled={taskWorkloadLoading || taskWorkloadSaving}
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-28"
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      onClick={handleSaveTaskWorkloadLimit}
+                      disabled={
+                        taskWorkloadLoading ||
+                        taskWorkloadSaving ||
+                        String(workloadLimitInput || "").trim() === "" ||
+                        Number.parseInt(workloadLimitInput || "0", 10) === workloadLimit
+                      }
+                    >
+                      {taskWorkloadSaving ? "Saving..." : "Save Limit"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500">Only admins can change this limit.</div>
+                )}
+              </div>
             </div>
+
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={staffWorkloadSearch}
+                onChange={(e) => setStaffWorkloadSearch(e.target.value)}
+                placeholder="Search by staff name or role..."
+                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+
+            {staffWorkloadRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                No accountant or secretary records found.
+              </div>
+            ) : filteredStaffWorkloadRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                No staff workload records match your search.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3 text-right">Active Tasks</th>
+                      <th className="px-4 py-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredStaffWorkloadRows.map((staff) => {
+                      const workloadLevel = getTaskWorkloadLevel(staff.totalTasks, workloadLimit);
+                      const workloadStatusLabel =
+                        workloadLevel === "over" ? "Over limit" : workloadLevel === "at" ? "At limit" : "Available";
+                      const workloadStatusClass =
+                        workloadLevel === "over"
+                          ? "border-rose-200 bg-rose-50 text-rose-700"
+                          : workloadLevel === "at"
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+                      return (
+                        <tr key={staff.id} className="hover:bg-slate-50/80">
+                          <td className="px-4 py-3 font-medium text-slate-800">{staff.name}</td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                              {staff.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                            {staff.totalTasks} / {workloadLimit}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${workloadStatusClass}`}>
+                              {workloadStatusLabel}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="7"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            </span>
-            <input
-              type="text"
-              value={staffWorkloadSearch}
-              onChange={(e) => setStaffWorkloadSearch(e.target.value)}
-              placeholder="Search by staff name or role..."
-              className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
-            />
-          </div>
-
-          {staffWorkloadRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-              No accountant or secretary records found.
-            </div>
-          ) : filteredStaffWorkloadRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-              No staff workload records match your search.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3 text-right">Active Tasks</th>
-                    <th className="px-4 py-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredStaffWorkloadRows.map((staff) => {
-                    const workloadLevel = getTaskWorkloadLevel(staff.totalTasks, workloadLimit);
-                    const workloadStatusLabel =
-                      workloadLevel === "over" ? "Over limit" : workloadLevel === "at" ? "At limit" : "Available";
-                    const workloadStatusClass =
-                      workloadLevel === "over"
-                        ? "border-rose-200 bg-rose-50 text-rose-700"
-                        : workloadLevel === "at"
-                        ? "border-amber-200 bg-amber-50 text-amber-700"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700";
-
-                    return (
-                      <tr key={staff.id} className="hover:bg-slate-50/80">
-                        <td className="px-4 py-3 font-medium text-slate-800">{staff.name}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                            {staff.role}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                          {staff.totalTasks} / {workloadLimit}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${workloadStatusClass}`}>
-                            {workloadStatusLabel}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </Modal>
+        </Modal>
+      ) : null}
 
       {/* Step Edit Floating Card */}
       <Modal

@@ -41,6 +41,8 @@ export const adminBreadcrumbConfig = {
           label: "Client Appointments",
           path: "/admin/tasks/client-appointments",
           icon: CalendarCheck,
+          accessKey: "tasks",
+          actionKey: "client-appointments",
         },
       ],
     },
