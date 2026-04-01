@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { cn } from "../../lib/utils";
 
 function resolveValue(row, key) {
@@ -20,7 +20,7 @@ function getHeaderTextAlign(align) {
   return "text-left";
 }
 
-export function DataTable({
+function DataTableComponent({
   columns = [],
   rows = [],
   keyField = "id",
@@ -147,3 +147,7 @@ export function DataTable({
     </div>
   );
 }
+
+export const DataTable = memo(DataTableComponent);
+
+DataTable.displayName = "DataTable";

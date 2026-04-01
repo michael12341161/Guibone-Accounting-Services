@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogIn, MapPin } from "lucide-react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router-dom";
@@ -100,6 +100,17 @@ function createEmptyAddressSelection() {
     province: "",
     city: "",
     barangay: "",
+    postalCode: "",
+    country: "Philippines",
+  };
+}
+
+function createEmptyBusinessAddress() {
+  return {
+    street: "",
+    barangay: "",
+    city: "",
+    province: "",
     postalCode: "",
     country: "Philippines",
   };
@@ -212,6 +223,405 @@ function buildBusinessTypeOptions(businessTypes, clients) {
   return ["All", ...ordered, ...extras.sort((a, b) => a.localeCompare(b))];
 }
 
+function buildClientPayload(values, businessTypes, overrides = {}) {
+  const businessTypeId = normalizeIdValue(values?.business?.business_type_id);
+  const civilStatusTypeId = normalizeIdValue(values?.civil_status_type_id);
+  const selectedBusinessType = businessTypes.find((option) => String(option.id) === String(businessTypeId ?? ""));
+  const includesBusinessDetails = overrides.includeBusinessDetails ?? hasBusinessDetails(values?.business);
+  const resolveTextValue = (override, fallback) =>
+    String(override == null || override === "" ? fallback ?? "" : override).trim();
+  const province = resolveTextValue(overrides.province, values?.province);
+  const municipality = resolveTextValue(overrides.municipality, values?.municipality);
+  const resolvedPostalCode = resolveTextValue(overrides.postalCode, values?.postal_code);
+  const barangay = resolveTextValue(overrides.barangay, values?.barangay);
+  const businessProvince = resolveTextValue(overrides.businessProvince, values?.business?.business_province);
+  const businessMunicipality = resolveTextValue(overrides.businessMunicipality, values?.business?.business_municipality);
+  const resolvedBusinessPostalCode = resolveTextValue(overrides.businessPostalCode, values?.business?.business_postal_code);
+  const businessBarangay = resolveTextValue(overrides.businessBarangay, values?.business?.business_barangay);
+
+  return {
+    first_name: normalizePersonName(values?.first_name),
+    middle_name: normalizeMiddleNameOrNull(values?.middle_name),
+    last_name: normalizePersonName(values?.last_name),
+    email: values?.email || null,
+    phone: values?.phone || null,
+    date_of_birth: values?.date_of_birth || null,
+    civil_status_type_id: civilStatusTypeId,
+    province: province || null,
+    municipality: municipality || null,
+    postal_code: resolvedPostalCode || null,
+    barangay: barangay || null,
+    street_address: values?.street_address || null,
+    tin_no: values?.tin_no || null,
+    status_id: normalizeIdValue(values?.status_id) || 1,
+    user_password: values?.user_password || null,
+    business_details:
+      includesBusinessDetails
+        ? {
+            trade_name: values?.business?.trade_name || values?.business?.business_name || "",
+            business_type_id: businessTypeId,
+            type_of_business: selectedBusinessType?.name || "",
+            street_address: values?.business?.business_street_address || "",
+            barangay: businessBarangay || null,
+            municipality: businessMunicipality || null,
+            province: businessProvince || null,
+            postal_code: resolvedBusinessPostalCode || null,
+            email_address: values?.business?.email_address || null,
+            tin_number: values?.business?.tin_number || null,
+            contact_number: values?.business?.contact_number || null,
+          }
+        : undefined,
+  };
+}
+
+function AddClientModal({
+  open,
+  onClose,
+  onSubmit,
+  loading,
+  error,
+  canUploadRequiredDocuments,
+  documentTypes,
+  businessTypes,
+  civilStatusTypes,
+  securitySettings,
+}) {
+  const [documentFiles, setDocumentFiles] = useState({});
+  const [addressSelection, setAddressSelection] = useState(createEmptyAddressSelection);
+  const [businessAddress, setBusinessAddress] = useState(createEmptyBusinessAddress);
+  const [passwordPreview, setPasswordPreview] = useState("");
+  const {
+    provinceOptions,
+    cityOptions,
+    barangayOptions,
+    selectedProvince,
+    selectedCity,
+    selectedBarangay,
+    postalCode,
+    handleProvinceChange,
+    handleCityChange,
+    handleBarangayChange,
+    isCityDisabled,
+    isBarangayDisabled,
+  } = useAddress({
+    value: addressSelection,
+    onChange: setAddressSelection,
+  });
+
+  const selectedProvinceName = useMemo(
+    () => selectedProvince?.name || selectedProvince?.province_name || "",
+    [selectedProvince]
+  );
+  const selectedMunicipalityName = useMemo(
+    () => selectedCity?.name || selectedCity?.city_name || "",
+    [selectedCity]
+  );
+  const selectedBarangayName = useMemo(
+    () => selectedBarangay?.name || selectedBarangay?.brgy_name || "",
+    [selectedBarangay]
+  );
+  const postalHelperText = useMemo(
+    () =>
+      addressSelection.city
+        ? postalCode
+          ? "Auto-filled based on the selected province and city."
+          : "Postal code unavailable for the selected city."
+        : "Auto-filled once a province and city are selected.",
+    [addressSelection.city, postalCode]
+  );
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    setDocumentFiles({});
+    setAddressSelection(createEmptyAddressSelection());
+    setBusinessAddress(createEmptyBusinessAddress());
+    setPasswordPreview("");
+  }, [open]);
+
+  const handleDocumentFileChange = useCallback((documentId, file) => {
+    setDocumentFiles((prev) => ({
+      ...prev,
+      [documentId]: file || null,
+    }));
+  }, []);
+
+  const handlePasswordChange = useCallback((event) => {
+    setPasswordPreview(event.target.value);
+  }, []);
+
+  const handleSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+
+      onSubmit({
+        values: {
+          first_name: String(formData.get("first_name") ?? ""),
+          middle_name: String(formData.get("middle_name") ?? ""),
+          last_name: String(formData.get("last_name") ?? ""),
+          email: String(formData.get("email") ?? ""),
+          phone: String(formData.get("phone") ?? ""),
+          date_of_birth: String(formData.get("date_of_birth") ?? ""),
+          civil_status_type_id: String(formData.get("civil_status_type_id") ?? ""),
+          province: "",
+          municipality: "",
+          postal_code: "",
+          barangay: "",
+          street_address: String(formData.get("street_address") ?? ""),
+          tin_no: String(formData.get("tin_no") ?? ""),
+          status_id: "1",
+          user_password: String(formData.get("user_password") ?? ""),
+          business: {
+            trade_name: String(formData.get("trade_name") ?? ""),
+            business_name: "",
+            business_type_id: String(formData.get("business_type_id") ?? ""),
+            business_province: businessAddress.province || "",
+            business_municipality: businessAddress.city || "",
+            business_postal_code: businessAddress.postalCode || "",
+            business_barangay: businessAddress.barangay || "",
+            business_street_address: businessAddress.street || "",
+            email_address: String(formData.get("email_address") ?? ""),
+            tin_number: String(formData.get("tin_number") ?? ""),
+            contact_number: String(formData.get("contact_number") ?? ""),
+            type_of_business: "",
+          },
+        },
+        address: {
+          province: selectedProvinceName,
+          municipality: selectedMunicipalityName,
+          barangay: selectedBarangayName,
+          postalCode,
+        },
+        documentFiles,
+      });
+    },
+    [
+      businessAddress,
+      documentFiles,
+      onSubmit,
+      postalCode,
+      selectedBarangayName,
+      selectedMunicipalityName,
+      selectedProvinceName,
+    ]
+  );
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add New Client"
+      description="Create a client profile and optional business details."
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="secretary-add-client-form" variant="success" disabled={loading}>
+            {loading ? "Creating..." : "Create Client"}
+          </Button>
+        </>
+      }
+    >
+      <form id="secretary-add-client-form" onSubmit={handleSubmit} className="space-y-5">
+        {error ? <div className="whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
+            <input type="text" name="first_name" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., John" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Middle Name</label>
+            <input type="text" name="middle_name" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., A." />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Last Name</label>
+            <input type="text" name="last_name" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., Doe" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+            <input type="email" name="email" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., john@example.com" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Account Password</label>
+            <input type="password" name="user_password" defaultValue="" onChange={handlePasswordChange} maxLength={securitySettings.maxPasswordLength} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="Enter initial client password" />
+          </div>
+          <div className="sm:col-span-2">
+            <PasswordRequirementsPanel
+              password={passwordPreview}
+              maxPasswordLength={securitySettings.maxPasswordLength}
+              active={Boolean(passwordPreview)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
+            <input type="text" name="phone" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., +63 900 000 0000" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Birthday</label>
+            <input type="date" name="date_of_birth" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Civil Status</label>
+            <select
+              name="civil_status_type_id"
+              defaultValue=""
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
+            >
+              <option value="">Select civil status</option>
+              {civilStatusTypes.map((option) => (
+                <option key={option.id} value={String(option.id)}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">TIN No.</label>
+            <input type="text" name="tin_no" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., 123-456-789" />
+          </div>
+          <div className="sm:col-span-2">
+            <div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-800">Address Details</h4>
+                <p className="mt-1 text-xs text-slate-500">Select from the dropdowns to prevent typing errors.</p>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Street Address / House No.</label>
+                  <input
+                    type="text"
+                    name="street_address"
+                    defaultValue=""
+                    placeholder="House no., street, subdivision"
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
+                  />
+                </div>
+                <AddressFields
+                  provinceValue={addressSelection.province}
+                  cityValue={addressSelection.city}
+                  barangayValue={addressSelection.barangay}
+                  provinces={provinceOptions}
+                  cities={cityOptions}
+                  barangays={barangayOptions}
+                  onProvinceChange={handleProvinceChange}
+                  onCityChange={handleCityChange}
+                  onBarangayChange={handleBarangayChange}
+                  cityDisabled={isCityDisabled}
+                  barangayDisabled={isBarangayDisabled}
+                />
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Postal Code / ZIP Code</label>
+                  <input
+                    type="text"
+                    value={postalCode}
+                    readOnly
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 shadow-sm outline-none"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">{postalHelperText}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Country</label>
+                  <input
+                    type="text"
+                    value={addressSelection.country}
+                    readOnly
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 shadow-sm outline-none"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">Currently limited to Philippine addresses.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 pt-4" />
+
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">Business Details</h4>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Trade Name</label>
+              <input type="text" name="trade_name" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., ABC Corp" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Type of Business</label>
+              <select
+                name="business_type_id"
+                defaultValue=""
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
+              >
+                <option value="">Select type of business</option>
+                {businessTypes.map((option) => (
+                  <option key={option.id} value={String(option.id)}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Business Email</label>
+              <input type="email" name="email_address" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., biz@example.com" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Business TIN</label>
+              <input type="text" name="tin_number" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., 987-654-321" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Contact Number</label>
+              <input type="text" name="contact_number" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., +63 900 111 2222" />
+            </div>
+            <div className="sm:col-span-2">
+              <BusinessAddressMapSelector
+                value={businessAddress}
+                onChange={setBusinessAddress}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 pt-4" />
+
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">Required Documents</h4>
+          {canUploadRequiredDocuments ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {documentTypes.map((document) => (
+                <div
+                  key={document.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
+                >
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    {formatDocumentTypeLabel(document.name)}
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
+                    onChange={(event) => handleDocumentFileChange(document.id, event.target.files?.[0] || null)}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700"
+                  />
+                  <div className="mt-2 text-xs text-slate-500">
+                    {documentFiles[document.id]?.name || "No file selected"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Upload permission is disabled for Required Documents.
+            </div>
+          )}
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function ClientManagementSecretary() {
   const navigate = useNavigate();
   const { user, login } = useAuth();
@@ -290,7 +700,7 @@ export default function ClientManagementSecretary() {
       : "Postal code unavailable for the selected city."
     : "Auto-filled once a province and city are selected.";
 
-  const promptClientManagementAccess = async () => {
+  const promptClientManagementAccess = useCallback(async () => {
     if (requestingAccess) {
       return;
     }
@@ -330,9 +740,9 @@ export default function ClientManagementSecretary() {
     } finally {
       setRequestingAccess(false);
     }
-  };
+  }, [requestingAccess]);
 
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async () => {
     try {
       const res = await api.get("client_list.php", { params: CLIENT_LIST_PARAMS });
       if (res?.data?.success && Array.isArray(res.data.clients)) {
@@ -341,9 +751,9 @@ export default function ClientManagementSecretary() {
     } catch (_) {
       // keep existing state on transient API failures
     }
-  };
+  }, []);
 
-  const fetchFormOptions = async () => {
+  const fetchFormOptions = useCallback(async () => {
     try {
       const res = await api.get("client_form_options.php");
       setBusinessTypes(
@@ -366,68 +776,37 @@ export default function ClientManagementSecretary() {
       setCivilStatusTypes(FALLBACK_CIVIL_STATUS_TYPES);
       setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    let stop = false;
+    if (addOpen || editOpen) {
+      return undefined;
+    }
 
-    const run = async () => {
-      try {
-        const res = await api.get("client_list.php", { params: CLIENT_LIST_PARAMS });
-        if (!stop && res?.data?.success && Array.isArray(res.data.clients)) {
-          setClients(res.data.clients);
-        }
-      } catch (_) {
-        // keep existing state on transient API failures
-      }
-    };
-
-    run();
-    const interval = setInterval(run, 5000);
+    void fetchClients();
+    const interval = window.setInterval(() => {
+      void fetchClients();
+    }, 5000);
 
     return () => {
-      stop = true;
-      clearInterval(interval);
+      window.clearInterval(interval);
     };
-  }, []);
+  }, [addOpen, editOpen, fetchClients]);
 
   useEffect(() => {
     let active = true;
 
     const run = async () => {
-      try {
-        const res = await api.get("client_form_options.php");
-        if (!active) return;
-
-        setBusinessTypes(
-          Array.isArray(res?.data?.business_types) && res.data.business_types.length
-            ? res.data.business_types
-            : FALLBACK_BUSINESS_TYPES
-        );
-        setCivilStatusTypes(
-          Array.isArray(res?.data?.civil_status_types) && res.data.civil_status_types.length
-            ? res.data.civil_status_types
-            : FALLBACK_CIVIL_STATUS_TYPES
-        );
-        setDocumentTypes(
-          Array.isArray(res?.data?.document_types) && res.data.document_types.length
-            ? res.data.document_types
-            : FALLBACK_DOCUMENT_TYPES
-        );
-      } catch (_) {
-        if (!active) return;
-        setBusinessTypes(FALLBACK_BUSINESS_TYPES);
-        setCivilStatusTypes(FALLBACK_CIVIL_STATUS_TYPES);
-        setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
-      }
+      await fetchFormOptions();
+      if (!active) return;
     };
 
-    run();
+    void run();
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [fetchFormOptions]);
 
   useEffect(() => {
     let active = true;
@@ -452,7 +831,7 @@ export default function ClientManagementSecretary() {
     };
   }, []);
 
-  const resetForm = ({ clearMessages = true } = { clearMessages: true }) => {
+  const resetForm = useCallback(({ clearMessages = true } = { clearMessages: true }) => {
     setForm(createEmptyForm());
     setAddressSelection(createEmptyAddressSelection());
     setDocumentFiles({});
@@ -462,7 +841,7 @@ export default function ClientManagementSecretary() {
       setError("");
       setSuccess("");
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (canAddNewClient || !addOpen) {
@@ -479,17 +858,17 @@ export default function ClientManagementSecretary() {
     setSuccess("");
   }, [addOpen, canAddNewClient]);
 
-  const handleChange = (event) => {
+  const handleChange = useCallback((event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
-  };
+  }, []);
 
-  const handleBizChange = (event) => {
+  const handleBizChange = useCallback((event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, business: { ...prev.business, [name]: value } }));
-  };
+  }, []);
 
-  const handleBusinessAddressChange = (nextAddress) => {
+  const handleBusinessAddressChange = useCallback((nextAddress) => {
     setForm((prev) => ({
       ...prev,
       business: {
@@ -501,35 +880,43 @@ export default function ClientManagementSecretary() {
         business_postal_code: nextAddress.postalCode || "",
       },
     }));
-  };
+  }, []);
 
-  const handleDocumentFileChange = (documentId, file) => {
+  const handleDocumentFileChange = useCallback((documentId, file) => {
     setDocumentFiles((prev) => ({
       ...prev,
       [documentId]: file || null,
     }));
-  };
+  }, []);
 
-  const closeAddModal = () => {
+  const closeAddModal = useCallback(() => {
     setAddOpen(false);
-    resetForm();
-  };
+    setError("");
+  }, []);
 
-  const closeEditModal = () => {
+  const closeEditModal = useCallback(() => {
     setEditOpen(false);
     resetForm();
-  };
+  }, [resetForm]);
 
-  const openAddModal = () => {
+  const openAddModal = useCallback(() => {
     if (!canAddNewClient) {
       return;
     }
 
-    resetForm();
-    fetchFormOptions();
-    setForm((prev) => ({ ...prev, status_id: "1" }));
+    setError("");
+    setSuccess("");
+    if (!businessTypes.length || !civilStatusTypes.length || !documentTypes.length) {
+      void fetchFormOptions();
+    }
     setAddOpen(true);
-  };
+  }, [
+    businessTypes.length,
+    canAddNewClient,
+    civilStatusTypes.length,
+    documentTypes.length,
+    fetchFormOptions,
+  ]);
 
   const closeViewModal = () => {
     setViewOpen(false);
@@ -547,58 +934,12 @@ export default function ClientManagementSecretary() {
     setLocationError("");
   };
 
-  const buildPayload = (overrides = {}) => {
-    const businessTypeId = normalizeIdValue(form.business?.business_type_id);
-    const civilStatusTypeId = normalizeIdValue(form.civil_status_type_id);
-    const selectedBusinessType = businessTypes.find((option) => String(option.id) === String(businessTypeId ?? ""));
-    const includesBusinessDetails = overrides.includeBusinessDetails ?? hasBusinessDetails(form.business);
-    const resolveTextValue = (override, fallback) =>
-      String(override == null || override === "" ? fallback ?? "" : override).trim();
-    const province = resolveTextValue(overrides.province, form.province);
-    const municipality = resolveTextValue(overrides.municipality, form.municipality);
-    const resolvedPostalCode = resolveTextValue(overrides.postalCode, form.postal_code);
-    const barangay = resolveTextValue(overrides.barangay, form.barangay);
-    const businessProvince = resolveTextValue(overrides.businessProvince, form.business.business_province);
-    const businessMunicipality = resolveTextValue(overrides.businessMunicipality, form.business.business_municipality);
-    const resolvedBusinessPostalCode = resolveTextValue(overrides.businessPostalCode, form.business.business_postal_code);
-    const businessBarangay = resolveTextValue(overrides.businessBarangay, form.business.business_barangay);
+  const buildPayload = useCallback(
+    (overrides = {}) => buildClientPayload(form, businessTypes, overrides),
+    [businessTypes, form]
+  );
 
-    return {
-      first_name: normalizePersonName(form.first_name),
-      middle_name: normalizeMiddleNameOrNull(form.middle_name),
-      last_name: normalizePersonName(form.last_name),
-      email: form.email || null,
-      phone: form.phone || null,
-      date_of_birth: form.date_of_birth || null,
-      civil_status_type_id: civilStatusTypeId,
-      province: province || null,
-      municipality: municipality || null,
-      postal_code: resolvedPostalCode || null,
-      barangay: barangay || null,
-      street_address: form.street_address || null,
-      tin_no: form.tin_no || null,
-      status_id: normalizeIdValue(form.status_id) || 1,
-      user_password: form.user_password || null,
-      business_details:
-        includesBusinessDetails
-          ? {
-              trade_name: form.business.trade_name || form.business.business_name || "",
-              business_type_id: businessTypeId,
-              type_of_business: selectedBusinessType?.name || "",
-              street_address: form.business.business_street_address || "",
-              barangay: businessBarangay || null,
-              municipality: businessMunicipality || null,
-              province: businessProvince || null,
-              postal_code: resolvedBusinessPostalCode || null,
-              email_address: form.business.email_address || null,
-              tin_number: form.business.tin_number || null,
-              contact_number: form.business.contact_number || null,
-            }
-          : undefined,
-    };
-  };
-
-  const uploadClientDocuments = async (clientId) => {
+  const uploadClientDocuments = useCallback(async (clientId, filesByDocumentId = documentFiles) => {
     if (!canUploadRequiredDocuments) {
       return { uploaded: [], failed: [] };
     }
@@ -607,7 +948,7 @@ export default function ClientManagementSecretary() {
       .map((document) => ({
         documentTypeId: document.id,
         label: formatDocumentTypeLabel(document.name),
-        file: documentFiles[document.id] || null,
+        file: filesByDocumentId[document.id] || null,
       }))
       .filter((entry) => entry.file);
 
@@ -640,10 +981,9 @@ export default function ClientManagementSecretary() {
     }
 
     return { uploaded, failed };
-  };
+  }, [canUploadRequiredDocuments, documentFiles, documentTypes]);
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
+  const handleCreate = useCallback(async ({ values, address, documentFiles: addDocumentFiles }) => {
     if (!canAddNewClient) {
       setError("You do not have permission to add a new client.");
       return;
@@ -652,35 +992,35 @@ export default function ClientManagementSecretary() {
     setError("");
     setSuccess("");
 
-    if (!form.first_name || !form.last_name) {
+    if (!values.first_name || !values.last_name) {
       setError("First and last name are required.");
       return;
     }
 
-    const email = normalizeEmail(form.email);
+    const email = normalizeEmail(values.email);
     if (email && clients.some((client) => normalizeEmail(client?.email) === email)) {
       showErrorToast("Client email already exists.");
       return;
     }
 
-    const tin = normalizeTin(form.tin_no);
+    const tin = normalizeTin(values.tin_no);
     if (tin && clients.some((client) => normalizeTin(client?.tin_no) === tin)) {
       setError("Client TIN already exists.");
       return;
     }
 
-    if (email && !form.user_password) {
+    if (email && !values.user_password) {
       setError("Account password is required when email is provided.");
       return;
     }
 
-    if (!email && form.user_password) {
+    if (!email && values.user_password) {
       setError("Email is required when setting an account password.");
       return;
     }
 
-    if (form.user_password) {
-      const passwordValidationError = validatePasswordValue(form.user_password, {
+    if (values.user_password) {
+      const passwordValidationError = validatePasswordValue(values.user_password, {
         maxPasswordLength: securitySettings.maxPasswordLength,
       });
       if (passwordValidationError) {
@@ -689,9 +1029,9 @@ export default function ClientManagementSecretary() {
       }
     }
 
-    const businessTypeId = normalizeIdValue(form.business?.business_type_id);
+    const businessTypeId = normalizeIdValue(values.business?.business_type_id);
     const hasSelectedBusinessType = businessTypes.some((option) => String(option.id) === String(businessTypeId ?? ""));
-    const includesBusinessDetails = hasBusinessDetails(form.business);
+    const includesBusinessDetails = hasBusinessDetails(values.business);
     if (includesBusinessDetails && !hasSelectedBusinessType) {
       setError("Select a valid type of business.");
       return;
@@ -699,11 +1039,11 @@ export default function ClientManagementSecretary() {
 
     try {
       setLoading(true);
-      const payload = buildPayload({
-        province: selectedProvinceName || undefined,
-        municipality: selectedMunicipalityName || undefined,
-        postalCode: postalCode || undefined,
-        barangay: selectedBarangayName || undefined,
+      const payload = buildClientPayload(values, businessTypes, {
+        province: address?.province,
+        municipality: address?.municipality,
+        postalCode: address?.postalCode,
+        barangay: address?.barangay,
         includeBusinessDetails: includesBusinessDetails,
       });
       const res = await api.post("client_create.php", payload);
@@ -712,11 +1052,10 @@ export default function ClientManagementSecretary() {
         const createdClientId = normalizeIdValue(res?.data?.client?.id);
         let uploadSummary = { uploaded: [], failed: [] };
         if (createdClientId) {
-          uploadSummary = await uploadClientDocuments(createdClientId);
+          uploadSummary = await uploadClientDocuments(createdClientId, addDocumentFiles);
         }
 
         setAddOpen(false);
-        resetForm();
         await fetchClients();
 
         if (uploadSummary.failed.length) {
@@ -736,7 +1075,14 @@ export default function ClientManagementSecretary() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    businessTypes,
+    canAddNewClient,
+    clients,
+    fetchClients,
+    securitySettings.maxPasswordLength,
+    uploadClientDocuments,
+  ]);
 
   const onOpenEdit = async (client) => {
     if (!canEditClientManagement) {
@@ -1404,225 +1750,18 @@ export default function ClientManagementSecretary() {
         </CardContent>
       </Card>
 
-      <Modal
+      <AddClientModal
         open={addOpen}
         onClose={closeAddModal}
-        title="Add New Client"
-        description="Create a client profile and optional business details."
-        size="lg"
-        footer={
-          <>
-            <Button variant="secondary" onClick={closeAddModal}>
-              Cancel
-            </Button>
-            <Button type="submit" form="secretary-add-client-form" variant="success" disabled={loading}>
-              {loading ? "Creating..." : "Create Client"}
-            </Button>
-          </>
-        }
-      >
-        <form id="secretary-add-client-form" onSubmit={handleCreate} className="space-y-5">
-          {error ? <div className="whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
-              <input type="text" name="first_name" value={form.first_name} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., John" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Middle Name</label>
-              <input type="text" name="middle_name" value={form.middle_name} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., A." />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Last Name</label>
-              <input type="text" name="last_name" value={form.last_name} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., Doe" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
-              <input type="email" name="email" value={form.email} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., john@example.com" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Account Password</label>
-              <input type="password" name="user_password" value={form.user_password} onChange={handleChange} maxLength={securitySettings.maxPasswordLength} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="Enter initial client password" />
-            </div>
-            <div className="sm:col-span-2">
-              <PasswordRequirementsPanel
-                password={form.user_password}
-                maxPasswordLength={securitySettings.maxPasswordLength}
-                active={Boolean(form.user_password)}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
-              <input type="text" name="phone" value={form.phone} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., +63 900 000 0000" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Birthday</label>
-              <input type="date" name="date_of_birth" value={form.date_of_birth} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Civil Status</label>
-              <select
-                name="civil_status_type_id"
-                value={form.civil_status_type_id}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-              >
-                <option value="">Select civil status</option>
-                {civilStatusTypes.map((option) => (
-                  <option key={option.id} value={String(option.id)}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">TIN No.</label>
-              <input type="text" name="tin_no" value={form.tin_no} onChange={handleChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., 123-456-789" />
-            </div>
-            <div className="sm:col-span-2">
-              <div>
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-800">Address Details</h4>
-                  <p className="mt-1 text-xs text-slate-500">Select from the dropdowns to prevent typing errors.</p>
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-2 block text-sm font-medium text-slate-700">Street Address / House No.</label>
-                    <input
-                      type="text"
-                      name="street_address"
-                      value={form.street_address}
-                      onChange={handleChange}
-                      placeholder="House no., street, subdivision"
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
-                    />
-                  </div>
-                  <AddressFields
-                    provinceValue={addressSelection.province}
-                    cityValue={addressSelection.city}
-                    barangayValue={addressSelection.barangay}
-                    provinces={provinceOptions}
-                    cities={cityOptions}
-                    barangays={barangayOptions}
-                    onProvinceChange={handleProvinceChange}
-                    onCityChange={handleCityChange}
-                    onBarangayChange={handleBarangayChange}
-                    cityDisabled={isCityDisabled}
-                    barangayDisabled={isBarangayDisabled}
-                  />
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700">Postal Code / ZIP Code</label>
-                    <input
-                      type="text"
-                      value={postalCode}
-                      readOnly
-                      className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 shadow-sm outline-none"
-                    />
-                    <p className="mt-2 text-xs text-slate-500">{postalHelperText}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="mb-2 block text-sm font-medium text-slate-700">Country</label>
-                    <input
-                      type="text"
-                      value={addressSelection.country}
-                      readOnly
-                      className="w-full rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 shadow-sm outline-none"
-                    />
-                    <p className="mt-2 text-xs text-slate-500">Currently limited to Philippine addresses.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-4" />
-
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-slate-800">Business Details</h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Trade Name</label>
-                <input type="text" name="trade_name" value={form.business.trade_name} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., ABC Corp" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Type of Business</label>
-                <select
-                  name="business_type_id"
-                  value={form.business.business_type_id}
-                  onChange={handleBizChange}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                >
-                  <option value="">Select type of business</option>
-                  {businessTypes.map((option) => (
-                    <option key={option.id} value={String(option.id)}>
-                    {option.name}
-                  </option>
-                ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business Email</label>
-                <input type="email" name="email_address" value={form.business.email_address} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., biz@example.com" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Business TIN</label>
-                <input type="text" name="tin_number" value={form.business.tin_number} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., 987-654-321" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Contact Number</label>
-                <input type="text" name="contact_number" value={form.business.contact_number} onChange={handleBizChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., +63 900 111 2222" />
-              </div>
-              <div className="sm:col-span-2">
-                <BusinessAddressMapSelector
-                  value={{
-                    street: form.business.business_street_address,
-                    barangay: form.business.business_barangay,
-                    city: form.business.business_municipality,
-                    province: form.business.business_province,
-                    postalCode: form.business.business_postal_code,
-                    country: "Philippines",
-                  }}
-                  onChange={handleBusinessAddressChange}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-4" />
-
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-slate-800">Required Documents</h4>
-            {canUploadRequiredDocuments ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {documentTypes.map((document) => (
-                  <div
-                    key={document.id}
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
-                  >
-                    <label className="mb-1 block text-xs font-medium text-slate-600">
-                      {formatDocumentTypeLabel(document.name)}
-                    </label>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
-                      onChange={(event) => handleDocumentFileChange(document.id, event.target.files?.[0] || null)}
-                      className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700"
-                    />
-                    <div className="mt-2 text-xs text-slate-500">
-                      {documentFiles[document.id]?.name || "No file selected"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Upload permission is disabled for Required Documents.
-              </div>
-            )}
-          </div>
-        </form>
-      </Modal>
+        onSubmit={handleCreate}
+        loading={loading}
+        error={error}
+        canUploadRequiredDocuments={canUploadRequiredDocuments}
+        documentTypes={documentTypes}
+        businessTypes={businessTypes}
+        civilStatusTypes={civilStatusTypes}
+        securitySettings={securitySettings}
+      />
 
       <Modal
         open={editOpen}

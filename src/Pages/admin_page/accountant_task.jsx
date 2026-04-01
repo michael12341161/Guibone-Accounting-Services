@@ -96,6 +96,68 @@ const getTaskCreatorLabel = (task) => {
   return creatorId > 0 ? `User #${creatorId}` : "-";
 };
 
+function TaskWorkloadLimitEditor({
+  currentLimit,
+  minLimit,
+  maxLimit,
+  loading,
+  saving,
+  onSave,
+}) {
+  const [draftValue, setDraftValue] = useState(String(currentLimit));
+
+  useEffect(() => {
+    setDraftValue(String(currentLimit));
+  }, [currentLimit]);
+
+  const normalizedDraft = String(draftValue || "").trim();
+  const isSaveDisabled =
+    loading ||
+    saving ||
+    normalizedDraft === "" ||
+    Number.parseInt(normalizedDraft || "0", 10) === Number(currentLimit);
+
+  const handleChange = (event) => {
+    setDraftValue(event.target.value.replace(/[^\d]/g, ""));
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (isSaveDisabled) return;
+    onSave?.(draftValue);
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+      <label className="block">
+        <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+          Task limit
+        </span>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          min={minLimit}
+          max={maxLimit}
+          value={draftValue}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          disabled={loading || saving}
+          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-28"
+        />
+      </label>
+      <Button
+        type="button"
+        onClick={() => onSave?.(draftValue)}
+        disabled={isSaveDisabled}
+      >
+        {saving ? "Saving..." : "Save Limit"}
+      </Button>
+    </div>
+  );
+}
+
 function StepAssigneeIdentity({ assignee }) {
   const label = stepAssigneeLabel(assignee);
   const tone = stepAssigneeTone(assignee);
@@ -907,7 +969,6 @@ export default function AdminAccountantTaskManagement() {
   const [staffWorkloadOpen, setStaffWorkloadOpen] = useState(false);
   const [staffWorkloadSearch, setStaffWorkloadSearch] = useState("");
   const [taskWorkloadSettings, setTaskWorkloadSettings] = useState(DEFAULT_TASK_WORKLOAD_SETTINGS);
-  const [workloadLimitInput, setWorkloadLimitInput] = useState(String(DEFAULT_TASK_WORKLOAD_SETTINGS.limit));
   const [taskWorkloadLoading, setTaskWorkloadLoading] = useState(false);
   const [taskWorkloadSaving, setTaskWorkloadSaving] = useState(false);
   const [bundlePickerOpen, setBundlePickerOpen] = useState(false);
@@ -1106,11 +1167,9 @@ export default function AdminAccountantTaskManagement() {
 
         const nextSettings = response?.data?.settings || DEFAULT_TASK_WORKLOAD_SETTINGS;
         setTaskWorkloadSettings(nextSettings);
-        setWorkloadLimitInput(String(nextSettings.limit));
       } catch (_) {
         if (!active) return;
         setTaskWorkloadSettings(DEFAULT_TASK_WORKLOAD_SETTINGS);
-        setWorkloadLimitInput(String(DEFAULT_TASK_WORKLOAD_SETTINGS.limit));
       } finally {
         if (active) {
           setTaskWorkloadLoading(false);
@@ -1698,11 +1757,10 @@ export default function AdminAccountantTaskManagement() {
   const closeStaffWorkload = () => {
     setStaffWorkloadOpen(false);
     setStaffWorkloadSearch("");
-    setWorkloadLimitInput(String(workloadLimit));
   };
 
-  const handleSaveTaskWorkloadLimit = async () => {
-    const nextLimitText = String(workloadLimitInput || "").trim();
+  const handleSaveTaskWorkloadLimit = async (draftValue) => {
+    const nextLimitText = String(draftValue || "").trim();
     if (!/^\d+$/.test(nextLimitText)) {
       showErrorToast(`Enter a workload limit from ${MIN_TASK_WORKLOAD_LIMIT} to ${MAX_TASK_WORKLOAD_LIMIT}.`);
       return;
@@ -1719,7 +1777,6 @@ export default function AdminAccountantTaskManagement() {
       const response = await saveTaskWorkloadSettings({ limit: nextLimit });
       const nextSettings = response?.data?.settings || { limit: nextLimit };
       setTaskWorkloadSettings(nextSettings);
-      setWorkloadLimitInput(String(nextSettings.limit));
       showSuccessToast(response?.data?.message || "Task workload limit saved successfully.");
     } catch (saveError) {
       showErrorToast(saveError?.response?.data?.message || "Unable to save the task workload limit.");
@@ -2745,35 +2802,14 @@ export default function AdminAccountantTaskManagement() {
                   </p>
                 </div>
                 {canManageTaskWorkloadLimit ? (
-                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
-                    <label className="block">
-                      <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                        Task limit
-                      </span>
-                      <input
-                        type="number"
-                        min={MIN_TASK_WORKLOAD_LIMIT}
-                        max={MAX_TASK_WORKLOAD_LIMIT}
-                        step={1}
-                        value={workloadLimitInput}
-                        onChange={(event) => setWorkloadLimitInput(event.target.value.replace(/[^\d]/g, ""))}
-                        disabled={taskWorkloadLoading || taskWorkloadSaving}
-                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-28"
-                      />
-                    </label>
-                    <Button
-                      type="button"
-                      onClick={handleSaveTaskWorkloadLimit}
-                      disabled={
-                        taskWorkloadLoading ||
-                        taskWorkloadSaving ||
-                        String(workloadLimitInput || "").trim() === "" ||
-                        Number.parseInt(workloadLimitInput || "0", 10) === workloadLimit
-                      }
-                    >
-                      {taskWorkloadSaving ? "Saving..." : "Save Limit"}
-                    </Button>
-                  </div>
+                  <TaskWorkloadLimitEditor
+                    currentLimit={workloadLimit}
+                    minLimit={MIN_TASK_WORKLOAD_LIMIT}
+                    maxLimit={MAX_TASK_WORKLOAD_LIMIT}
+                    loading={taskWorkloadLoading}
+                    saving={taskWorkloadSaving}
+                    onSave={handleSaveTaskWorkloadLimit}
+                  />
                 ) : (
                   <div className="text-xs text-slate-500">Only admins can change this limit.</div>
                 )}

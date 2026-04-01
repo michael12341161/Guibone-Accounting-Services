@@ -63,7 +63,7 @@
             },
             "add-new-client": {
                 "admin": true,
-                "secretary": false,
+                "secretary": true,
                 "accountant": false,
                 "client": false
             },

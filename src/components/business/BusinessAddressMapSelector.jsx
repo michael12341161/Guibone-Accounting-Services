@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, MapPin, Search } from "lucide-react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
@@ -93,7 +93,7 @@ function TextInput({
   );
 }
 
-export default function BusinessAddressMapSelector({
+function BusinessAddressMapSelector({
   value,
   onChange,
   title = "Business Address Details",
@@ -577,3 +577,9 @@ export default function BusinessAddressMapSelector({
     </div>
   );
 }
+
+const MemoizedBusinessAddressMapSelector = memo(BusinessAddressMapSelector);
+
+MemoizedBusinessAddressMapSelector.displayName = "BusinessAddressMapSelector";
+
+export default MemoizedBusinessAddressMapSelector;

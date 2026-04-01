@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import Select from "react-select";
 
 const selectStyles = {
@@ -98,7 +98,7 @@ function SelectField({
   );
 }
 
-export default function AddressFields({
+function AddressFields({
   provinceValue,
   cityValue,
   barangayValue,
@@ -146,3 +146,9 @@ export default function AddressFields({
     </>
   );
 }
+
+const MemoizedAddressFields = memo(AddressFields);
+
+MemoizedAddressFields.displayName = "AddressFields";
+
+export default MemoizedAddressFields;
