@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
-import { api, fetchAvailableServices } from "../../services/api";
+import { api, fetchAvailableServices, fetchTaskWorkloadSettings } from "../../services/api";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotification } from "../../hooks/useNotification";
@@ -14,7 +14,14 @@ import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { findClientById, getClientId, matchesClientId } from "../../utils/client_identity";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
-import { useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import {
+  DEFAULT_TASK_WORKLOAD_SETTINGS,
+  getTaskWorkloadLevel,
+  hasReachedTaskWorkloadLimit,
+  isTaskCountedInWorkload,
+  normalizeTaskWorkloadLimit,
+} from "../../utils/task_workload";
 
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
 const ADMIN_ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
@@ -909,6 +916,7 @@ export default function SecretaryTaskManagement() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [staffWorkloadOpen, setStaffWorkloadOpen] = useState(false);
   const [staffWorkloadSearch, setStaffWorkloadSearch] = useState("");
+  const [taskWorkloadSettings, setTaskWorkloadSettings] = useState(DEFAULT_TASK_WORKLOAD_SETTINGS);
   const [bundlePickerOpen, setBundlePickerOpen] = useState(false);
   const [selectedBundleKey, setSelectedBundleKey] = useState("");
   const [editingBundleKey, setEditingBundleKey] = useState("");
@@ -937,6 +945,7 @@ export default function SecretaryTaskManagement() {
   const [error, setError] = useState("");
   useErrorToast(error);
   const [success, setSuccess] = useState("");
+  const workloadLimit = normalizeTaskWorkloadLimit(taskWorkloadSettings?.limit, DEFAULT_TASK_WORKLOAD_SETTINGS.limit);
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);
   }, [clients]);
@@ -1081,6 +1090,29 @@ export default function SecretaryTaskManagement() {
       active = false;
     };
   }, [form.client_id]);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    const loadTaskWorkloadLimit = async () => {
+      try {
+        const response = await fetchTaskWorkloadSettings({ signal: controller.signal });
+        if (!active) return;
+        setTaskWorkloadSettings(response?.data?.settings || DEFAULT_TASK_WORKLOAD_SETTINGS);
+      } catch (_) {
+        if (!active) return;
+        setTaskWorkloadSettings(DEFAULT_TASK_WORKLOAD_SETTINGS);
+      }
+    };
+
+    void loadTaskWorkloadLimit();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     setSelectedTaskIds((current) => {
@@ -1320,6 +1352,13 @@ export default function SecretaryTaskManagement() {
       setError("Please select a due date.");
       return;
     }
+    if (hasReachedTaskWorkloadLimit(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit)) {
+      const assigneeName = selectedAssigneeWorkload?.name || "The selected staff member";
+      showErrorToast(
+        `${assigneeName} already has ${selectedAssigneeWorkload?.totalTasks || 0} active tasks and has reached the workload limit of ${workloadLimit}. Please choose another accountant or secretary.`
+      );
+      return;
+    }
 
     // Map UI fields to backend contract (KEEP BACKEND INTACT)
     // Backend expects payload.status to be a VALID service name from tblservices.
@@ -1399,7 +1438,7 @@ export default function SecretaryTaskManagement() {
           clientUserId: selectedClient?.user_id,
         });
 
-        setSuccess("Task created successfully.");
+        showSuccessToast("Task created successfully.");
         // After creating, reset the whole create-task form (client/assignee/priority/due date/etc.)
         // per requirement to avoid accidentally reusing previous selections.
         setForm({
@@ -1415,11 +1454,14 @@ export default function SecretaryTaskManagement() {
         setSelectedAppointmentId("");
         setSelectedBundleKey("");
         setEditingBundleKey("");
-        setTimeout(() => setSuccess(""), 1500);
       } else {
         setError(res?.data?.message || "Failed to create task.");
       }
     } catch (err) {
+      if (err?.response?.data?.workload_limit_reached) {
+        showErrorToast(err?.response?.data?.message || "The selected staff member already reached the workload limit.");
+        return;
+      }
       setError(err?.response?.data?.message || err?.message || "Request failed.");
     } finally {
       setCreatingTask(false);
@@ -1451,24 +1493,11 @@ export default function SecretaryTaskManagement() {
     }
   }, [form.accountant_id, matchingAccountants]);
 
-  // Derived data
-  const quickStats = useMemo(() => {
-    const data = { total: tasks.length, pending: 0, declined: 0, completed: 0, cancelled: 0, progress: 0 };
-    tasks.forEach((t) => {
-      const s = (t.status || "pending").toLowerCase();
-      if (s === "completed") data.completed += 1;
-      else if (s === "declined") data.declined += 1;
-      else if (s === "in progress") data.progress += 1;
-      else if (s === "cancelled") data.cancelled += 1;
-      else data.pending += 1;
-    });
-    return data;
-  }, [tasks]);
-
   const staffWorkloadRows = useMemo(() => {
     const taskCountsByStaffId = new Map();
 
     (Array.isArray(tasks) ? tasks : []).forEach((task) => {
+      if (!isTaskCountedInWorkload(task)) return;
       const staffId = Number(task?.accountant_id || 0);
       if (!Number.isInteger(staffId) || staffId <= 0) return;
       taskCountsByStaffId.set(staffId, (taskCountsByStaffId.get(staffId) || 0) + 1);
@@ -1503,6 +1532,14 @@ export default function SecretaryTaskManagement() {
       `${staff.name} ${staff.role}`.toLowerCase().includes(query)
     );
   }, [staffWorkloadRows, staffWorkloadSearch]);
+  const totalActiveTasksInWorkload = useMemo(
+    () => staffWorkloadRows.reduce((total, staff) => total + Number(staff.totalTasks || 0), 0),
+    [staffWorkloadRows]
+  );
+  const selectedAssigneeWorkload = useMemo(() => {
+    if (!form.accountant_id) return null;
+    return staffWorkloadRows.find((staff) => String(staff.id) === String(form.accountant_id)) || null;
+  }, [form.accountant_id, staffWorkloadRows]);
 
   // Sorting & filtering state
   const [sortBy, setSortBy] = useState("date_desc");
@@ -1803,6 +1840,23 @@ export default function SecretaryTaskManagement() {
                 {selectedAppointmentId ? (
                   <p className="mt-1 text-[11px] text-slate-500">
                     This approved appointment is ready. Only the accountant or secretary assignment is still needed before you click Create Task.
+                  </p>
+                ) : null}
+                {form.accountant_id ? (
+                  <p
+                    className={`mt-1 text-[11px] ${
+                      getTaskWorkloadLevel(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit) === "over"
+                        ? "text-rose-600"
+                        : getTaskWorkloadLevel(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit) === "at"
+                        ? "text-amber-700"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {hasReachedTaskWorkloadLimit(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit)
+                      ? `${selectedAssigneeWorkload?.name || "Selected staff"} already reached the ${workloadLimit}-task limit. Choose another accountant or secretary.`
+                      : `${selectedAssigneeWorkload?.name || "Selected staff"} currently has ${selectedAssigneeWorkload?.totalTasks || 0} active task${
+                          (selectedAssigneeWorkload?.totalTasks || 0) === 1 ? "" : "s"
+                        } out of the ${workloadLimit}-task limit.`}
                   </p>
                 ) : null}
               </div>
@@ -2638,8 +2692,18 @@ export default function SecretaryTaskManagement() {
               Staff: {staffWorkloadRows.length}
             </span>
             <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-              Total tasks: {quickStats.total}
+              Active tasks: {totalActiveTasksInWorkload}
             </span>
+            <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+              Limit: {workloadLimit}
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="text-sm font-semibold text-slate-800">Active workload limit</div>
+            <p className="mt-1 text-xs text-slate-500">
+              Secretaries are warned when a new assignment pushes a staff member past this limit. Admin can change it from the admin task page.
+            </p>
           </div>
 
           <div className="relative">
@@ -2673,21 +2737,41 @@ export default function SecretaryTaskManagement() {
                   <tr>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3 text-right">Total Tasks Handled</th>
+                    <th className="px-4 py-3 text-right">Active Tasks</th>
+                    <th className="px-4 py-3 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredStaffWorkloadRows.map((staff) => (
-                    <tr key={staff.id} className="hover:bg-slate-50/80">
-                      <td className="px-4 py-3 font-medium text-slate-800">{staff.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                          {staff.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">{staff.totalTasks}</td>
-                    </tr>
-                  ))}
+                  {filteredStaffWorkloadRows.map((staff) => {
+                    const workloadLevel = getTaskWorkloadLevel(staff.totalTasks, workloadLimit);
+                    const workloadStatusLabel =
+                      workloadLevel === "over" ? "Over limit" : workloadLevel === "at" ? "At limit" : "Available";
+                    const workloadStatusClass =
+                      workloadLevel === "over"
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : workloadLevel === "at"
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+                    return (
+                      <tr key={staff.id} className="hover:bg-slate-50/80">
+                        <td className="px-4 py-3 font-medium text-slate-800">{staff.name}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {staff.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                          {staff.totalTasks} / {workloadLimit}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${workloadStatusClass}`}>
+                            {workloadStatusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

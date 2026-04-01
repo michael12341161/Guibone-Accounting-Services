@@ -1,6 +1,7 @@
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import { mergePermissions } from "../utils/module_permissions";
+import { DEFAULT_TASK_WORKLOAD_SETTINGS, normalizeTaskWorkloadSettings } from "../utils/task_workload";
 
 // Configure to hit the PHP backend served by XAMPP.
 // Adjust this baseURL if your Apache virtual host differs.
@@ -253,6 +254,8 @@ export function normalizeSystemConfiguration(input) {
   };
 }
 
+export { DEFAULT_TASK_WORKLOAD_SETTINGS, normalizeTaskWorkloadSettings };
+
 export async function fetchSecuritySettings(config = {}) {
   const response = await api.get("user_list.php", {
     ...config,
@@ -323,6 +326,30 @@ export async function saveSystemConfiguration(settings, config = {}) {
     data: {
       ...response.data,
       settings: normalizeSystemConfiguration(response?.data?.settings),
+    },
+  };
+}
+
+export async function fetchTaskWorkloadSettings(config = {}) {
+  const response = await api.get("task_workload_settings.php", config);
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      settings: normalizeTaskWorkloadSettings(response?.data?.settings),
+    },
+  };
+}
+
+export async function saveTaskWorkloadSettings(settings, config = {}) {
+  const response = await api.post("task_workload_settings.php", settings, config);
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      settings: normalizeTaskWorkloadSettings(response?.data?.settings),
     },
   };
 }

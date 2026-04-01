@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
-import { api, fetchAvailableServices } from "../../services/api";
+import {
+  api,
+  fetchAvailableServices,
+  fetchTaskWorkloadSettings,
+  saveTaskWorkloadSettings,
+} from "../../services/api";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
@@ -13,7 +18,16 @@ import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { findClientById, getClientId, matchesClientId } from "../../utils/client_identity";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
-import { useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import {
+  DEFAULT_TASK_WORKLOAD_SETTINGS,
+  MAX_TASK_WORKLOAD_LIMIT,
+  MIN_TASK_WORKLOAD_LIMIT,
+  getTaskWorkloadLevel,
+  hasReachedTaskWorkloadLimit,
+  isTaskCountedInWorkload,
+  normalizeTaskWorkloadLimit,
+} from "../../utils/task_workload";
 
 const ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
@@ -892,6 +906,10 @@ export default function AdminAccountantTaskManagement() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [staffWorkloadOpen, setStaffWorkloadOpen] = useState(false);
   const [staffWorkloadSearch, setStaffWorkloadSearch] = useState("");
+  const [taskWorkloadSettings, setTaskWorkloadSettings] = useState(DEFAULT_TASK_WORKLOAD_SETTINGS);
+  const [workloadLimitInput, setWorkloadLimitInput] = useState(String(DEFAULT_TASK_WORKLOAD_SETTINGS.limit));
+  const [taskWorkloadLoading, setTaskWorkloadLoading] = useState(false);
+  const [taskWorkloadSaving, setTaskWorkloadSaving] = useState(false);
   const [bundlePickerOpen, setBundlePickerOpen] = useState(false);
   const [selectedBundleKey, setSelectedBundleKey] = useState("");
   const [editingBundleKey, setEditingBundleKey] = useState("");
@@ -920,6 +938,10 @@ export default function AdminAccountantTaskManagement() {
   const [error, setError] = useState("");
   useErrorToast(error);
   const [success, setSuccess] = useState("");
+  const workloadLimit = normalizeTaskWorkloadLimit(taskWorkloadSettings?.limit, DEFAULT_TASK_WORKLOAD_SETTINGS.limit);
+  const canManageTaskWorkloadLimit =
+    Number(user?.role_id || user?.roleId || 0) === 1 ||
+    String(user?.role || user?.role_name || "").trim().toLowerCase() === "admin";
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);
   }, [clients]);
@@ -1064,6 +1086,39 @@ export default function AdminAccountantTaskManagement() {
       active = false;
     };
   }, [form.client_id]);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    const loadTaskWorkloadLimit = async () => {
+      setTaskWorkloadLoading(true);
+
+      try {
+        const response = await fetchTaskWorkloadSettings({ signal: controller.signal });
+        if (!active) return;
+
+        const nextSettings = response?.data?.settings || DEFAULT_TASK_WORKLOAD_SETTINGS;
+        setTaskWorkloadSettings(nextSettings);
+        setWorkloadLimitInput(String(nextSettings.limit));
+      } catch (_) {
+        if (!active) return;
+        setTaskWorkloadSettings(DEFAULT_TASK_WORKLOAD_SETTINGS);
+        setWorkloadLimitInput(String(DEFAULT_TASK_WORKLOAD_SETTINGS.limit));
+      } finally {
+        if (active) {
+          setTaskWorkloadLoading(false);
+        }
+      }
+    };
+
+    void loadTaskWorkloadLimit();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     setSelectedTaskIds((current) => {
@@ -1303,6 +1358,13 @@ export default function AdminAccountantTaskManagement() {
       setError("Please select a due date.");
       return;
     }
+    if (hasReachedTaskWorkloadLimit(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit)) {
+      const assigneeName = selectedAssigneeWorkload?.name || "The selected staff member";
+      showErrorToast(
+        `${assigneeName} already has ${selectedAssigneeWorkload?.totalTasks || 0} active tasks and has reached the workload limit of ${workloadLimit}. Please choose another accountant or secretary.`
+      );
+      return;
+    }
 
     // Map UI fields to backend contract (KEEP BACKEND INTACT)
     // Backend expects payload.status to be a VALID service name from tblservices.
@@ -1363,7 +1425,7 @@ export default function AdminAccountantTaskManagement() {
           }
         } catch (_) { }
 
-        setSuccess("Task created successfully.");
+        showSuccessToast("Task created successfully.");
         // After creating, reset the whole create-task form (client/assignee/priority/due date/etc.)
         // per requirement to avoid accidentally reusing previous selections.
         setForm({
@@ -1379,11 +1441,14 @@ export default function AdminAccountantTaskManagement() {
         setSelectedAppointmentId("");
         setSelectedBundleKey("");
         setEditingBundleKey("");
-        setTimeout(() => setSuccess(""), 1500);
       } else {
         setError(res?.data?.message || "Failed to create task.");
       }
     } catch (err) {
+      if (err?.response?.data?.workload_limit_reached) {
+        showErrorToast(err?.response?.data?.message || "The selected staff member already reached the workload limit.");
+        return;
+      }
       setError(err?.response?.data?.message || err?.message || "Request failed.");
     } finally {
       setCreatingTask(false);
@@ -1424,24 +1489,11 @@ export default function AdminAccountantTaskManagement() {
     }
   }, [editingBundleKey, suggestedBundleKey]);
 
-  // Derived data
-  const quickStats = useMemo(() => {
-    const data = { total: tasks.length, pending: 0, declined: 0, completed: 0, cancelled: 0, progress: 0 };
-    tasks.forEach((t) => {
-      const s = (t.status || "pending").toLowerCase();
-      if (s === "completed") data.completed += 1;
-      else if (s === "declined") data.declined += 1;
-      else if (s === "in progress") data.progress += 1;
-      else if (s === "cancelled") data.cancelled += 1;
-      else data.pending += 1;
-    });
-    return data;
-  }, [tasks]);
-
   const staffWorkloadRows = useMemo(() => {
     const taskCountsByStaffId = new Map();
 
     (Array.isArray(tasks) ? tasks : []).forEach((task) => {
+      if (!isTaskCountedInWorkload(task)) return;
       const staffId = Number(task?.accountant_id || 0);
       if (!Number.isInteger(staffId) || staffId <= 0) return;
       taskCountsByStaffId.set(staffId, (taskCountsByStaffId.get(staffId) || 0) + 1);
@@ -1476,6 +1528,14 @@ export default function AdminAccountantTaskManagement() {
       `${staff.name} ${staff.role}`.toLowerCase().includes(query)
     );
   }, [staffWorkloadRows, staffWorkloadSearch]);
+  const totalActiveTasksInWorkload = useMemo(
+    () => staffWorkloadRows.reduce((total, staff) => total + Number(staff.totalTasks || 0), 0),
+    [staffWorkloadRows]
+  );
+  const selectedAssigneeWorkload = useMemo(() => {
+    if (!form.accountant_id) return null;
+    return staffWorkloadRows.find((staff) => String(staff.id) === String(form.accountant_id)) || null;
+  }, [form.accountant_id, staffWorkloadRows]);
 
   // Sorting & filtering state
   const [sortBy, setSortBy] = useState("date_desc");
@@ -1632,6 +1692,34 @@ export default function AdminAccountantTaskManagement() {
   const closeStaffWorkload = () => {
     setStaffWorkloadOpen(false);
     setStaffWorkloadSearch("");
+    setWorkloadLimitInput(String(workloadLimit));
+  };
+
+  const handleSaveTaskWorkloadLimit = async () => {
+    const nextLimitText = String(workloadLimitInput || "").trim();
+    if (!/^\d+$/.test(nextLimitText)) {
+      showErrorToast(`Enter a workload limit from ${MIN_TASK_WORKLOAD_LIMIT} to ${MAX_TASK_WORKLOAD_LIMIT}.`);
+      return;
+    }
+
+    const nextLimit = Number.parseInt(nextLimitText, 10);
+    if (nextLimit < MIN_TASK_WORKLOAD_LIMIT || nextLimit > MAX_TASK_WORKLOAD_LIMIT) {
+      showErrorToast(`Enter a workload limit from ${MIN_TASK_WORKLOAD_LIMIT} to ${MAX_TASK_WORKLOAD_LIMIT}.`);
+      return;
+    }
+
+    setTaskWorkloadSaving(true);
+    try {
+      const response = await saveTaskWorkloadSettings({ limit: nextLimit });
+      const nextSettings = response?.data?.settings || { limit: nextLimit };
+      setTaskWorkloadSettings(nextSettings);
+      setWorkloadLimitInput(String(nextSettings.limit));
+      showSuccessToast(response?.data?.message || "Task workload limit saved successfully.");
+    } catch (saveError) {
+      showErrorToast(saveError?.response?.data?.message || "Unable to save the task workload limit.");
+    } finally {
+      setTaskWorkloadSaving(false);
+    }
   };
 
   const closeStepEdit = () => {
@@ -1776,6 +1864,23 @@ export default function AdminAccountantTaskManagement() {
                 {selectedAppointmentId ? (
                   <p className="mt-1 text-[11px] text-slate-500">
                     This approved appointment is ready. Only the accountant or secretary assignment is still needed before you click Create Task.
+                  </p>
+                ) : null}
+                {form.accountant_id ? (
+                  <p
+                    className={`mt-1 text-[11px] ${
+                      getTaskWorkloadLevel(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit) === "over"
+                        ? "text-rose-600"
+                        : getTaskWorkloadLevel(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit) === "at"
+                        ? "text-amber-700"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {hasReachedTaskWorkloadLimit(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit)
+                      ? `${selectedAssigneeWorkload?.name || "Selected staff"} already reached the ${workloadLimit}-task limit. Choose another accountant or secretary.`
+                      : `${selectedAssigneeWorkload?.name || "Selected staff"} currently has ${selectedAssigneeWorkload?.totalTasks || 0} active task${
+                          (selectedAssigneeWorkload?.totalTasks || 0) === 1 ? "" : "s"
+                        } out of the ${workloadLimit}-task limit.`}
                   </p>
                 ) : null}
               </div>
@@ -2617,8 +2722,55 @@ export default function AdminAccountantTaskManagement() {
               Staff: {staffWorkloadRows.length}
             </span>
             <span className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-              Total tasks: {quickStats.total}
+              Active tasks: {totalActiveTasksInWorkload}
             </span>
+            <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+              Limit: {workloadLimit}
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">Active workload limit</div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Staff are marked once they reach or go over this limit. Secretaries receive a notice when they assign past it.
+                </p>
+              </div>
+              {canManageTaskWorkloadLimit ? (
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+                  <label className="block">
+                    <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                      Task limit
+                    </span>
+                    <input
+                      type="number"
+                      min={MIN_TASK_WORKLOAD_LIMIT}
+                      max={MAX_TASK_WORKLOAD_LIMIT}
+                      step={1}
+                      value={workloadLimitInput}
+                      onChange={(event) => setWorkloadLimitInput(event.target.value.replace(/[^\d]/g, ""))}
+                      disabled={taskWorkloadLoading || taskWorkloadSaving}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 sm:w-28"
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    onClick={handleSaveTaskWorkloadLimit}
+                    disabled={
+                      taskWorkloadLoading ||
+                      taskWorkloadSaving ||
+                      String(workloadLimitInput || "").trim() === "" ||
+                      Number.parseInt(workloadLimitInput || "0", 10) === workloadLimit
+                    }
+                  >
+                    {taskWorkloadSaving ? "Saving..." : "Save Limit"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">Only admins can change this limit.</div>
+              )}
+            </div>
           </div>
 
           <div className="relative">
@@ -2652,21 +2804,41 @@ export default function AdminAccountantTaskManagement() {
                   <tr>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3 text-right">Total Tasks Handled</th>
+                    <th className="px-4 py-3 text-right">Active Tasks</th>
+                    <th className="px-4 py-3 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredStaffWorkloadRows.map((staff) => (
-                    <tr key={staff.id} className="hover:bg-slate-50/80">
-                      <td className="px-4 py-3 font-medium text-slate-800">{staff.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                          {staff.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">{staff.totalTasks}</td>
-                    </tr>
-                  ))}
+                  {filteredStaffWorkloadRows.map((staff) => {
+                    const workloadLevel = getTaskWorkloadLevel(staff.totalTasks, workloadLimit);
+                    const workloadStatusLabel =
+                      workloadLevel === "over" ? "Over limit" : workloadLevel === "at" ? "At limit" : "Available";
+                    const workloadStatusClass =
+                      workloadLevel === "over"
+                        ? "border-rose-200 bg-rose-50 text-rose-700"
+                        : workloadLevel === "at"
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+                    return (
+                      <tr key={staff.id} className="hover:bg-slate-50/80">
+                        <td className="px-4 py-3 font-medium text-slate-800">{staff.name}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {staff.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                          {staff.totalTasks} / {workloadLimit}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${workloadStatusClass}`}>
+                            {workloadStatusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

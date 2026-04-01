@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
+require_once __DIR__ . '/task_workload_settings_helper.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -157,6 +158,62 @@ function insertNotification(PDO $conn, int $userId, ?int $senderId, string $type
     ]);
 }
 
+function normalizeWorkloadTaskStatus(string $statusName, string $description): string {
+    $status = strtolower(trim($statusName));
+
+    if (preg_match('/^\s*\[Declined reason\]\s*/mi', $description)) {
+        return 'Declined';
+    }
+    if (preg_match('/^\s*\[Done\]\s*$/mi', $description)) {
+        return 'Completed';
+    }
+
+    if ($status === 'cancelled' || $status === 'declined' || $status === 'canceled') {
+        return 'Declined';
+    }
+    if ($status === 'completed' || $status === 'done') {
+        return 'Completed';
+    }
+    if ($status === 'in progress' || $status === 'started') {
+        return 'In Progress';
+    }
+    if ($status === 'not started' || $status === 'pending' || $status === '') {
+        return 'Not Started';
+    }
+
+    return $statusName !== '' ? $statusName : 'Not Started';
+}
+
+function isTaskCountedTowardsWorkload(string $statusName, string $description): bool {
+    $normalizedStatus = strtolower(normalizeWorkloadTaskStatus($statusName, $description));
+    return $normalizedStatus !== 'completed' && $normalizedStatus !== 'declined' && $normalizedStatus !== 'cancelled';
+}
+
+function countActiveAssignedTasks(PDO $conn, int $userId): int {
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    $stmt = $conn->prepare(
+        'SELECT st.Status_name AS status_name,
+                COALESCE(cs.Steps, "") AS description
+         FROM client_services cs
+         LEFT JOIN status st ON st.Status_id = cs.Status_ID
+         WHERE cs.User_ID = :uid'
+    );
+    $stmt->execute([':uid' => $userId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $count = 0;
+    foreach ($rows as $row) {
+        if (isTaskCountedTowardsWorkload((string)($row['status_name'] ?? ''), (string)($row['description'] ?? ''))) {
+            $count += 1;
+        }
+    }
+
+    return $count;
+}
+
 function createTaskNotifications(
     PDO $conn,
     int $secretaryId,
@@ -308,6 +365,26 @@ try {
     $deadlineDate = null;
     if ($deadlineInput !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $deadlineInput)) {
         $deadlineDate = $deadlineInput;
+    }
+
+    $taskWorkloadSettings = monitoring_get_task_workload_settings($conn);
+    $workloadLimit = (int)($taskWorkloadSettings['limit'] ?? MONITORING_TASK_WORKLOAD_DEFAULT_LIMIT);
+    $activeTasksBeforeCreate = $accountantId > 0 ? countActiveAssignedTasks($conn, $accountantId) : 0;
+    if ($accountantId > 0 && $activeTasksBeforeCreate >= $workloadLimit) {
+        $staffLabel = resolveUserDisplayName($conn, $accountantId);
+        if ($staffLabel === '') {
+            $staffLabel = 'The selected staff member';
+        }
+
+        respond(422, [
+            'success' => false,
+            'message' => $staffLabel . ' already has ' . $activeTasksBeforeCreate . ' active tasks and has reached the workload limit of ' . $workloadLimit . '. Please choose another accountant or secretary.',
+            'workload_limit_reached' => true,
+            'staff_id' => $accountantId,
+            'staff_name' => $staffLabel,
+            'active_tasks' => $activeTasksBeforeCreate,
+            'limit' => $workloadLimit,
+        ]);
     }
 
     $notStartedId = resolveStatusId($conn, 'TASK', 'Not Started', 10);
