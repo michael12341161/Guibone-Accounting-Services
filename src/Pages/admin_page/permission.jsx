@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import Swal from "sweetalert2";
 import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { showErrorToast, showSuccessToast } from "../../utils/feedback";
 import {
   FEATURE_SECTIONS,
   getFeatureDefinition,
@@ -215,24 +215,14 @@ export default function PermissionsPage() {
     try {
       const savedPermissions = await savePermissions(draftPermissions);
       setDraftPermissions(savedPermissions);
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
+      showSuccessToast({
         title: `${roleLabel} permissions saved`,
-        showConfirmButton: false,
-        timer: 1800,
-        timerProgressBar: true,
+        duration: 1800,
       });
     } catch (saveError) {
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "error",
+      showErrorToast({
         title: saveError?.response?.data?.message || "Unable to save permissions",
-        showConfirmButton: false,
-        timer: 2200,
-        timerProgressBar: true,
+        duration: 2200,
       });
     } finally {
       setSavingRole("");

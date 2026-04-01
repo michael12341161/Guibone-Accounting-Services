@@ -9,6 +9,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { formatDate } from "../../utils/helpers";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
+import { useErrorToast } from "../../utils/feedback";
 import {
   DEFAULT_CONSULTATION_TIME_SLOTS,
   getConfiguredConsultationTimesForDate,
@@ -215,6 +216,9 @@ export default function SchedulingManagementAdmin() {
   });
   const [rescheduling, setRescheduling] = useState(false);
   const [rescheduleError, setRescheduleError] = useState("");
+  useErrorToast(error);
+  useErrorToast(slotError);
+  useErrorToast(rescheduleError);
   const [rescheduleNotice, setRescheduleNotice] = useState("");
 
   const needsConsultationSlots =

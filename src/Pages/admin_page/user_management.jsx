@@ -9,6 +9,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { validatePasswordValue } from "../../utils/passwordValidation";
+import { useErrorToast } from "../../utils/feedback";
 import {
   normalizeMiddleName,
   normalizeMiddleNameOrNull,
@@ -210,6 +211,7 @@ export default function UserManagement() {
   const [form, setForm] = useState(createInitialForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");

@@ -11,6 +11,7 @@ import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
 import ClientProfile from "../Pages/profile/clientProfile";
 import { resolveBackendAssetUrl, restoreOriginalAccount } from "../services/api";
+import { showErrorToast } from "../utils/feedback";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
 
 const sidebarIconProps = {
@@ -102,7 +103,7 @@ export default function ClientLayout({ user, onLogout, children }) {
       login(nextUser);
       navigate(getHomePathForRole(nextUser?.role_id), { replace: true });
     } catch (error) {
-      window.alert(error?.response?.data?.message || error?.message || "Unable to return to the original account.");
+      showErrorToast(error?.response?.data?.message || error?.message || "Unable to return to the original account.");
     }
   };
 

@@ -11,6 +11,7 @@ import {
   formatDisplayValue,
 } from "../../utils/business_location";
 import { getDocumentStatusBadgeClass } from "../../utils/document_management";
+import { useErrorToast } from "../../utils/feedback";
 
 function readStoredSessionUser() {
   try {
@@ -90,6 +91,7 @@ export default function BusinessPage() {
   const [businessStatus, setBusinessStatus] = useState("Unregistered");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [isMapOpen, setIsMapOpen] = useState(false);
 
   useEffect(() => {

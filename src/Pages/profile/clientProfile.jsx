@@ -9,6 +9,7 @@ import {
   normalizePersonName,
 } from "../../utils/person_name";
 import ForgotPasswordModal from "../auth/forgot_password";
+import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const EMPTY_FORM = Object.freeze({
   first_name: "",
@@ -84,6 +85,8 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  useErrorToast(error);
+  useErrorToast(saveError);
   const [successMessage, setSuccessMessage] = useState("");
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -314,7 +317,7 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
       });
 
       setIsEditing(false);
-      setSuccessMessage(res.data?.message || "Profile updated successfully.");
+      showSuccessToast(res.data?.message || "Profile updated successfully.");
       await loadProfile({ showLoading: false });
     } catch (saveProfileError) {
       setSaveError(

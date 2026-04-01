@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName } from "../../utils/person_name";
+import { useErrorToast } from "../../utils/feedback";
 
 const PAGE_SIZE = 10;
 
@@ -133,6 +134,8 @@ export default function NewClientManagement() {
   const [rejectTargetClient, setRejectTargetClient] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [rejectionError, setRejectionError] = useState("");
+  useErrorToast(error);
+  useErrorToast(rejectionError);
 
   const loadClients = async ({ silent } = { silent: false }) => {
     try {

@@ -13,6 +13,7 @@ import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { findClientById, getClientId, matchesClientId } from "../../utils/client_identity";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
+import { useErrorToast } from "../../utils/feedback";
 
 const ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
@@ -917,6 +918,7 @@ export default function AdminAccountantTaskManagement() {
   const [creatingTask, setCreatingTask] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [success, setSuccess] = useState("");
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);

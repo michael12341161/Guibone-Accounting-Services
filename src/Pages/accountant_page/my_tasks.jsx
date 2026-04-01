@@ -3,6 +3,7 @@ import Swal from "sweetalert2";
 import { api } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import ArchiveTasksCompleted from "../admin_page/archive_tasks_completed";
+import { useErrorToast } from "../../utils/feedback";
 import {
   createLocalStepTimestamp,
   formatStepDateTime,
@@ -390,6 +391,7 @@ export default function MyTasks({ user }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");

@@ -10,6 +10,7 @@ import { validatePasswordValue } from "../../utils/passwordValidation";
 import { isValidEmail, isValidPhoneNumber } from "../../utils/helpers";
 import { normalizeMiddleNameOrNull, normalizePersonName } from "../../utils/person_name";
 import { useTheme } from "../../context/ThemeContext";
+import { useErrorToast } from "../../utils/feedback";
 
 const FALLBACK_BUSINESS_TYPES = [
   { id: 1, name: "Sole Proprietor" },
@@ -304,6 +305,8 @@ export default function SignUpPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [emailError, setEmailError] = useState("");
+  useErrorToast(error);
+  useErrorToast(emailError);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const [warning, setWarning] = useState("");
   const [showPassword, setShowPassword] = useState(false);

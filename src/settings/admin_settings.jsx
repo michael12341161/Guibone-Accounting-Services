@@ -1,5 +1,4 @@
 import React from "react";
-import Swal from "sweetalert2";
 import { useAuth } from "../hooks/useAuth";
 import {
   cleanupDatabaseBackups,
@@ -17,6 +16,7 @@ import {
   saveSystemConfiguration,
 } from "../services/api";
 import { formatDateTime } from "../utils/helpers";
+import { showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../utils/feedback";
 
 const SECURITY_FIELDS = [
   {
@@ -55,14 +55,6 @@ const SECURITY_FIELDS = [
     max: 10080,
   },
 ];
-
-const SETTINGS_TOAST = {
-  toast: true,
-  position: "top-end",
-  showConfirmButton: false,
-  timer: 2600,
-  timerProgressBar: true,
-};
 
 const AUDIT_RANGE_OPTIONS = [
   { value: "24h", label: "Last 24h" },
@@ -369,6 +361,7 @@ export default function AdminSettings() {
   const [auditLogs, setAuditLogs] = React.useState([]);
   const [auditLoading, setAuditLoading] = React.useState(false);
   const [auditError, setAuditError] = React.useState("");
+  useErrorToast(auditError);
   const [auditSearch, setAuditSearch] = React.useState("");
   const [auditRange, setAuditRange] = React.useState("30d");
   const [auditPage, setAuditPage] = React.useState(1);
@@ -656,11 +649,9 @@ export default function AdminSettings() {
         type: "error",
         text: "Fix the highlighted fields before saving.",
       });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: errors.sessionTimeoutMinutes ? "Invalid session timeout" : "Unable to save settings",
-        text: errors.sessionTimeoutMinutes || "Fix the highlighted fields before saving.",
+        description: errors.sessionTimeoutMinutes || "Fix the highlighted fields before saving.",
       });
       return;
     }
@@ -692,11 +683,9 @@ export default function AdminSettings() {
         });
       }
 
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "success",
+      showSuccessToast({
         title: timeoutChanged ? "Session timeout updated" : "Security settings saved",
-        text: timeoutChanged
+        description: timeoutChanged
           ? `Users will now be signed out after ${timeoutLabel} of inactivity.`
           : response?.data?.message || "Security settings saved successfully.",
       });
@@ -706,11 +695,9 @@ export default function AdminSettings() {
         type: "error",
         text: error?.response?.data?.message || "Unable to save security settings.",
       });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Unable to save settings",
-        text: error?.response?.data?.message || "Unable to save security settings.",
+        description: error?.response?.data?.message || "Unable to save security settings.",
       });
     } finally {
       setSecuritySaving(false);
@@ -725,11 +712,9 @@ export default function AdminSettings() {
         type: "error",
         text: "Fix the highlighted fields before saving.",
       });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Unable to save system configuration",
-        text: Object.values(errors)[0] || "Fix the highlighted fields before saving.",
+        description: Object.values(errors)[0] || "Fix the highlighted fields before saving.",
       });
       return;
     }
@@ -751,11 +736,9 @@ export default function AdminSettings() {
         text: response?.data?.message || "System configuration saved successfully.",
       });
 
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "success",
+      showSuccessToast({
         title: "System configuration saved",
-        text: statusEmailsChanged
+        description: statusEmailsChanged
           ? savedSettings.sendClientStatusEmails
             ? "Client approval and rejection emails are now enabled."
             : "Client approval and rejection emails are now disabled."
@@ -767,11 +750,9 @@ export default function AdminSettings() {
         type: "error",
         text: error?.response?.data?.message || "Unable to save system configuration.",
       });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Unable to save system configuration",
-        text: error?.response?.data?.message || "Unable to save system configuration.",
+        description: error?.response?.data?.message || "Unable to save system configuration.",
       });
     } finally {
       setSystemSaving(false);
@@ -793,11 +774,9 @@ export default function AdminSettings() {
       });
       setBackupRefreshKey((value) => value + 1);
 
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "success",
+      showSuccessToast({
         title: "Backup created",
-        text:
+        description:
           createdBackup?.name
             ? `${createdBackup.name} was saved successfully.`
             : response?.data?.message || "Database backup created successfully.",
@@ -805,11 +784,9 @@ export default function AdminSettings() {
     } catch (error) {
       const message = error?.response?.data?.message || "Unable to create database backup.";
       setBackupStatus({ type: "error", text: message });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Backup failed",
-        text: message,
+        description: message,
       });
     } finally {
       setBackupCreating(false);
@@ -826,14 +803,13 @@ export default function AdminSettings() {
         type: "success",
         text: `${downloadedName} downloaded successfully.`,
       });
+      showSuccessToast(`${downloadedName} downloaded successfully.`);
     } catch (error) {
       const message = await readBlobErrorMessage(error, "Unable to download the selected backup.");
       setBackupStatus({ type: "error", text: message });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Download failed",
-        text: message,
+        description: message,
       });
     } finally {
       setBackupDownloading("");
@@ -859,14 +835,13 @@ export default function AdminSettings() {
         type: "success",
         text: `${downloadedName} downloaded successfully.`,
       });
+      showSuccessToast(`${downloadedName} downloaded successfully.`);
     } catch (error) {
       const message = await readBlobErrorMessage(error, "Unable to export the selected table.");
       setBackupStatus({ type: "error", text: message });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Export failed",
-        text: message,
+        description: message,
       });
     } finally {
       setBackupExporting(false);
@@ -874,13 +849,10 @@ export default function AdminSettings() {
   };
 
   const handleCleanupBackups = async () => {
-    const confirmation = await Swal.fire({
+    const confirmation = await showDangerConfirmDialog({
       title: "Delete old backups?",
       text: `Files older than ${backupCleanupDays} days will be removed while keeping the newest 3 backups.`,
-      icon: "warning",
-      showCancelButton: true,
       confirmButtonText: "Delete old files",
-      confirmButtonColor: "#dc2626",
     });
 
     if (!confirmation.isConfirmed) {
@@ -906,11 +878,9 @@ export default function AdminSettings() {
       });
       setBackupRefreshKey((value) => value + 1);
 
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "success",
+      showSuccessToast({
         title: deletedCount > 0 ? "Cleanup completed" : "Nothing to delete",
-        text:
+        description:
           deletedCount > 0
             ? `Deleted ${deletedCount} backup file${deletedCount === 1 ? "" : "s"}.`
             : response?.data?.message || `No backups older than ${backupCleanupDays} days were found.`,
@@ -918,11 +888,9 @@ export default function AdminSettings() {
     } catch (error) {
       const message = error?.response?.data?.message || "Unable to clean up old backups.";
       setBackupStatus({ type: "error", text: message });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Cleanup failed",
-        text: message,
+        description: message,
       });
     } finally {
       setBackupCleaning(false);
@@ -930,13 +898,10 @@ export default function AdminSettings() {
   };
 
   const handleDeleteBackup = async (filename) => {
-    const confirmation = await Swal.fire({
+    const confirmation = await showDangerConfirmDialog({
       title: "Delete this backup?",
       text: `${filename} will be removed from backup storage.`,
-      icon: "warning",
-      showCancelButton: true,
       confirmButtonText: "Delete backup",
-      confirmButtonColor: "#dc2626",
     });
 
     if (!confirmation.isConfirmed) {
@@ -953,20 +918,16 @@ export default function AdminSettings() {
       });
       setBackupRefreshKey((value) => value + 1);
 
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "success",
+      showSuccessToast({
         title: "Backup deleted",
-        text: response?.data?.message || `${filename} was removed from storage.`,
+        description: response?.data?.message || `${filename} was removed from storage.`,
       });
     } catch (error) {
       const message = error?.response?.data?.message || "Unable to delete the selected backup.";
       setBackupStatus({ type: "error", text: message });
-      void Swal.fire({
-        ...SETTINGS_TOAST,
-        icon: "error",
+      showErrorToast({
         title: "Delete failed",
-        text: message,
+        description: message,
       });
     } finally {
       setBackupDeleting("");

@@ -3,6 +3,7 @@ import Swal from "sweetalert2";
 import { api, fetchAvailableServices } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import ArchiveTasksCompletedSecretary from "./archive_tasks_completed_secretary";
+import { useErrorToast } from "../../utils/feedback";
 import {
   createLocalStepTimestamp,
   formatStepDateTime,
@@ -455,6 +456,7 @@ export default function WorkUpdate() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");

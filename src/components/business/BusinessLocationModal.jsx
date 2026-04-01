@@ -7,6 +7,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { Modal } from "../UI/modal";
+import { useErrorToast } from "../../utils/feedback";
 import {
   buildBusinessAddress,
   buildBusinessAddressDetails,
@@ -39,6 +40,8 @@ export default function BusinessLocationModal({
 }) {
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState("");
+  useErrorToast(error);
+  useErrorToast(mapError);
   const [mapLocation, setMapLocation] = useState(null);
 
   const businessAddress = useMemo(() => buildBusinessAddress(business), [business]);

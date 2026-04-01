@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import Swal from "sweetalert2";
 import { ChevronLeft, Lock, Send } from "lucide-react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { getHomePathForRole } from "../../context/AuthContext";
@@ -8,6 +7,7 @@ import { normalizePath } from "./layout_utils";
 import { useAuth } from "../../hooks/useAuth";
 import { RouteLoadingPanel } from "./route_loading_panel";
 import { requestModuleAccess } from "../../services/api";
+import { showErrorToast, showSuccessToast } from "../../utils/feedback";
 import {
   getModuleLabelByKey,
   hasModuleAccess,
@@ -78,25 +78,9 @@ export function ModuleAccessGate({ moduleKey, children }) {
     setRequesting(true);
     try {
       await requestModuleAccess(moduleKey, moduleLabel);
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
-        title: "Access request sent to Admin.",
-        showConfirmButton: false,
-        timer: 2200,
-        timerProgressBar: true,
-      });
+      showSuccessToast("Access request sent to Admin.");
     } catch (requestError) {
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "error",
-        title: requestError?.response?.data?.message || "Unable to send access request.",
-        showConfirmButton: false,
-        timer: 2400,
-        timerProgressBar: true,
-      });
+      showErrorToast(requestError?.response?.data?.message || "Unable to send access request.");
     } finally {
       setRequesting(false);
     }

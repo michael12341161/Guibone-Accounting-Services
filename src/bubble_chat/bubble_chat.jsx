@@ -6,6 +6,7 @@ import { getHomePathForRole } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../hooks/useAuth";
 import { api, resolveBackendAssetUrl } from "../services/api";
+import { useErrorToast } from "../utils/feedback";
 
 const POLL_INTERVAL_MS = 15000;
 const DEFAULT_BUTTON_CLASS = "";
@@ -177,6 +178,7 @@ function BubbleChatSurface({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const messagesRef = useRef(null);
   const shouldStickToBottomRef = useRef(true);
   const selectedPartner = users.find((user) => user.id === selectedPartnerId) || null;

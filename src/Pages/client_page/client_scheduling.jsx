@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { api } from "../../services/api";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
 
@@ -60,6 +61,7 @@ export default function ClientScheduling() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
 
   const [timeSlots, setTimeSlots] = useState([]); // [{value,label}]
   const [appointments, setAppointments] = useState([]); // raw list from backend
@@ -245,12 +247,10 @@ export default function ClientScheduling() {
         notes: form.notes,
       });
 
-      await Swal.fire({
+      showSuccessToast({
         title: "Scheduled",
-        text: "Your consultation request has been submitted.",
-        icon: "success",
-        timer: 1500,
-        showConfirmButton: false,
+        description: "Your consultation request has been submitted.",
+        duration: 1500,
       });
 
       // Stay on this page; just clear notes and refresh local list
@@ -284,12 +284,10 @@ export default function ClientScheduling() {
         status: "Cancelled",
       });
 
-      await Swal.fire({
+      showSuccessToast({
         title: "Cancelled",
-        text: "Your consultation was cancelled.",
-        icon: "success",
-        timer: 1400,
-        showConfirmButton: false,
+        description: "Your consultation was cancelled.",
+        duration: 1400,
       });
 
       setDetailsOpen(false);
@@ -347,10 +345,9 @@ export default function ClientScheduling() {
     const { date, time } = res.value;
 
     if (isDoubleBooked({ date, time }, appt.id)) {
-      await Swal.fire({
+      showErrorToast({
         title: "Unavailable",
-        text: "That time slot is already booked. Please choose another.",
-        icon: "error",
+        description: "That time slot is already booked. Please choose another.",
       });
       return;
     }
@@ -380,12 +377,10 @@ export default function ClientScheduling() {
         description: out.join("\n"),
       });
 
-      await Swal.fire({
+      showSuccessToast({
         title: "Updated",
-        text: "Your consultation has been rescheduled.",
-        icon: "success",
-        timer: 1400,
-        showConfirmButton: false,
+        description: "Your consultation has been rescheduled.",
+        duration: 1400,
       });
 
       setDetailsOpen(false);

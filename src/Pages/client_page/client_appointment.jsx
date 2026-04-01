@@ -4,6 +4,7 @@ import { api, fetchAvailableServices } from "../../services/api";
 import { fetchConsultationSlots } from "../../services/consultationSlots";
 import { getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
+import { useErrorToast } from "../../utils/feedback";
 import {
   DEFAULT_CONSULTATION_TIME_SLOTS,
   getConfiguredConsultationTimesForDate,
@@ -345,6 +346,7 @@ export default function ClientAppointment() {
   const [consultationSlots, setConsultationSlots] = useState([]);
   const [loadingConsultationSlots, setLoadingConsultationSlots] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [success, setSuccess] = useState("");
 
   const [appointments, setAppointments] = useState([]);

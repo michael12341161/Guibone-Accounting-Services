@@ -6,6 +6,7 @@ import {
   DEFAULT_SECURITY_SETTINGS,
   fetchSecuritySettings,
 } from "../../services/api";
+import { useErrorToast } from "../../utils/feedback";
 import {
   validatePasswordValue,
 } from "../../utils/passwordValidation";
@@ -22,6 +23,7 @@ export default function ForgotPasswordModal({ open, onClose, defaultEmail = "" }
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  useErrorToast(error);
 
   const canClose = !loading;
 

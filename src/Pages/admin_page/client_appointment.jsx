@@ -9,6 +9,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { requestModuleAccess } from "../../services/api";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const PAGE_SIZE = 10;
 const WORD_EXT = new Set(["doc", "docx"]);
@@ -175,6 +176,7 @@ export default function AdminAppointmentManagement() {
   const { permissions } = useModulePermissions();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [rows, setRows] = useState([]);
   const [updatingId, setUpdatingId] = useState(null);
   const [declineOpen, setDeclineOpen] = useState(false);
@@ -218,24 +220,14 @@ export default function AdminAppointmentManagement() {
         throw new Error(response?.data?.message || "Unable to send access request.");
       }
 
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
+      showSuccessToast({
         title: response?.data?.message || "Access request sent to Admin.",
-        showConfirmButton: false,
-        timer: 2200,
-        timerProgressBar: true,
+        duration: 2200,
       });
     } catch (requestError) {
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "error",
+      showErrorToast({
         title: requestError?.response?.data?.message || "Unable to send access request.",
-        showConfirmButton: false,
-        timer: 2400,
-        timerProgressBar: true,
+        duration: 2400,
       });
     } finally {
       setRequestingAccess(false);

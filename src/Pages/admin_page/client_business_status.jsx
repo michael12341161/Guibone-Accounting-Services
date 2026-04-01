@@ -10,6 +10,7 @@ import { api } from "../../services/api";
 import { getDocumentStatusBadgeClass } from "../../utils/document_management";
 import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
 import { joinPersonName } from "../../utils/person_name";
+import { useErrorToast } from "../../utils/feedback";
 
 function fullName(client) {
   return joinPersonName([client?.first_name, client?.middle_name, client?.last_name]) || "-";
@@ -45,6 +46,7 @@ export default function ClientBusinessStatusPage() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);

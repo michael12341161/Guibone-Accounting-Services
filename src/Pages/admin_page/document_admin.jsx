@@ -16,6 +16,7 @@ import {
   resolveDocumentUrl,
 } from "../../utils/document_management";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
+import { useErrorToast } from "../../utils/feedback";
 
 const MANAGED_DOCUMENT_KEYS = new Set(["business_permit", "dti", "sec", "lgu"]);
 
@@ -64,6 +65,7 @@ export default function DocumentAdminPage() {
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [success, setSuccess] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [pendingFiles, setPendingFiles] = useState({});

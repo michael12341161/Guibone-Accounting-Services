@@ -6,6 +6,7 @@ import {
   mergePermissions,
 } from "../utils/module_permissions";
 import { useAuth } from "../hooks/useAuth";
+import { useErrorToast } from "../utils/feedback";
 
 const ModulePermissionsContext = createContext(null);
 
@@ -18,6 +19,7 @@ export function ModulePermissionsProvider({ children }) {
   const [permissions, setPermissions] = useState(null);
   const [isLoading, setIsLoading] = useState(Boolean(user?.id));
   const [error, setError] = useState("");
+  useErrorToast(error);
   const isMountedRef = useRef(false);
 
   useEffect(

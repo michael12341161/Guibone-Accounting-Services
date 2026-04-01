@@ -5,6 +5,7 @@ import { Button } from "../../components/UI/buttons";
 import { Modal } from "../../components/UI/modal";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
+import { useErrorToast } from "../../utils/feedback";
 import {
   buildDocumentSlots,
   getDocumentStatusBadgeClass,
@@ -39,6 +40,7 @@ export default function ClientDocumentsPage() {
   const [clientRecord, setClientRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [viewerSlot, setViewerSlot] = useState(null);
 
   const loadDocuments = async ({ silent } = { silent: false }) => {

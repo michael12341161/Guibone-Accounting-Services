@@ -32,6 +32,7 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
 
 const PAGE_SIZE = 10;
@@ -246,6 +247,8 @@ export default function ClientManagementSecretary() {
   const [locationBusiness, setLocationBusiness] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState("");
+  useErrorToast(error);
+  useErrorToast(locationError);
   const [editDocuments, setEditDocuments] = useState([]);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
@@ -355,24 +358,14 @@ export default function ClientManagementSecretary() {
         throw new Error(response?.data?.message || "Unable to send access request.");
       }
 
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
+      showSuccessToast({
         title: response?.data?.message || "Access request sent to Admin.",
-        showConfirmButton: false,
-        timer: 2200,
-        timerProgressBar: true,
+        duration: 2200,
       });
     } catch (requestError) {
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "error",
+      showErrorToast({
         title: requestError?.response?.data?.message || "Unable to send access request.",
-        showConfirmButton: false,
-        timer: 2400,
-        timerProgressBar: true,
+        duration: 2400,
       });
     } finally {
       setRequestingAccess(false);
@@ -694,7 +687,7 @@ export default function ClientManagementSecretary() {
 
     const email = normalizeEmail(form.email);
     if (email && clients.some((client) => normalizeEmail(client?.email) === email)) {
-      setError("Client email already exists.");
+      showErrorToast("Client email already exists.");
       return;
     }
 
@@ -760,13 +753,13 @@ export default function ClientManagementSecretary() {
         await fetchClients();
 
         if (uploadSummary.failed.length) {
-          setError(`Client created, but some documents failed to upload: ${uploadSummary.failed.join(" | ")}`);
+          showErrorToast(`Client created, but some documents failed to upload: ${uploadSummary.failed.join(" | ")}`);
         }
 
         if (uploadSummary.uploaded.length) {
-          setSuccess(`Client created successfully. Uploaded: ${uploadSummary.uploaded.join(", ")}`);
+          showSuccessToast(`Client created successfully. Uploaded: ${uploadSummary.uploaded.join(", ")}`);
         } else {
-          setSuccess("Client created successfully.");
+          showSuccessToast("Client created successfully.");
         }
       } else {
         setError(res?.data?.message || "Failed to create client.");
@@ -961,14 +954,9 @@ export default function ClientManagementSecretary() {
       login(nextUser);
       navigate("/client", { replace: true });
     } catch (err) {
-      void Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "error",
+      showErrorToast({
         title: err?.response?.data?.message || err?.message || "Unable to access the client account.",
-        showConfirmButton: false,
-        timer: 2400,
-        timerProgressBar: true,
+        duration: 2400,
       });
     } finally {
       setSwitchingClientAccountId(null);
@@ -1020,7 +1008,7 @@ export default function ClientManagementSecretary() {
 
     const email = normalizeEmail(form.email);
     if (email && clients.some((client) => client.id !== editingClient.id && normalizeEmail(client?.email) === email)) {
-      setError("Client email already exists.");
+      showErrorToast("Client email already exists.");
       return;
     }
 

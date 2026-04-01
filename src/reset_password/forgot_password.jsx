@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { apiSession } from "../services/api";
 import { MIN_PASSWORD_LENGTH } from "../utils/passwordValidation";
+import { useErrorToast } from "../utils/feedback";
 
 export default function ForgotPasswordModal({ open, onClose }) {
   const [step, setStep] = useState("email"); // email | code | reset
@@ -13,6 +14,7 @@ export default function ForgotPasswordModal({ open, onClose }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  useErrorToast(error);
 
   const canClose = !loading;
 

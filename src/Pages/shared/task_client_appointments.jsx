@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ApprovedAppointmentsCard from "../../components/tasks/ApprovedAppointmentsCard";
 import { api } from "../../services/api";
+import { useErrorToast } from "../../utils/feedback";
 
 function isActiveClient(client) {
   const statusText = String(client?.status || "").trim().toLowerCase();
@@ -16,6 +17,7 @@ export default function TaskClientAppointmentsPage() {
   const [appointments, setAppointments] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [error, setError] = useState("");
+  useErrorToast(error);
 
   const tasksPath = location.pathname.startsWith("/admin")
     ? "/admin/tasks"

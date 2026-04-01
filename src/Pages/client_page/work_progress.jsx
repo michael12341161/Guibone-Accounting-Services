@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
+import { useErrorToast } from "../../utils/feedback";
 import {
   formatStepDateTime,
   parseStepCompletionTimestamps,
@@ -96,6 +97,7 @@ function statusMeta(statusText, progress) {
 export default function WorkProgress() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useErrorToast(error);
   const [tasks, setTasks] = useState([]);
   const [stepsTaskId, setStepsTaskId] = useState(null);
 

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -6,6 +6,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import { api } from "../services/api";
 import { fetchPhilippinePublicHolidays, getCalendarYearsFromRange } from "../services/publicHolidays";
 import Swal from "sweetalert2";
+import { showSuccessToast, useErrorToast } from "../utils/feedback";
 
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
 
@@ -133,6 +134,7 @@ export default function Calendar() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  useErrorToast(error);
 
   // ===== Accountant state =====
   const [tasks, setTasks] = useState([]);
@@ -1036,13 +1038,10 @@ export default function Calendar() {
                         await deleteCalendarEvent(activeTask);
                         setModalOpen(false);
 
-                        // show success only if we didn't set an error
-                        await Swal.fire({
+                        showSuccessToast({
                           title: "Removed",
-                          text: "The event has been removed.",
-                          icon: "success",
-                          timer: 1400,
-                          showConfirmButton: false,
+                          description: "The event has been removed.",
+                          duration: 1400,
                         });
                       }}
                     >
