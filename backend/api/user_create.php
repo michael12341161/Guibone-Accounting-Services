@@ -34,46 +34,6 @@ function inferNamesFromUsername(string $username): array {
     return [$first, $middle, $last];
 }
 
-function normalizeFinancialDetailsIds($value): array {
-    if ($value === null) {
-        return [];
-    }
-
-    $items = [];
-    if (is_array($value)) {
-        $items = $value;
-    } elseif (is_string($value)) {
-        $trimmed = trim($value);
-        $items = $trimmed === '' ? [] : (preg_split('/\s*,\s*/', $trimmed) ?: []);
-    } else {
-        $items = [$value];
-    }
-
-    $seen = [];
-    foreach ($items as $item) {
-        $raw = trim((string)$item);
-        if ($raw === '' || !ctype_digit($raw)) {
-            continue;
-        }
-        $id = (int)$raw;
-        if ($id > 0) {
-            $seen[$id] = $id;
-        }
-    }
-
-    return array_values($seen);
-}
-
-function extractFinancialDetailsIds(array $employeeDetails): array {
-    if (array_key_exists('financial_details_ids', $employeeDetails)) {
-        return normalizeFinancialDetailsIds($employeeDetails['financial_details_ids']);
-    }
-    if (array_key_exists('financial_details_id', $employeeDetails)) {
-        return normalizeFinancialDetailsIds([$employeeDetails['financial_details_id']]);
-    }
-    return [];
-}
-
 function normalizeAccountNumber($value): ?string {
     $raw = trim((string)($value ?? ''));
     return $raw !== '' ? $raw : null;
@@ -95,38 +55,33 @@ function extractGovernmentAccountNumbers(array $employeeDetails): array {
     return $result;
 }
 
-function tableExists(PDO $conn, string $tableName): bool {
-    static $cache = [];
-
-    $normalized = strtolower(trim($tableName));
-    if ($normalized === '') {
-        return false;
-    }
-    if (array_key_exists($normalized, $cache)) {
-        return $cache[$normalized];
-    }
-
-    $stmt = $conn->prepare(
-        'SELECT 1
-         FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = :table_name
-         LIMIT 1'
-    );
-    $stmt->execute([':table_name' => $tableName]);
-    $exists = $stmt->fetchColumn() !== false;
-    $cache[$normalized] = $exists;
-    return $exists;
-}
-
-function fallbackAccountTypeName(int $id): string {
-    $defaults = [
+function buildGovernmentFinancialDetails(array $accountsByType): array {
+    $definitions = [
         1 => 'SSS',
         2 => 'Pag-IBIG',
         3 => 'PhilHealth',
     ];
 
-    return $defaults[$id] ?? ('Account Type #' . $id);
+    $details = [];
+    foreach ($definitions as $id => $name) {
+        $accountNumber = normalizeAccountNumber($accountsByType[$id] ?? null);
+        if ($accountNumber === null) {
+            continue;
+        }
+
+        $details[] = [
+            'id' => $id,
+            'name' => $name,
+            'account_name' => $accountNumber,
+            'amount' => null,
+            'rate' => null,
+            'effective_from' => null,
+            'effective_to' => null,
+            'label' => $name . ': ' . $accountNumber,
+        ];
+    }
+
+    return $details;
 }
 
 function resolveRole(PDO $conn, string $roleRaw): array {
@@ -169,43 +124,6 @@ function resolveRole(PDO $conn, string $roleRaw): array {
     }
 
     return [0, ''];
-}
-
-function loadAccountTypeMap(PDO $conn, array $ids): array {
-    if (empty($ids)) {
-        return [];
-    }
-
-    $map = [];
-    foreach ($ids as $id) {
-        $id = (int)$id;
-        if ($id <= 0) {
-            continue;
-        }
-        $map[$id] = fallbackAccountTypeName($id);
-    }
-
-    if (!tableExists($conn, 'account_type')) {
-        return $map;
-    }
-
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $conn->prepare("SELECT account_type_id, account_type_name FROM account_type WHERE account_type_id IN ({$placeholders})");
-    foreach ($ids as $i => $id) {
-        $stmt->bindValue($i + 1, (int)$id, PDO::PARAM_INT);
-    }
-    $stmt->execute();
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-    foreach ($rows as $row) {
-        $id = isset($row['account_type_id']) ? (int)$row['account_type_id'] : 0;
-        if ($id <= 0) {
-            continue;
-        }
-        $name = trim((string)($row['account_type_name'] ?? ''));
-        $map[$id] = $name !== '' ? $name : fallbackAccountTypeName($id);
-    }
-    return $map;
 }
 
 function normalizeOptionalString($value): ?string {
@@ -365,51 +283,14 @@ try {
         ':user_id' => $newId,
     ]);
 
-    $financialIds = !empty($governmentAccounts)
-        ? array_values(array_map('intval', array_keys($governmentAccounts)))
-        : extractFinancialDetailsIds($employeeDetails);
-    $financialNameMap = loadAccountTypeMap($conn, $financialIds);
-
-    if ($clientId !== null && tableExists($conn, 'financial_account')) {
-        $conn->prepare('DELETE FROM financial_account WHERE Client_ID = :cid')->execute([':cid' => $clientId]);
-        if (!empty($financialIds)) {
-            $insFinancial = $conn->prepare(
-                'INSERT INTO financial_account (Client_ID, account_type_id, name)
-                 VALUES (:cid, :atype, :name)'
-            );
-            foreach ($financialIds as $accountTypeId) {
-                if (!isset($financialNameMap[$accountTypeId])) {
-                    continue;
-                }
-                $storedName = $governmentAccounts[$accountTypeId] ?? $financialNameMap[$accountTypeId];
-                $insFinancial->execute([
-                    ':cid' => $clientId,
-                    ':atype' => $accountTypeId,
-                    ':name' => $storedName,
-                ]);
-            }
-        }
-    }
-
-    $financialDetails = array_values(array_map(function ($id) use ($financialNameMap, $governmentAccounts) {
-        $typeName = isset($financialNameMap[$id]) ? $financialNameMap[$id] : ('Account Type #' . $id);
-        $accountNumber = $governmentAccounts[$id] ?? null;
-        $label = $accountNumber !== null ? ($typeName . ': ' . $accountNumber) : $typeName;
-        return [
-            'id' => $id,
-            'name' => $typeName,
-            'account_name' => $accountNumber,
-            'amount' => null,
-            'rate' => null,
-            'effective_from' => null,
-            'effective_to' => null,
-            'label' => $label,
-        ];
-    }, $financialIds));
+    $financialDetails = buildGovernmentFinancialDetails($governmentAccounts);
     $financialText = implode(', ', array_values(array_map(function ($row) {
         return (string)$row['label'];
     }, $financialDetails)));
     $firstFinancial = !empty($financialDetails) ? $financialDetails[0] : null;
+    $financialIds = array_values(array_map(function ($row) {
+        return (int)($row['id'] ?? 0);
+    }, $financialDetails));
 
     $userPayload = [
         'id' => $newId,

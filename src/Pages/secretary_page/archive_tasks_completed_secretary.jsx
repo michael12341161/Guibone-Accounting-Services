@@ -8,8 +8,9 @@ const priorityClass = (priorityRaw) => {
   return "bg-emerald-500 text-white";
 };
 
-export default function ArchiveTasksCompletedSecretary({ tasks = [] }) {
+export default function ArchiveTasksCompletedSecretary({ tasks = [], onRestore = null, restoringTaskId = "" }) {
   const rows = Array.isArray(tasks) ? tasks : [];
+  const activeRestoreId = String(restoringTaskId || "").trim();
 
   if (rows.length === 0) {
     return (
@@ -32,58 +33,76 @@ export default function ArchiveTasksCompletedSecretary({ tasks = [] }) {
       </div>
 
       <div className="space-y-3">
-        {rows.map((task) => (
-          <Card key={task.id} compact variant="success" className="shadow-none">
-            <CardContent className="space-y-3">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                      Archived
+        {rows.map((task) => {
+          const isRestoring = String(task.id || "") === activeRestoreId;
+
+          return (
+            <Card key={task.id} compact variant="success" className="shadow-none">
+              <CardContent className="space-y-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                        Archived
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        {task.statusLabel || "Pending"}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-900">{task.title}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {task.clientName} | {task.serviceName}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(task.priority)}`}>
+                      {task.priority}
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                      {task.statusLabel || "Pending"}
+                    <span className="inline-flex rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600">
+                      Due: {task.dueDateLabel}
                     </span>
-                    <span className="text-sm font-semibold text-slate-900">{task.title}</span>
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {task.clientName} | {task.serviceName}
+                    {onRestore ? (
+                      <button
+                        type="button"
+                        onClick={() => onRestore(task.id)}
+                        disabled={isRestoring}
+                        className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-semibold transition ${
+                          isRestoring
+                            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        }`}
+                      >
+                        {isRestoring ? "Restoring..." : "Restore"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(task.priority)}`}>
-                    {task.priority}
-                  </span>
-                  <span className="inline-flex rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600">
-                    Due: {task.dueDateLabel}
-                  </span>
-                </div>
-              </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Assigned To</div>
+                    <div className="mt-1 text-sm font-medium text-slate-800">{task.accountantName}</div>
+                  </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Steps</div>
+                    <div className="mt-1 text-sm font-medium text-slate-800">
+                      {task.stepCount} {task.stepCount === 1 ? "step" : "steps"}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Assigned To</div>
-                  <div className="mt-1 text-sm font-medium text-slate-800">{task.accountantName}</div>
-                </div>
-
-                <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Steps</div>
-                  <div className="mt-1 text-sm font-medium text-slate-800">
-                    {task.stepCount} {task.stepCount === 1 ? "step" : "steps"}
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Description</div>
+                  <div className="mt-1 text-sm leading-relaxed text-slate-700">
+                    {task.description || "No additional description."}
                   </div>
                 </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">Description</div>
-                <div className="mt-1 text-sm leading-relaxed text-slate-700">
-                  {task.description || "No additional description."}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

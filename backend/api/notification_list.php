@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/task_deadline_monitor.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -26,6 +27,12 @@ try {
         respond(401, ['success' => false, 'message' => 'Authentication is required.']);
     }
 
+    try {
+        monitoring_run_task_deadline_monitor($conn);
+    } catch (Throwable $__) {
+        // Do not block notification fetches if deadline monitoring encounters an issue.
+    }
+
     $stmt = $conn->prepare(
         'SELECT notifications_ID,
                 user_id,
@@ -40,15 +47,13 @@ try {
     );
     $stmt->execute([':uid' => $userId]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-    $countStmt = $conn->prepare(
-        'SELECT COUNT(*)
-         FROM notifications
-         WHERE user_id = :uid
-           AND is_read = 0'
-    );
-    $countStmt->execute([':uid' => $userId]);
-    $unreadCount = (int)($countStmt->fetchColumn() ?: 0);
+    $rows = monitoring_filter_current_task_deadline_notifications($conn, $rows);
+    $unreadCount = 0;
+    foreach ($rows as $row) {
+        if ((int)($row['is_read'] ?? 0) === 0) {
+            $unreadCount++;
+        }
+    }
 
     respond(200, [
         'success' => true,

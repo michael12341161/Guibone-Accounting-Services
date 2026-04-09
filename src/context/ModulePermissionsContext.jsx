@@ -9,15 +9,55 @@ import { useAuth } from "../hooks/useAuth";
 import { useErrorToast } from "../utils/feedback";
 
 const ModulePermissionsContext = createContext(null);
+const MODULE_PERMISSION_CACHE_PREFIX = "monitoring:permissions-cache";
 
 function formatErrorMessage(error) {
   return error?.response?.data?.message || error?.message || "Unable to load module permissions.";
 }
 
+function getPermissionCacheKey(userId) {
+  const normalizedUserId = String(userId ?? "").trim();
+  return normalizedUserId ? `${MODULE_PERMISSION_CACHE_PREFIX}:${normalizedUserId}` : "";
+}
+
+function readCachedPermissions(userId) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const cacheKey = getPermissionCacheKey(userId);
+  if (!cacheKey) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(cacheKey);
+    return raw ? mergePermissions(JSON.parse(raw)) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeCachedPermissions(userId, permissions) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const cacheKey = getPermissionCacheKey(userId);
+  if (!cacheKey || !permissions || typeof permissions !== "object") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(cacheKey, JSON.stringify(mergePermissions(permissions)));
+  } catch (_) {}
+}
+
 export function ModulePermissionsProvider({ children }) {
-  const { user } = useAuth();
-  const [permissions, setPermissions] = useState(null);
-  const [isLoading, setIsLoading] = useState(Boolean(user?.id));
+  const { user, isAuthReady } = useAuth();
+  const initialCachedPermissions = readCachedPermissions(user?.id);
+  const [permissions, setPermissions] = useState(() => initialCachedPermissions);
+  const [isLoading, setIsLoading] = useState(() => Boolean(user?.id) && !initialCachedPermissions);
   const [error, setError] = useState("");
   useErrorToast(error);
   const isMountedRef = useRef(false);
@@ -38,6 +78,20 @@ export function ModulePermissionsProvider({ children }) {
 
   const refreshPermissions = useCallback(
     async ({ silent = false } = {}) => {
+      const cachedPermissions = readCachedPermissions(user?.id);
+
+      if (!isAuthReady) {
+        if (!isMountedRef.current) {
+          return null;
+        }
+        setPermissions(cachedPermissions);
+        setError("");
+        if (!silent) {
+          setIsLoading(Boolean(user?.id) && !cachedPermissions);
+        }
+        return null;
+      }
+
       if (!user?.id) {
         if (!isMountedRef.current) {
           return null;
@@ -61,6 +115,7 @@ export function ModulePermissionsProvider({ children }) {
         }
         const nextPermissions = mergePermissions(response?.data?.permissions);
         setPermissions(nextPermissions);
+        writeCachedPermissions(user?.id, nextPermissions);
         setError("");
         return nextPermissions;
       } catch (nextError) {
@@ -79,7 +134,7 @@ export function ModulePermissionsProvider({ children }) {
         }
       }
     },
-    [user?.id]
+    [isAuthReady, user?.id]
   );
 
   const savePermissions = useCallback(
@@ -90,6 +145,7 @@ export function ModulePermissionsProvider({ children }) {
       }
       const normalized = mergePermissions(response?.data?.permissions ?? nextPermissions);
       setPermissions(normalized);
+      writeCachedPermissions(user?.id, normalized);
       setError("");
       try {
         window.localStorage.setItem(MODULE_PERMISSION_CHANGE_STORAGE_KEY, String(Date.now()));
@@ -97,10 +153,21 @@ export function ModulePermissionsProvider({ children }) {
       window.dispatchEvent(new Event(MODULE_PERMISSION_CHANGE_EVENT));
       return normalized;
     },
-    []
+    [user?.id]
   );
 
   useEffect(() => {
+    const cachedPermissions = readCachedPermissions(user?.id);
+
+    if (!isAuthReady) {
+      if (isMountedRef.current) {
+        setPermissions(cachedPermissions);
+        setError("");
+        setIsLoading(Boolean(user?.id) && !cachedPermissions);
+      }
+      return undefined;
+    }
+
     if (!user?.id) {
       if (isMountedRef.current) {
         setPermissions(null);
@@ -110,28 +177,34 @@ export function ModulePermissionsProvider({ children }) {
       return undefined;
     }
 
-    void refreshPermissions();
+    if (isMountedRef.current) {
+      setPermissions(cachedPermissions);
+      setError("");
+      setIsLoading(!cachedPermissions);
+    }
+
+    void refreshPermissions({ silent: Boolean(cachedPermissions) });
 
     const handlePermissionChange = () => {
-      if (user?.id) {
+      if (isAuthReady && user?.id) {
         void refreshPermissions({ silent: true });
       }
     };
 
     const handleStorage = (event) => {
-      if (event?.key === MODULE_PERMISSION_CHANGE_STORAGE_KEY && user?.id) {
+      if (event?.key === MODULE_PERMISSION_CHANGE_STORAGE_KEY && isAuthReady && user?.id) {
         void refreshPermissions({ silent: true });
       }
     };
 
     const handleFocus = () => {
-      if (user?.id) {
+      if (isAuthReady && user?.id) {
         void refreshPermissions({ silent: true });
       }
     };
 
     const intervalId = window.setInterval(() => {
-      if (user?.id) {
+      if (isAuthReady && user?.id) {
         void refreshPermissions({ silent: true });
       }
     }, 12000);
@@ -146,7 +219,7 @@ export function ModulePermissionsProvider({ children }) {
       window.removeEventListener(MODULE_PERMISSION_CHANGE_EVENT, handlePermissionChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [refreshPermissions, user?.id]);
+  }, [isAuthReady, refreshPermissions, user?.id]);
 
   const value = useMemo(
     () => ({

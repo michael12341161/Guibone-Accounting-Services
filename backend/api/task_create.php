@@ -4,6 +4,7 @@ require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
 require_once __DIR__ . '/task_workload_settings_helper.php';
+require_once __DIR__ . '/task_deadline_monitor.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -92,6 +93,28 @@ function upsertDescriptionMetaLine(string $source, string $key, string $value, b
     return trim(implode("\n", $next));
 }
 
+function removeDescriptionMetaLine(string $source, string $key): string {
+    $pattern = '/^\s*\[' . preg_quote($key, '/') . '\]\s*.*$/i';
+    $lines = preg_split('/\R/', (string)$source);
+    $next = [];
+
+    foreach ($lines as $line) {
+        if (preg_match($pattern, (string)$line)) {
+            continue;
+        }
+        $next[] = $line;
+    }
+
+    while (!empty($next) && trim((string)reset($next)) === '') {
+        array_shift($next);
+    }
+    while (!empty($next) && trim((string)end($next)) === '') {
+        array_pop($next);
+    }
+
+    return trim(implode("\n", $next));
+}
+
 function buildPersonName($first, $middle, $last): string {
     $parts = [];
     foreach ([$first, $middle, $last] as $part) {
@@ -129,6 +152,99 @@ function resolveUserDisplayName(PDO $conn, int $userId): string {
     }
 
     return trim((string)($row['username'] ?? ''));
+}
+
+function fetchTaskAssignableUser(PDO $conn, int $userId): ?array {
+    if ($userId <= 0) {
+        return null;
+    }
+
+    $stmt = $conn->prepare(
+        'SELECT
+            u.User_id AS id,
+            u.Username AS username,
+            u.first_name AS first_name,
+            u.middle_name AS middle_name,
+            u.last_name AS last_name,
+            u.Role_id AS role_id,
+            r.Role_name AS role_name
+         FROM user u
+         LEFT JOIN role r ON r.Role_id = u.Role_id
+         WHERE u.User_id = :uid
+         LIMIT 1'
+    );
+    $stmt->execute([':uid' => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function resolveTaskUserDisplayName(array $user): string {
+    $fullName = buildPersonName($user['first_name'] ?? '', $user['middle_name'] ?? '', $user['last_name'] ?? '');
+    if ($fullName !== '') {
+        return $fullName;
+    }
+
+    return trim((string)($user['username'] ?? ''));
+}
+
+function resolveTaskRoleLabelById(int $roleId): string {
+    if ($roleId === MONITORING_ROLE_ADMIN) {
+        return 'Admin';
+    }
+    if ($roleId === MONITORING_ROLE_SECRETARY) {
+        return 'Secretary';
+    }
+    if ($roleId === MONITORING_ROLE_ACCOUNTANT) {
+        return 'Accountant';
+    }
+    if ($roleId === MONITORING_ROLE_CLIENT) {
+        return 'Client';
+    }
+    return 'User';
+}
+
+function resolveTaskUserRoleLabel(array $user): string {
+    $roleId = isset($user['role_id']) ? (int)$user['role_id'] : 0;
+    $roleName = strtolower(trim((string)($user['role_name'] ?? '')));
+
+    if ($roleName === 'admin') {
+        return 'Admin';
+    }
+    if ($roleName === 'secretary') {
+        return 'Secretary';
+    }
+    if ($roleName === 'accountant') {
+        return 'Accountant';
+    }
+    if ($roleName === 'client') {
+        return 'Client';
+    }
+
+    return resolveTaskRoleLabelById($roleId);
+}
+
+function isTaskSecretaryUser(array $user): bool {
+    $roleId = isset($user['role_id']) ? (int)$user['role_id'] : 0;
+    if ($roleId === MONITORING_ROLE_SECRETARY) {
+        return true;
+    }
+
+    return strtolower(trim((string)($user['role_name'] ?? ''))) === 'secretary';
+}
+
+function isTaskAccountantUser(array $user): bool {
+    $roleId = isset($user['role_id']) ? (int)$user['role_id'] : 0;
+    if ($roleId === MONITORING_ROLE_ACCOUNTANT) {
+        return true;
+    }
+
+    return strtolower(trim((string)($user['role_name'] ?? ''))) === 'accountant';
+}
+
+function buildTaskUserLabel(array $user): string {
+    $roleLabel = resolveTaskUserRoleLabel($user);
+    $displayName = resolveTaskUserDisplayName($user);
+    return trim($roleLabel . ($displayName !== '' ? ' ' . $displayName : ''));
 }
 
 function resolveClientUserId(PDO $conn, int $clientId): int {
@@ -174,6 +290,12 @@ function normalizeWorkloadTaskStatus(string $statusName, string $description): s
     if ($status === 'completed' || $status === 'done') {
         return 'Completed';
     }
+    if ($status === 'overdue') {
+        return 'Overdue';
+    }
+    if ($status === 'incomplete') {
+        return 'Incomplete';
+    }
     if ($status === 'in progress' || $status === 'started') {
         return 'In Progress';
     }
@@ -216,27 +338,42 @@ function countActiveAssignedTasks(PDO $conn, int $userId): int {
 
 function createTaskNotifications(
     PDO $conn,
-    int $secretaryId,
-    int $accountantId,
+    int $creatorId,
+    int $creatorRoleId,
+    ?array $assigneeUser,
+    ?array $partnerUser,
     int $clientId,
     string $clientName
 ): void {
-    $secretaryName = resolveUserDisplayName($conn, $secretaryId);
-    $accountantName = resolveUserDisplayName($conn, $accountantId);
-
-    $secretaryLabel = $secretaryName !== '' ? 'Secretary ' . $secretaryName : 'Secretary';
-    $accountantLabel = $accountantName !== '' ? 'Accountant ' . $accountantName : 'Accountant';
+    $creatorName = resolveUserDisplayName($conn, $creatorId);
+    $creatorRoleLabel = resolveTaskRoleLabelById($creatorRoleId);
+    $creatorLabel = trim($creatorRoleLabel . ($creatorName !== '' ? ' ' . $creatorName : ''));
+    $assigneeLabel = $assigneeUser ? buildTaskUserLabel($assigneeUser) : 'Assigned staff';
+    $partnerLabel = $partnerUser ? buildTaskUserLabel($partnerUser) : '';
     $clientLabel = trim($clientName) !== '' ? trim($clientName) : 'Client';
 
     $clientUserId = resolveClientUserId($conn, $clientId);
     if ($clientUserId > 0) {
-        $clientMessage = $secretaryLabel . ' created a task for you. ' . $accountantLabel . ' will handle the service.';
-        insertNotification($conn, $clientUserId, $secretaryId, 'task', $clientMessage);
+        $clientMessage = $creatorLabel . ' created a task for you. ' . $assigneeLabel;
+        if ($partnerLabel !== '') {
+            $clientMessage .= ' will coordinate with ' . $partnerLabel . ' for the service.';
+        } else {
+            $clientMessage .= ' will handle the service.';
+        }
+        insertNotification($conn, $clientUserId, $creatorId, 'task', $clientMessage);
     }
 
-    if ($accountantId > 0) {
-        $accountantMessage = $secretaryLabel . ' assigned you a task for client ' . $clientLabel . '.';
-        insertNotification($conn, $accountantId, $secretaryId, 'task', $accountantMessage);
+    if ($assigneeUser && (int)($assigneeUser['id'] ?? 0) > 0) {
+        $assigneeMessage = $creatorLabel . ' assigned you a task for client ' . $clientLabel . '.';
+        if ($partnerLabel !== '' && isTaskSecretaryUser($assigneeUser)) {
+            $assigneeMessage .= ' ' . $partnerLabel . ' is your accountant partner for the task steps.';
+        }
+        insertNotification($conn, (int)$assigneeUser['id'], $creatorId, 'task', $assigneeMessage);
+    }
+
+    if ($partnerUser && (int)($partnerUser['id'] ?? 0) > 0) {
+        $partnerMessage = $creatorLabel . ' assigned you as the accountant partner for client ' . $clientLabel . '.';
+        insertNotification($conn, (int)$partnerUser['id'], $creatorId, 'task', $partnerMessage);
     }
 }
 
@@ -275,6 +412,7 @@ try {
         $serviceNameInput = trim((string)$data['service']);
     }
     $accountantId = isset($data['accountant_id']) ? (int)$data['accountant_id'] : 0;
+    $partnerId = isset($data['partner_id']) ? (int)$data['partner_id'] : 0;
     $deadlineInput = isset($data['deadline']) ? trim((string)$data['deadline']) : '';
 
     if ($clientId <= 0 || $title === '') {
@@ -319,9 +457,6 @@ try {
         $description = implode("\n", $next);
     }
 
-    $createdAtSeed = date('c');
-    $description = upsertDescriptionMetaLine($description, 'CreatedAt', $createdAtSeed);
-
     $serviceId = 0;
     $serviceName = $serviceNameInput;
     if ($serviceNameInput !== '') {
@@ -352,14 +487,49 @@ try {
         ]);
     }
 
+    $assigneeUser = null;
     if ($accountantId > 0) {
-        $checkUser = $conn->prepare('SELECT User_id FROM user WHERE User_id = :uid LIMIT 1');
-        $checkUser->execute([':uid' => $accountantId]);
-        if (!$checkUser->fetchColumn()) {
+        $assigneeUser = fetchTaskAssignableUser($conn, $accountantId);
+        if ($assigneeUser === null) {
             respond(422, ['success' => false, 'message' => 'Invalid accountant_id']);
         }
     } else {
         $accountantId = 0;
+    }
+
+    $partnerUser = null;
+    if ($partnerId > 0) {
+        $partnerUser = fetchTaskAssignableUser($conn, $partnerId);
+        if ($partnerUser === null) {
+            respond(422, ['success' => false, 'message' => 'Invalid partner_id']);
+        }
+    } else {
+        $partnerId = 0;
+    }
+
+    if ($assigneeUser !== null && isTaskSecretaryUser($assigneeUser)) {
+        if ($partnerId <= 0) {
+            respond(422, ['success' => false, 'message' => 'Please select an accountant partner when assigning the task to a secretary.']);
+        }
+        if ($partnerId === $accountantId) {
+            respond(422, ['success' => false, 'message' => 'The partner accountant must be different from the main assignee.']);
+        }
+        if ($partnerUser === null || !isTaskAccountantUser($partnerUser)) {
+            respond(422, ['success' => false, 'message' => 'Partner must be an accountant.']);
+        }
+    } else {
+        $partnerId = 0;
+        $partnerUser = null;
+    }
+
+    $createdAtSeed = date('c');
+    $description = upsertDescriptionMetaLine($description, 'CreatedAt', $createdAtSeed);
+    if ($partnerUser !== null) {
+        $description = upsertDescriptionMetaLine($description, 'PartnerId', (string)$partnerId);
+        $description = upsertDescriptionMetaLine($description, 'PartnerName', resolveTaskUserDisplayName($partnerUser));
+    } else {
+        $description = removeDescriptionMetaLine($description, 'PartnerId');
+        $description = removeDescriptionMetaLine($description, 'PartnerName');
     }
 
     $deadlineDate = null;
@@ -434,29 +604,30 @@ try {
         $createdAtValue = $createdAtSeed;
     }
 
-    $accountantName = null;
-    if ($accountantId > 0) {
-        $u = $conn->prepare('SELECT Username FROM user WHERE User_id = :uid LIMIT 1');
-        $u->execute([':uid' => $accountantId]);
-        $name = $u->fetchColumn();
-        if ($name !== false) {
-            $accountantName = (string)$name;
-        }
-    }
+    $accountantName = $assigneeUser !== null ? trim((string)($assigneeUser['username'] ?? '')) : null;
+    $partnerName = $partnerUser !== null ? resolveTaskUserDisplayName($partnerUser) : null;
 
     $conn->commit();
 
     try {
-        $secretaryId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
+        $creatorId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
         createTaskNotifications(
             $conn,
-            $secretaryId,
-            $accountantId,
+            $creatorId,
+            (int)($sessionUser['role_id'] ?? 0),
+            $assigneeUser,
+            $partnerUser,
             $clientId,
             (string)($clientRow['client_name'] ?? '')
         );
     } catch (Throwable $__) {
         // Do not block task creation if notifications fail.
+    }
+
+    try {
+        monitoring_run_task_deadline_monitor($conn);
+    } catch (Throwable $__) {
+        // Do not block task creation if deadline monitoring fails.
     }
 
     respond(201, [
@@ -480,6 +651,8 @@ try {
             'created_by_name' => $createdByName !== '' ? $createdByName : null,
             'accountant_id' => ($accountantId > 0 ? $accountantId : null),
             'accountant_name' => $accountantName,
+            'partner_id' => ($partnerId > 0 ? $partnerId : null),
+            'partner_name' => $partnerName,
         ],
     ]);
 } catch (Throwable $e) {

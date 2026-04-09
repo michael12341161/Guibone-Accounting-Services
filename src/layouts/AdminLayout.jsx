@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  BarChart3,
   Building2,
   CalendarCheck,
   CalendarClock,
@@ -83,6 +84,30 @@ export const adminNavItems = [
     ],
   },
   {
+    key: "certificate-menu",
+    label: "Certificate Template",
+    icon: <FilePenLine {...sidebarIconProps} />,
+    sectionLabel: "Certificate",
+    accessKey: "certificate",
+    children: [
+      {
+        key: "certificate-view",
+        label: "Certificate",
+        to: "/admin/certificate",
+        end: true,
+        icon: <FileText {...sidebarIconProps} />,
+        accessKey: "certificate",
+      },
+      {
+        key: "edit-certificate",
+        label: "Edit Certificate",
+        to: "/admin/certificate/edit",
+        icon: <FilePenLine {...sidebarIconProps} />,
+        accessKey: "edit-certificate",
+      },
+    ],
+  },
+  {
     key: "appointments",
     label: "Appointments",
     to: "/admin/appointments",
@@ -135,6 +160,14 @@ export const adminNavItems = [
     icon: <CalendarDays {...sidebarIconProps} />,
     sectionLabel: "Event Calendar",
     accessKey: "calendar",
+  },
+  {
+    key: "reports",
+    label: "Reports",
+    to: "/admin/reports",
+    icon: <BarChart3 {...sidebarIconProps} />,
+    sectionLabel: "Insights",
+    accessKey: "reports",
   },
   {
     key: "user-management",

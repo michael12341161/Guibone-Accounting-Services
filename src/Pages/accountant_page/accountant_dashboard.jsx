@@ -13,6 +13,7 @@ import { hasModuleAccess } from "../../utils/module_permissions";
 
 const STATUS_COLORS = {
   Completed: "#10b981",
+  Incomplete: "#f97316",
   "In Progress": "#0ea5e9",
   Declined: "#f43f5e",
   Pending: "#f59e0b",
@@ -58,6 +59,12 @@ export default function AccountantDashboard({ user, onLogout }) {
   })();
   const effectiveUser = user ?? persistedUser;
   const userId = effectiveUser?.id;
+  const isVisibleToCurrentAccountant = (task) => {
+    if (!userId) return true;
+    const assigneeId = Number(task?.accountant_id || task?.user_id || task?.User_ID || 0);
+    const partnerId = Number(task?.partner_id || 0);
+    return assigneeId === Number(userId) || partnerId === Number(userId);
+  };
   const location = useLocation();
   const currentKey = useMemo(
     () => resolveNavKey(location.pathname, accountantNavItems, "/accountant"),
@@ -76,7 +83,7 @@ export default function AccountantDashboard({ user, onLogout }) {
         const res = await api.get("task_list.php");
         if (!stop) {
           const list = Array.isArray(res.data?.tasks) ? res.data.tasks : [];
-          const mine = userId ? list.filter((t) => (t.accountant_id || t.user_id || t.User_ID) === userId) : list;
+          const mine = userId ? list.filter(isVisibleToCurrentAccountant) : list;
           setTasks(mine);
         }
       } catch (e) {
@@ -90,7 +97,7 @@ export default function AccountantDashboard({ user, onLogout }) {
       try {
         const res = await api.get("task_list.php");
         const list = Array.isArray(res.data?.tasks) ? res.data.tasks : [];
-        const mine = userId ? list.filter((t) => (t.accountant_id || t.user_id || t.User_ID) === userId) : list;
+        const mine = userId ? list.filter(isVisibleToCurrentAccountant) : list;
         setTasks(mine);
       } catch {}
     }, 15000);
@@ -104,15 +111,16 @@ export default function AccountantDashboard({ user, onLogout }) {
   const totalWorks = tasks.length;
   const totalNotDoneWorks = tasks.filter((task) => {
     const status = String(task?.status || "pending").toLowerCase();
-    return status !== "completed";
+    return !["completed", "done"].includes(status);
   }).length;
   const completionRate = totalWorks > 0 ? Math.round(((totalWorks - totalNotDoneWorks) / totalWorks) * 100) : 0;
 
   const statusBreakdown = useMemo(() => {
-    const counts = { Pending: 0, "In Progress": 0, Completed: 0, Declined: 0 };
+    const counts = { Pending: 0, "In Progress": 0, Incomplete: 0, Completed: 0, Declined: 0 };
     tasks.forEach((task) => {
       const s = String(task?.status || "pending").toLowerCase();
-      if (s.includes("complete") || s.includes("done")) counts.Completed += 1;
+      if (s === "completed" || s === "done") counts.Completed += 1;
+      else if (s === "incomplete") counts.Incomplete += 1;
       else if (s.includes("progress") || s.includes("ongo")) counts["In Progress"] += 1;
       else if (s.includes("declined") || s.includes("cancelled") || s.includes("canceled") || s.includes("at risk")) {
         counts.Declined += 1;

@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { Building2, CalendarCheck, FileText, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
+import { Award, Building2, CalendarCheck, FileText, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { appLogo } from "../assets/branding";
 import { Button } from "../components/UI/buttons";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
 import { getUserFirstName } from "../components/layout/layout_utils";
+import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
+import { clientBreadcrumbConfig } from "../config/clientBreadcrumbConfig";
 import { getHomePathForRole } from "../context/AuthContext";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
@@ -68,6 +70,14 @@ export const clientNavItems = [
     to: "/client/work-progress",
     icon: <ListChecks {...sidebarIconProps} />,
     sectionLabel: "Work Progress",
+    accessKey: "client-account",
+  },
+  {
+    key: "certificate",
+    label: "Certificate",
+    to: "/client/certificate",
+    icon: <Award {...sidebarIconProps} />,
+    sectionLabel: "My Certificate",
     accessKey: "client-account",
   },
   {
@@ -194,18 +204,21 @@ export default function ClientLayout({ user, onLogout, children }) {
       desktopSidebarCollapsible
       desktopSidebarCollapseMode="icons"
     >
-      {isImpersonatingStaff ? (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          You are viewing this client account in read-only mode. All client actions are disabled for staff access.
-        </div>
-      ) : null}
-      <fieldset
-        disabled={isImpersonatingStaff}
-        aria-readonly={isImpersonatingStaff}
-        className="m-0 min-w-0 border-0 p-0"
-      >
-        {children}
-      </fieldset>
+      <>
+        <RouteBreadcrumbs config={clientBreadcrumbConfig} />
+        {isImpersonatingStaff ? (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            You are viewing this client account in read-only mode. All client actions are disabled for staff access.
+          </div>
+        ) : null}
+        <fieldset
+          disabled={isImpersonatingStaff}
+          aria-readonly={isImpersonatingStaff}
+          className="m-0 min-w-0 border-0 p-0"
+        >
+          {children}
+        </fieldset>
+      </>
       <ClientProfile
         open={profileOpen}
         onClose={() => setProfileOpen(false)}

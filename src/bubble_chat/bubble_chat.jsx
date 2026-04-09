@@ -711,14 +711,19 @@ export default function BubbleChat({
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
-  const { role } = useAuth();
+  const { user, role, isAuthReady } = useAuth();
   const rootRef = useRef(null);
   const isEmbedded = mode === "sidebar" || mode === "embedded";
   const resolvedLayout = layout || (isEmbedded ? "split" : "stacked");
   const unreadBadgeText = unreadCount > 99 ? "99+" : String(unreadCount);
   const messagingPath = `${getHomePathForRole(role)}/messaging`;
+  const userId = Number(user?.id ?? user?.user_id ?? user?.User_ID ?? 0) || null;
 
   useEffect(() => {
+    if (!isAuthReady || !userId) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     const heartbeat = async () => {
@@ -753,9 +758,14 @@ export default function BubbleChat({
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [isAuthReady, userId]);
 
   useEffect(() => {
+    if (!isAuthReady || !userId) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
     if (isEmbedded) {
       return undefined;
     }
@@ -793,7 +803,7 @@ export default function BubbleChat({
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isEmbedded]);
+  }, [isAuthReady, isEmbedded, userId]);
 
   useEffect(() => {
     if (isEmbedded || !open) {

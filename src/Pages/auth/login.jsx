@@ -167,7 +167,14 @@ export default function LoginPage() {
         login(nextUser);
         navigate(getHomePathForRole(nextUser?.role_id));
       } else {
-        setLoginError(res.data?.message || "Incorrect email or password");
+        const responseData = res.data || {};
+        setLoginError(responseData?.message || "Incorrect email or password");
+
+        if (responseData?.password_expired) {
+          setForgotDefaultEmail(String(responseData?.email || "").trim());
+          setForgotOpen(true);
+        }
+
         setPassword("");
         regenerateCaptcha();
         clearLoginErrorSoon();

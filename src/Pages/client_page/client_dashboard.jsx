@@ -9,13 +9,23 @@ import { fetchPhilippinePublicHolidays, getCalendarYearsFromRange } from "../../
 import ClientLayout from "../../layouts/ClientLayout";
 import DashboardHero from "../../components/layout/dashboard_hero";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
+import { Modal } from "../../components/UI/modal";
 import { ModuleAccessGate } from "../../components/layout/module_access_gate";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useErrorToast } from "../../utils/feedback";
 import { hasModuleAccess } from "../../utils/module_permissions";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
+import { getTaskDeadlineState } from "../../utils/task_deadline";
+import {
+  formatStepDateTime,
+  parseStepCompletionTimestamps,
+  parseStepRemarks,
+  parseStepRemarkTimestamps,
+} from "../../utils/task_step_metadata";
 
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
+const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
+const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
 
 function useSessionUser() {
   return useMemo(() => {
@@ -38,6 +48,34 @@ function toTimeLabel(value) {
   const ampm = hh >= 12 ? "PM" : "AM";
   const h12 = hh % 12 === 0 ? 12 : hh % 12;
   return `${h12}:${mm} ${ampm}`;
+}
+
+function toIsoDateString(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function taskCalendarColors(statusText, options = {}) {
+  const status = String(statusText || "").trim().toLowerCase();
+  if (options.isOverdue || status === "overdue") {
+    return { bg: "#fee2e2", text: "#991b1b", border: "#fca5a5" };
+  }
+  if (status === "completed" || status === "done") {
+    return { bg: "#dcfce7", text: "#166534", border: "#86efac" };
+  }
+  if (status === "declined") {
+    return { bg: "#fee2e2", text: "#991b1b", border: "#fca5a5" };
+  }
+  if (status === "incomplete") {
+    return { bg: "#ffedd5", text: "#9a3412", border: "#fdba74" };
+  }
+  if (status === "ongoing" || status === "in progress") {
+    return { bg: "#dbeafe", text: "#1d4ed8", border: "#93c5fd" };
+  }
+  return { bg: "#e2e8f0", text: "#334155", border: "#cbd5e1" };
 }
 
 function normalizeAppointmentStatus(statusRaw) {
@@ -120,6 +158,52 @@ function clampPercent(n) {
   return Math.max(0, Math.min(100, Math.round(num)));
 }
 
+function normalizeStepAssignee(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "owner" || normalized === "admin") return "Owner";
+  if (normalized === "secretary") return "Secretary";
+  return "Accountant";
+}
+
+function parseTaskSteps(desc) {
+  const lines = String(desc || "").split(/\r?\n/);
+  const steps = [];
+
+  for (const line of lines) {
+    const match = String(line || "").match(STEP_LINE_RE);
+    if (!match) continue;
+
+    const text = String(match[3] || "").trim();
+    if (!text) continue;
+
+    steps.push({
+      number: steps.length + 1,
+      assignee: normalizeStepAssignee(match[2]),
+      text,
+    });
+  }
+
+  return steps;
+}
+
+function parseCompletedStepNumbers(desc) {
+  const lines = String(desc || "").split(/\r?\n/);
+  const completed = new Set();
+
+  for (const line of lines) {
+    const match = String(line || "").match(STEP_DONE_RE);
+    if (!match) continue;
+
+    String(match[1] || "")
+      .split(/[,\s]+/)
+      .map((token) => parseInt(token, 10))
+      .filter((value) => Number.isInteger(value) && value > 0)
+      .forEach((value) => completed.add(value));
+  }
+
+  return completed;
+}
+
 function parseProgressFromDescription(desc) {
   if (!desc) return 0;
   const m = String(desc).match(/^\s*\[Progress\]\s*(\d{1,3})\s*$/gim);
@@ -135,13 +219,19 @@ function parseDeclinedReasonFromDescription(desc) {
   return (m?.[1] ?? "").trim();
 }
 
-function workStatusMeta(statusText, progress) {
+function workStatusMeta(statusText, progress, options = {}) {
   const s = (statusText || "").toLowerCase();
   if (s.includes("declin")) {
     return { label: "Declined", pill: "bg-rose-500/10 text-rose-700 ring-1 ring-rose-200/60", bar: "bg-rose-500" };
   }
-  if (s.includes("done") || s.includes("complete")) {
+  if (s === "completed" || s === "done") {
     return { label: "Completed", pill: "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-200/60", bar: "bg-emerald-500" };
+  }
+  if (options.isOverdue || s === "overdue") {
+    return { label: "Overdue", pill: "bg-rose-500/10 text-rose-700 ring-1 ring-rose-200/60", bar: "bg-rose-500" };
+  }
+  if (s === "incomplete" || progress >= 100) {
+    return { label: "Incomplete", pill: "bg-orange-500/10 text-orange-700 ring-1 ring-orange-200/60", bar: "bg-orange-500" };
   }
   if (progress > 0 || s.includes("ongo")) {
     return { label: "Ongoing", pill: "bg-sky-500/10 text-sky-700 ring-1 ring-sky-200/60", bar: "bg-sky-500" };
@@ -152,7 +242,11 @@ function workStatusMeta(statusText, progress) {
 function normalizeWorkProgressRow(task) {
   const progress = parseProgressFromDescription(task?.description);
   const reason = parseDeclinedReasonFromDescription(task?.description);
-  const meta = workStatusMeta(task?.status, progress);
+  const deadlineState = getTaskDeadlineState(task);
+  const isOverdue = String(task?.status || "").trim().toLowerCase() === "overdue" || deadlineState.isOverdue;
+  const meta = workStatusMeta(task?.status, progress, { isOverdue });
+  const dueDate = deadlineState?.dueDate ? toIsoDateString(deadlineState.dueDate) : "";
+  const steps = parseTaskSteps(task?.description);
   return {
     id: task?.id,
     serviceName: task?.name || task?.title || "(Unnamed service)",
@@ -162,7 +256,16 @@ function normalizeWorkProgressRow(task) {
     statusPill: meta.pill,
     barColor: meta.bar,
     progress,
+    isOverdue,
     declinedReason: meta.label === "Declined" ? reason : "",
+    dueDate,
+    dueDateRaw: task?.deadline || task?.due_date || "",
+    steps,
+    completedSteps: parseCompletedStepNumbers(task?.description),
+    stepCompletionTimestamps: parseStepCompletionTimestamps(task?.description),
+    stepRemarks: parseStepRemarks(task?.description),
+    stepRemarkTimestamps: parseStepRemarkTimestamps(task?.description),
+    task: task || null,
   };
 }
 
@@ -210,6 +313,32 @@ const calendarStyles = `
   }
   .client-dashboard-calendar .fc .fc-event {
     border-radius: 0.6rem;
+  }
+  .client-dashboard-calendar .fc .calendar-card-event {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.15rem 0.35rem;
+  }
+  .client-dashboard-calendar .fc .calendar-card-event-title {
+    font-weight: 800;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .client-dashboard-calendar .fc .calendar-card-event-subtitle {
+    font-size: 0.7rem;
+    line-height: 0.9rem;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .client-dashboard-calendar .fc .fc-event:hover .calendar-card-event {
+    filter: brightness(1.04);
   }
   html.dark .client-dashboard-calendar .fc {
     --fc-border-color: rgba(148, 163, 184, 0.18);
@@ -277,6 +406,7 @@ export default function ClientDashboard({ user, onLogout }) {
   const [workProgressRows, setWorkProgressRows] = useState([]);
   const [loadingWorkProgress, setLoadingWorkProgress] = useState(true);
   const [workProgressError, setWorkProgressError] = useState("");
+  const [selectedCalendarTaskId, setSelectedCalendarTaskId] = useState(null);
   useErrorToast(workProgressError);
 
   const consultationQueryParams = {
@@ -560,6 +690,23 @@ export default function ClientDashboard({ user, onLogout }) {
   }, [clientId, canViewDashboard, isDashboardRoute]);
 
   const calendarEvents = useMemo(() => {
+    const taskEvents = workProgressRows
+      .filter((task) => task?.dueDate)
+      .map((task, idx) => {
+        const colors = taskCalendarColors(task.status, { isOverdue: task.isOverdue });
+        return {
+          id: `task:${String(task.id ?? idx)}`,
+          title: task.serviceName || "Task",
+          start: task.dueDate,
+          end: task.dueDate,
+          allDay: true,
+          backgroundColor: colors.bg,
+          borderColor: colors.border,
+          textColor: colors.text,
+          extendedProps: { kind: "task", item: task },
+        };
+      });
+
     const consultationEvents = consultations
       .filter((a) => a.date)
       .map((a) => {
@@ -625,8 +772,8 @@ export default function ClientDashboard({ user, onLogout }) {
         ];
       });
 
-    return [...announcementEvents, ...holidayEvents, ...consultationEvents];
-  }, [consultations, announcements, holidays]);
+    return [...announcementEvents, ...holidayEvents, ...consultationEvents, ...taskEvents];
+  }, [consultations, announcements, holidays, workProgressRows]);
 
   const scheduleStats = useMemo(() => {
     const stats = { total: consultations.length, pending: 0, confirmed: 0, declined: 0, completed: 0 };
@@ -655,32 +802,73 @@ export default function ClientDashboard({ user, onLogout }) {
     const total = workProgressRows.length;
     const completed = workProgressRows.filter((r) => r.status === "Completed").length;
     const declined = workProgressRows.filter((r) => r.status === "Declined").length;
+    const overdue = workProgressRows.filter((r) => r.status === "Overdue").length;
+    const incomplete = workProgressRows.filter((r) => r.status === "Incomplete").length;
     const ongoing = workProgressRows.filter((r) => r.status === "Ongoing").length;
-    const pending = Math.max(0, total - completed - declined - ongoing);
+    const pending = Math.max(0, total - completed - declined - overdue - incomplete - ongoing);
 
     const overallPercent = total
       ? Math.round(workProgressRows.reduce((sum, row) => sum + clampPercent(row.progress), 0) / total)
       : 0;
 
     let overallMeta;
-    if (ongoing > 0) overallMeta = workStatusMeta("ongoing", overallPercent);
+    if (overdue > 0) overallMeta = workStatusMeta("overdue", overallPercent, { isOverdue: true });
+    else if (incomplete > 0) overallMeta = workStatusMeta("incomplete", overallPercent);
+    else if (ongoing > 0) overallMeta = workStatusMeta("ongoing", overallPercent);
     else if (total > 0 && completed === total) overallMeta = workStatusMeta("completed", overallPercent);
-    else if (declined > 0 && completed === 0 && ongoing === 0) overallMeta = workStatusMeta("declined", overallPercent);
+    else if (declined > 0 && completed === 0 && incomplete === 0 && ongoing === 0) overallMeta = workStatusMeta("declined", overallPercent);
     else overallMeta = workStatusMeta("pending", overallPercent);
 
-    return { total, completed, declined, ongoing, pending, overallPercent, overallMeta };
+    return { total, completed, declined, overdue, incomplete, ongoing, pending, overallPercent, overallMeta };
   }, [workProgressRows]);
+
+  const selectedCalendarTask = useMemo(
+    () => workProgressRows.find((row) => String(row.id) === String(selectedCalendarTaskId)) || null,
+    [workProgressRows, selectedCalendarTaskId]
+  );
+
+  const nextIncompleteCalendarStep = useMemo(
+    () => selectedCalendarTask?.steps.find((item) => !selectedCalendarTask.completedSteps.has(item.number))?.number ?? null,
+    [selectedCalendarTask]
+  );
 
   const renderEventContent = (arg) => {
     const kind = arg.event.extendedProps?.kind;
     if (kind === "announcement" || kind === "holiday") {
       const title = arg.event.title || (kind === "holiday" ? "Holiday" : "Announcement");
+      if (kind === "holiday") {
+        return (
+          <div className="calendar-card-event" title={title}>
+            <div className="calendar-card-event-title">{title}</div>
+            <div className="calendar-card-event-subtitle">Holiday</div>
+          </div>
+        );
+      }
+
       return (
         <div className="min-w-0">
           <div className="text-[11px] font-extrabold leading-4 truncate">{title}</div>
           <div className="text-[10px] leading-3 opacity-90 truncate">
-            {kind === "holiday" ? "Holiday" : "Announcement"}
+            Announcement
           </div>
+        </div>
+      );
+    }
+
+    if (kind === "task") {
+      const item = arg.event.extendedProps?.item;
+      const title = item?.serviceName || arg.event.title || "Task";
+      const sub = [
+        item?.status || "",
+        Number.isFinite(item?.progress) ? `${item.progress}%` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      return (
+        <div className="calendar-card-event" title={sub ? `${title} - ${sub}` : title}>
+          <div className="calendar-card-event-title">{title}</div>
+          {sub ? <div className="calendar-card-event-subtitle">{sub}</div> : null}
         </div>
       );
     }
@@ -696,6 +884,20 @@ export default function ClientDashboard({ user, onLogout }) {
         {sub ? <div className="text-[10px] leading-3 opacity-90 truncate">{sub}</div> : null}
       </div>
     );
+  };
+
+  const handleCalendarEventClick = (info) => {
+    const kind = info?.event?.extendedProps?.kind;
+    if (kind !== "task") return;
+
+    const item = info.event.extendedProps?.item;
+    if (!item?.id) return;
+
+    setSelectedCalendarTaskId(item.id);
+  };
+
+  const closeCalendarTaskModal = () => {
+    setSelectedCalendarTaskId(null);
   };
 
   const handleCalendarDatesSet = (info) => {
@@ -763,7 +965,10 @@ export default function ClientDashboard({ user, onLogout }) {
                 </CardContent>
               </Card>
 
-              <Card compact>
+              <Card
+                compact
+                className={workProgressStats.overdue > 0 ? "border-rose-300 bg-rose-50/40" : ""}
+              >
                 <CardHeader
                   title="Work Progress"
                   action={
@@ -828,7 +1033,7 @@ export default function ClientDashboard({ user, onLogout }) {
               <Card className="client-dashboard-calendar overflow-hidden" compact>
                 <CardHeader>
                   <CardTitle>Calendar</CardTitle>
-                  <CardDescription>Consultations, announcements, and live Philippine public holidays</CardDescription>
+                  <CardDescription>Task deadlines, consultations, announcements, and live Philippine public holidays</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="px-3 pb-3">
@@ -842,6 +1047,7 @@ export default function ClientDashboard({ user, onLogout }) {
                       stickyHeaderDates
                       nowIndicator
                       events={calendarEvents}
+                      eventClick={handleCalendarEventClick}
                       eventContent={renderEventContent}
                       eventDisplay="block"
                       dayMaxEvents={3}
@@ -851,6 +1057,131 @@ export default function ClientDashboard({ user, onLogout }) {
                 </CardContent>
               </Card>
             </div>
+
+            <Modal
+              open={Boolean(selectedCalendarTask)}
+              onClose={closeCalendarTaskModal}
+              title={selectedCalendarTask ? `${selectedCalendarTask.serviceName} Steps` : "Service Steps"}
+              description={
+                selectedCalendarTask
+                  ? "Review all steps for this service and see which ones are already completed."
+                  : undefined
+              }
+              size="lg"
+              footer={
+                <button
+                  type="button"
+                  onClick={closeCalendarTaskModal}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              }
+            >
+              {selectedCalendarTask ? (
+                <div className="space-y-4">
+                  <div
+                    className={`rounded-xl border p-4 ${
+                      selectedCalendarTask.isOverdue ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progress</div>
+                        <div className="text-sm text-slate-600">{selectedCalendarTask.progress}% complete</div>
+                        <div className="text-sm text-slate-600">
+                          Assigned accountant:{" "}
+                          <span className="font-medium text-slate-800">{selectedCalendarTask.accountantName}</span>
+                        </div>
+                        {selectedCalendarTask.dueDateRaw ? (
+                          <div className="text-sm text-slate-600">
+                            Deadline: <span className="font-medium text-slate-800">{selectedCalendarTask.dueDateRaw}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="text-sm font-medium text-slate-700">
+                        {selectedCalendarTask.completedSteps.size} of {selectedCalendarTask.steps.length} step
+                        {selectedCalendarTask.steps.length === 1 ? "" : "s"} completed
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-white ring-1 ring-slate-200">
+                      <div className={`h-full ${selectedCalendarTask.barColor}`} style={{ width: `${selectedCalendarTask.progress}%` }} />
+                    </div>
+                  </div>
+
+                  {selectedCalendarTask.steps.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedCalendarTask.steps.map((step) => {
+                        const completed = selectedCalendarTask.completedSteps.has(step.number);
+                        const isCurrent = !completed && step.number === nextIncompleteCalendarStep;
+                        const completionLabel = formatStepDateTime(selectedCalendarTask.stepCompletionTimestamps?.[step.number]);
+                        const stepRemark = String(selectedCalendarTask.stepRemarks?.[step.number] || "").trim();
+                        const stepRemarkTimeLabel = formatStepDateTime(selectedCalendarTask.stepRemarkTimestamps?.[step.number]);
+
+                        return (
+                          <div
+                            key={`calendar-step-${selectedCalendarTask.id}-${step.number}`}
+                            className={`rounded-xl border px-4 py-3 ${
+                              completed
+                                ? "border-emerald-200 bg-emerald-50/60"
+                                : isCurrent
+                                  ? "border-sky-200 bg-sky-50/60"
+                                  : "border-slate-200 bg-white"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                                  Step {step.number}
+                                </span>
+                                <span>{step.assignee}</span>
+                              </div>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  completed
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : isCurrent
+                                      ? "bg-sky-100 text-sky-700"
+                                      : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {completed ? "Completed" : isCurrent ? "Current" : "Pending"}
+                              </span>
+                            </div>
+
+                            <div className={`mt-2 text-sm leading-6 ${completed ? "text-slate-500 line-through" : "text-slate-800"}`}>
+                              {step.text}
+                            </div>
+
+                            {completed && completionLabel ? (
+                              <div className="mt-2 text-xs font-medium text-emerald-700">Completed on {completionLabel}</div>
+                            ) : null}
+
+                            {stepRemark ? (
+                              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                  Emergency remark
+                                </div>
+                                {stepRemarkTimeLabel ? (
+                                  <div className="mt-1 text-[11px] font-medium text-amber-700">
+                                    Updated on {stepRemarkTimeLabel}
+                                  </div>
+                                ) : null}
+                                <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">{stepRemark}</div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                      No step-by-step entries were saved for this service.
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </Modal>
           </>
         </ModuleAccessGate>
       )}

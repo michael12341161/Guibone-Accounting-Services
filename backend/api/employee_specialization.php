@@ -496,6 +496,34 @@ if (!function_exists('monitoring_system_configuration_definitions')) {
                 'db_key' => 'app_base_url',
                 'type' => 'string',
             ],
+            'allowClientSelfSignup' => [
+                'db_key' => 'allow_client_self_signup',
+                'type' => 'bool',
+            ],
+            'allowClientAppointments' => [
+                'db_key' => 'allow_client_appointments',
+                'type' => 'bool',
+            ],
+            'allowClientConsultations' => [
+                'db_key' => 'allow_client_consultations',
+                'type' => 'bool',
+            ],
+            'supportEmail' => [
+                'db_key' => 'support_email',
+                'type' => 'string',
+            ],
+            'systemNotice' => [
+                'db_key' => 'system_notice',
+                'type' => 'string',
+            ],
+            'taskReminderIntervalHours' => [
+                'db_key' => 'task_reminder_interval_hours',
+                'type' => 'int',
+            ],
+            'taskReminderIntervalMinutes' => [
+                'db_key' => 'task_reminder_interval_minutes',
+                'type' => 'int',
+            ],
             'sendClientStatusEmails' => [
                 'db_key' => 'send_client_status_emails',
                 'type' => 'bool',
@@ -534,6 +562,13 @@ if (!function_exists('monitoring_default_system_configuration')) {
         return [
             'companyName' => $companyName !== '' ? $companyName : 'Guibone Accounting Services (GAS)',
             'appBaseUrl' => monitoring_default_frontend_base_url(),
+            'allowClientSelfSignup' => true,
+            'allowClientAppointments' => true,
+            'allowClientConsultations' => true,
+            'supportEmail' => '',
+            'systemNotice' => '',
+            'taskReminderIntervalHours' => 4,
+            'taskReminderIntervalMinutes' => 0,
             'sendClientStatusEmails' => ($smtpUsername !== '' && $smtpPassword !== ''),
             'smtpHost' => $smtpHost !== '' ? $smtpHost : 'smtp.gmail.com',
             'smtpPort' => ($smtpPort !== null && $smtpPort > 0) ? $smtpPort : 587,
@@ -590,6 +625,33 @@ if (!function_exists('monitoring_validate_system_configuration')) {
             $errors['appBaseUrl'] = 'Frontend URL must be a valid URL.';
         } elseif (monitoring_setting_length($settings['appBaseUrl']) > 255) {
             $errors['appBaseUrl'] = 'Frontend URL must be 255 characters or fewer.';
+        }
+
+        if ($settings['supportEmail'] !== '' && !filter_var($settings['supportEmail'], FILTER_VALIDATE_EMAIL)) {
+            $errors['supportEmail'] = 'Support email must be a valid email address.';
+        } elseif (monitoring_setting_length($settings['supportEmail']) > 255) {
+            $errors['supportEmail'] = 'Support email must be 255 characters or fewer.';
+        }
+
+        if (monitoring_setting_length($settings['systemNotice']) > 500) {
+            $errors['systemNotice'] = 'System notice must be 500 characters or fewer.';
+        }
+
+        if ($settings['taskReminderIntervalHours'] < 0 || $settings['taskReminderIntervalHours'] > 24) {
+            $errors['taskReminderIntervalHours'] = 'Task reminder hours must be between 0 and 24.';
+        }
+
+        if ($settings['taskReminderIntervalMinutes'] < 0 || $settings['taskReminderIntervalMinutes'] > 59) {
+            $errors['taskReminderIntervalMinutes'] = 'Task reminder minutes must be between 0 and 59.';
+        }
+
+        $taskReminderIntervalTotalMinutes = ($settings['taskReminderIntervalHours'] * 60) + $settings['taskReminderIntervalMinutes'];
+        if ($taskReminderIntervalTotalMinutes < 1) {
+            $errors['taskReminderIntervalHours'] = 'Task reminder interval must be at least 1 minute.';
+            $errors['taskReminderIntervalMinutes'] = 'Task reminder interval must be at least 1 minute.';
+        } elseif ($taskReminderIntervalTotalMinutes > 1440) {
+            $errors['taskReminderIntervalHours'] = 'Task reminder interval cannot exceed 24 hours.';
+            $errors['taskReminderIntervalMinutes'] = 'Task reminder interval cannot exceed 24 hours.';
         }
 
         if ($settings['smtpHost'] === '') {
@@ -697,7 +759,25 @@ if (!function_exists('monitoring_get_system_configuration')) {
                 $rawValue = $rowsByKey[$definition['db_key']];
                 if ($definition['type'] === 'int') {
                     $parsed = monitoring_parse_int_setting($rawValue);
-                    if ($parsed !== null && $parsed > 0) {
+                    if ($parsed === null) {
+                        continue;
+                    }
+
+                    if ($frontendKey === 'taskReminderIntervalHours') {
+                        if ($parsed >= 0 && $parsed <= 24) {
+                            $settings[$frontendKey] = $parsed;
+                        }
+                        continue;
+                    }
+
+                    if ($frontendKey === 'taskReminderIntervalMinutes') {
+                        if ($parsed >= 0 && $parsed <= 59) {
+                            $settings[$frontendKey] = $parsed;
+                        }
+                        continue;
+                    }
+
+                    if ($parsed > 0) {
                         $settings[$frontendKey] = $parsed;
                     }
                     continue;
@@ -738,6 +818,54 @@ if (!function_exists('monitoring_get_system_company_name')) {
         $settings = monitoring_get_system_configuration($conn);
         $companyName = trim((string)($settings['companyName'] ?? ''));
         return $companyName !== '' ? $companyName : 'Guibone Accounting Services (GAS)';
+    }
+}
+
+if (!function_exists('monitoring_get_system_support_email')) {
+    function monitoring_get_system_support_email(PDO $conn): string {
+        $settings = monitoring_get_system_configuration($conn);
+        $supportEmail = trim((string)($settings['supportEmail'] ?? ''));
+        return filter_var($supportEmail, FILTER_VALIDATE_EMAIL) ? $supportEmail : '';
+    }
+}
+
+if (!function_exists('monitoring_get_system_notice')) {
+    function monitoring_get_system_notice(PDO $conn): string {
+        $settings = monitoring_get_system_configuration($conn);
+        return trim((string)($settings['systemNotice'] ?? ''));
+    }
+}
+
+if (!function_exists('monitoring_append_support_contact_message')) {
+    function monitoring_append_support_contact_message(string $message, string $supportEmail): string {
+        $baseMessage = trim($message);
+        $email = trim($supportEmail);
+        if ($email === '') {
+            return $baseMessage;
+        }
+
+        return $baseMessage . ' Please contact ' . $email . ' for assistance.';
+    }
+}
+
+if (!function_exists('monitoring_client_self_signup_enabled')) {
+    function monitoring_client_self_signup_enabled(PDO $conn): bool {
+        $settings = monitoring_get_system_configuration($conn);
+        return !array_key_exists('allowClientSelfSignup', $settings) || !empty($settings['allowClientSelfSignup']);
+    }
+}
+
+if (!function_exists('monitoring_client_appointments_enabled')) {
+    function monitoring_client_appointments_enabled(PDO $conn): bool {
+        $settings = monitoring_get_system_configuration($conn);
+        return !array_key_exists('allowClientAppointments', $settings) || !empty($settings['allowClientAppointments']);
+    }
+}
+
+if (!function_exists('monitoring_client_consultations_enabled')) {
+    function monitoring_client_consultations_enabled(PDO $conn): bool {
+        $settings = monitoring_get_system_configuration($conn);
+        return !array_key_exists('allowClientConsultations', $settings) || !empty($settings['allowClientConsultations']);
     }
 }
 

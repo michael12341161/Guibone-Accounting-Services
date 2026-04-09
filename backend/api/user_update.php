@@ -3,6 +3,9 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/audit_logs_helper.php';
+require_once __DIR__ . '/../../PHPMailer-master/src/Exception.php';
+require_once __DIR__ . '/../../PHPMailer-master/src/PHPMailer.php';
+require_once __DIR__ . '/../../PHPMailer-master/src/SMTP.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -27,6 +30,125 @@ function columnExists(PDO $conn, string $tableName, string $columnName): bool {
     }
 }
 
+function sendSystemTestEmail(array $settings, string $recipientEmail): array {
+    $recipient = trim($recipientEmail);
+    $errors = [];
+
+    if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+        $errors['recipientEmail'] = 'Enter a valid recipient email address.';
+    }
+
+    $smtpUser = trim((string)($settings['smtpUsername'] ?? ''));
+    $smtpPass = trim((string)($settings['smtpPassword'] ?? ''));
+    $smtpHost = trim((string)($settings['smtpHost'] ?? ''));
+    $smtpPort = (int)($settings['smtpPort'] ?? 0);
+    $companyName = trim((string)($settings['companyName'] ?? ''));
+    $supportEmail = trim((string)($settings['supportEmail'] ?? ''));
+    $systemNotice = trim((string)($settings['systemNotice'] ?? ''));
+
+    if ($smtpUser === '') {
+        $errors['smtpUsername'] = 'SMTP username is required to send a test email.';
+    }
+    if ($smtpPass === '') {
+        $errors['smtpPassword'] = 'SMTP password is required to send a test email.';
+    }
+    if ($smtpHost === '') {
+        $errors['smtpHost'] = 'SMTP host is required to send a test email.';
+    }
+    if ($smtpPort <= 0 || $smtpPort > 65535) {
+        $errors['smtpPort'] = 'SMTP port must be between 1 and 65535.';
+    }
+    if ($supportEmail !== '' && !filter_var($supportEmail, FILTER_VALIDATE_EMAIL)) {
+        $errors['supportEmail'] = 'Support email must be a valid email address.';
+    }
+
+    if (!empty($errors)) {
+        return [
+            'success' => false,
+            'errors' => $errors,
+        ];
+    }
+
+    $senderName = $companyName !== '' ? $companyName : 'Monitoring System';
+    $safeSenderName = htmlspecialchars($senderName, ENT_QUOTES, 'UTF-8');
+    $safeNotice = htmlspecialchars($systemNotice, ENT_QUOTES, 'UTF-8');
+    $safeRecipient = htmlspecialchars($recipient, ENT_QUOTES, 'UTF-8');
+
+    $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+
+    try {
+        $mail->isSMTP();
+        $mail->Host = $smtpHost;
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtpUser;
+        $mail->Password = $smtpPass;
+        $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port = $smtpPort;
+
+        $mail->setFrom($smtpUser, $senderName);
+        if ($supportEmail !== '') {
+            $mail->addReplyTo($supportEmail, $senderName . ' Support');
+        }
+        $mail->addAddress($recipient);
+        $mail->Subject = $senderName . ' SMTP Test Email';
+        $mail->isHTML(true);
+
+        $mail->Body = '<!doctype html>'
+            . '<html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>'
+            . '<body style="margin:0;padding:0;background:#f8fafc;">'
+            . '  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f8fafc;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">'
+            . '    <tr>'
+            . '      <td align="center">'
+            . '        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #dbeafe;border-radius:16px;overflow:hidden;">'
+            . '          <tr>'
+            . '            <td style="padding:18px 20px;background:#0f766e;color:#ffffff;">'
+            . '              <div style="font-size:14px;opacity:0.9;">' . $safeSenderName . '</div>'
+            . '              <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;">SMTP Test Email</div>'
+            . '            </td>'
+            . '          </tr>'
+            . '          <tr>'
+            . '            <td style="padding:24px 20px;color:#0f172a;font-size:14px;line-height:1.7;">'
+            . '              <p style="margin:0 0 14px;">Hello,</p>'
+            . '              <p style="margin:0 0 14px;">This is a confirmation that your System Configuration email settings can deliver messages successfully.</p>'
+            . '              <p style="margin:0 0 14px;">The message was sent to <strong>' . $safeRecipient . '</strong> using the current SMTP host, port, username, and sender name.</p>'
+            . ($safeNotice !== ''
+                ? '              <div style="margin:0 0 18px;padding:14px 16px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;">'
+                    . '<div style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#1d4ed8;">Current Portal Notice</div>'
+                    . '<div style="margin:0;white-space:pre-wrap;color:#1e3a8a;">' . $safeNotice . '</div>'
+                    . '</div>'
+                : '')
+            . '              <p style="margin:0 0 14px;">If you received this email, your SMTP settings are working.</p>'
+            . '              <p style="margin:0;">Regards,<br />' . $safeSenderName . '</p>'
+            . '            </td>'
+            . '          </tr>'
+            . '        </table>'
+            . '      </td>'
+            . '    </tr>'
+            . '  </table>'
+            . '</body></html>';
+
+        $mail->AltBody = "Hello,\n\n"
+            . "This is a confirmation that your System Configuration email settings can deliver messages successfully.\n\n"
+            . "The message was sent to {$recipient} using the current SMTP host, port, username, and sender name.\n\n"
+            . ($systemNotice !== '' ? "Current portal notice:\n{$systemNotice}\n\n" : '')
+            . "If you received this email, your SMTP settings are working.\n\n"
+            . "Regards,\n"
+            . $senderName;
+
+        $mail->send();
+
+        return [
+            'success' => true,
+            'message' => 'Test email sent to ' . $recipient . '.',
+        ];
+    } catch (Throwable $__) {
+        return [
+            'success' => false,
+            'message' => 'Unable to send the test email. Check the SMTP host, port, username, and password.',
+        ];
+    }
+}
+
 function inferNamesFromUsername(string $username): array {
     $parts = preg_split('/[\s._-]+/', trim($username)) ?: [];
     $parts = array_values(array_filter(array_map('trim', $parts), function ($value) {
@@ -48,51 +170,6 @@ function inferNamesFromUsername(string $username): array {
     }
 
     return [$first, $middle, $last];
-}
-
-function normalizeFinancialDetailsIds($value): array {
-    if ($value === null) {
-        return [];
-    }
-
-    $items = [];
-    if (is_array($value)) {
-        $items = $value;
-    } elseif (is_string($value)) {
-        $trimmed = trim($value);
-        $items = $trimmed === '' ? [] : (preg_split('/\s*,\s*/', $trimmed) ?: []);
-    } else {
-        $items = [$value];
-    }
-
-    $seen = [];
-    foreach ($items as $item) {
-        $raw = trim((string)$item);
-        if ($raw === '' || !ctype_digit($raw)) {
-            continue;
-        }
-        $id = (int)$raw;
-        if ($id > 0) {
-            $seen[$id] = $id;
-        }
-    }
-
-    return array_values($seen);
-}
-
-function hasFinancialDetailsPayload(array $employeeDetails): bool {
-    return array_key_exists('financial_details_ids', $employeeDetails)
-        || array_key_exists('financial_details_id', $employeeDetails);
-}
-
-function extractFinancialDetailsIds(array $employeeDetails): array {
-    if (array_key_exists('financial_details_ids', $employeeDetails)) {
-        return normalizeFinancialDetailsIds($employeeDetails['financial_details_ids']);
-    }
-    if (array_key_exists('financial_details_id', $employeeDetails)) {
-        return normalizeFinancialDetailsIds([$employeeDetails['financial_details_id']]);
-    }
-    return [];
 }
 
 function normalizeAccountNumber($value): ?string {
@@ -153,6 +230,35 @@ function extractGovernmentAccountNumbers(array $employeeDetails): array {
     return $result;
 }
 
+function buildGovernmentFinancialDetails(array $accountsByType): array {
+    $definitions = [
+        1 => 'SSS',
+        2 => 'Pag-IBIG',
+        3 => 'PhilHealth',
+    ];
+
+    $details = [];
+    foreach ($definitions as $id => $name) {
+        $accountNumber = normalizeAccountNumber($accountsByType[$id] ?? null);
+        if ($accountNumber === null) {
+            continue;
+        }
+
+        $details[] = [
+            'id' => $id,
+            'name' => $name,
+            'account_name' => $accountNumber,
+            'amount' => null,
+            'rate' => null,
+            'effective_from' => null,
+            'effective_to' => null,
+            'label' => $name . ': ' . $accountNumber,
+        ];
+    }
+
+    return $details;
+}
+
 function normalizeOptionalString($value): ?string {
     $raw = trim((string)($value ?? ''));
     return $raw !== '' ? $raw : null;
@@ -181,40 +287,6 @@ function normalizeStoredUploadPath(string $path): string {
     return ltrim(str_replace('\\', '/', trim($path)), '/');
 }
 
-function tableExists(PDO $conn, string $tableName): bool {
-    static $cache = [];
-
-    $normalized = strtolower(trim($tableName));
-    if ($normalized === '') {
-        return false;
-    }
-    if (array_key_exists($normalized, $cache)) {
-        return $cache[$normalized];
-    }
-
-    $stmt = $conn->prepare(
-        'SELECT 1
-         FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = :table_name
-         LIMIT 1'
-    );
-    $stmt->execute([':table_name' => $tableName]);
-    $exists = $stmt->fetchColumn() !== false;
-    $cache[$normalized] = $exists;
-    return $exists;
-}
-
-function fallbackAccountTypeName(int $id): string {
-    $defaults = [
-        1 => 'SSS',
-        2 => 'Pag-IBIG',
-        3 => 'PhilHealth',
-    ];
-
-    return $defaults[$id] ?? ('Account Type #' . $id);
-}
-
 function resolveRole(PDO $conn, string $roleRaw): array {
     $roleRaw = trim($roleRaw);
     if ($roleRaw === '') {
@@ -239,43 +311,6 @@ function resolveRole(PDO $conn, string $roleRaw): array {
     }
 
     return [0, ''];
-}
-
-function loadAccountTypeMap(PDO $conn, array $ids): array {
-    if (empty($ids)) {
-        return [];
-    }
-
-    $map = [];
-    foreach ($ids as $id) {
-        $id = (int)$id;
-        if ($id <= 0) {
-            continue;
-        }
-        $map[$id] = fallbackAccountTypeName($id);
-    }
-
-    if (!tableExists($conn, 'account_type')) {
-        return $map;
-    }
-
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $conn->prepare("SELECT account_type_id, account_type_name FROM account_type WHERE account_type_id IN ({$placeholders})");
-    foreach ($ids as $i => $id) {
-        $stmt->bindValue($i + 1, (int)$id, PDO::PARAM_INT);
-    }
-    $stmt->execute();
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-    foreach ($rows as $row) {
-        $id = isset($row['account_type_id']) ? (int)$row['account_type_id'] : 0;
-        if ($id <= 0) {
-            continue;
-        }
-        $name = trim((string)($row['account_type_name'] ?? ''));
-        $map[$id] = $name !== '' ? $name : fallbackAccountTypeName($id);
-    }
-    return $map;
 }
 
 function buildProfileImageSelect(PDO $conn, string $alias = 'profile_image'): string {
@@ -401,48 +436,6 @@ function upsertEmployeeProfile(PDO $conn, int $userId, array $profile): void {
     ]);
 }
 
-function syncFinancialAccountsForClient(PDO $conn, int $clientId, array $financialIds, array $accountNumbersByType = []): void {
-    if ($clientId <= 0) {
-        return;
-    }
-    if (!tableExists($conn, 'financial_account')) {
-        return;
-    }
-
-    $normalizedAccountNumbers = [];
-    foreach ($accountNumbersByType as $typeId => $accountNumber) {
-        $typeId = (int)$typeId;
-        $accountNumber = normalizeAccountNumber($accountNumber);
-        if ($typeId > 0 && $accountNumber !== null) {
-            $normalizedAccountNumbers[$typeId] = $accountNumber;
-        }
-    }
-    $accountNumbersByType = $normalizedAccountNumbers;
-
-    $financialIds = array_values(array_unique(array_filter(array_map('intval', $financialIds), function ($value) {
-        return $value > 0;
-    })));
-
-    $conn->prepare('DELETE FROM financial_account WHERE Client_ID = :cid')->execute([':cid' => $clientId]);
-    if (empty($financialIds)) {
-        return;
-    }
-
-    $nameMap = loadAccountTypeMap($conn, $financialIds);
-    $ins = $conn->prepare('INSERT INTO financial_account (Client_ID, account_type_id, name) VALUES (:cid, :atype, :name)');
-    foreach ($financialIds as $accountTypeId) {
-        if (!isset($nameMap[$accountTypeId])) {
-            continue;
-        }
-        $storedName = $accountNumbersByType[$accountTypeId] ?? $nameMap[$accountTypeId];
-        $ins->execute([
-            ':cid' => $clientId,
-            ':atype' => $accountTypeId,
-            ':name' => $storedName,
-        ]);
-    }
-}
-
 function fetchUserRow(PDO $conn, int $id): ?array {
     $profileImageSelect = buildProfileImageSelect($conn);
     $stmt = $conn->prepare(
@@ -481,89 +474,6 @@ function fetchUserRow(PDO $conn, int $id): ?array {
     $stmt->execute([':id' => $id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     return $row ?: null;
-}
-
-function loadFinancialDetailsForClient(PDO $conn, int $clientId): array {
-    if ($clientId <= 0) {
-        return [];
-    }
-    if (!tableExists($conn, 'financial_account')) {
-        return [];
-    }
-
-    $hasAccountTypeTable = tableExists($conn, 'account_type');
-    $stmt = $conn->prepare(
-        $hasAccountTypeTable
-            ? 'SELECT fa.account_type_id,
-                    fa.name AS account_name,
-                    at.account_type_name
-               FROM financial_account fa
-               LEFT JOIN account_type at ON at.account_type_id = fa.account_type_id
-               WHERE fa.Client_ID = :cid
-               ORDER BY fa.financial_account_id ASC'
-            : 'SELECT fa.account_type_id,
-                    fa.name AS account_name,
-                    NULL AS account_type_name
-               FROM financial_account fa
-               WHERE fa.Client_ID = :cid
-               ORDER BY fa.financial_account_id ASC'
-    );
-    $stmt->execute([':cid' => $clientId]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-    $details = [];
-    foreach ($rows as $row) {
-        $accountTypeId = isset($row['account_type_id']) ? (int)$row['account_type_id'] : 0;
-        if ($accountTypeId <= 0) {
-            continue;
-        }
-        $typeName = trim((string)($row['account_type_name'] ?? ''));
-        if ($typeName === '') {
-            $typeName = fallbackAccountTypeName($accountTypeId);
-        }
-        $accountName = trim((string)($row['account_name'] ?? ''));
-        $label = $typeName;
-        if ($accountName !== '' && strcasecmp($accountName, $typeName) !== 0) {
-            $label = $typeName . ': ' . $accountName;
-        }
-        $details[] = [
-            'id' => $accountTypeId,
-            'name' => $typeName,
-            'account_name' => $accountName !== '' ? $accountName : null,
-            'amount' => null,
-            'rate' => null,
-            'effective_from' => null,
-            'effective_to' => null,
-            'label' => $label,
-        ];
-    }
-
-    return $details;
-}
-
-function extractAccountNumberByType(array $details, int $accountTypeId): ?string {
-    foreach ($details as $detail) {
-        $id = isset($detail['id']) ? (int)$detail['id'] : 0;
-        if ($id !== $accountTypeId) {
-            continue;
-        }
-
-        $accountName = normalizeAccountNumber($detail['account_name'] ?? null);
-        if ($accountName !== null) {
-            return $accountName;
-        }
-
-        $label = trim((string)($detail['label'] ?? ''));
-        $separator = strpos($label, ':');
-        if ($separator !== false) {
-            $parsed = normalizeAccountNumber(substr($label, $separator + 1));
-            if ($parsed !== null) {
-                return $parsed;
-            }
-        }
-    }
-
-    return null;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -632,6 +542,52 @@ try {
             'success' => true,
             'message' => 'System configuration saved successfully.',
             'settings' => $result['settings'],
+        ]);
+    }
+
+    if ($action === 'send_system_test_email') {
+        monitoring_require_roles([MONITORING_ROLE_ADMIN], $sessionUser);
+        $settingsPayload = isset($data['settings']) && is_array($data['settings']) ? $data['settings'] : $data;
+        $validated = monitoring_validate_system_configuration($settingsPayload);
+        $recipientEmail = trim((string)($data['recipient_email'] ?? $data['recipientEmail'] ?? ''));
+
+        if (!empty($validated['errors'])) {
+            respond(422, [
+                'success' => false,
+                'message' => 'System configuration validation failed.',
+                'errors' => $validated['errors'],
+                'settings' => $validated['settings'],
+            ]);
+        }
+
+        $testResult = sendSystemTestEmail($validated['settings'], $recipientEmail);
+        if (!empty($testResult['errors'])) {
+            respond(422, [
+                'success' => false,
+                'message' => 'Fix the highlighted email settings before sending a test email.',
+                'errors' => $testResult['errors'],
+                'settings' => $validated['settings'],
+            ]);
+        }
+
+        if (empty($testResult['success'])) {
+            respond(500, [
+                'success' => false,
+                'message' => $testResult['message'] ?? 'Unable to send the test email.',
+                'settings' => $validated['settings'],
+            ]);
+        }
+
+        monitoring_write_audit_log(
+            $conn,
+            (int)($sessionUser['id'] ?? 0),
+            'System test email sent to ' . $recipientEmail
+        );
+
+        respond(200, [
+            'success' => true,
+            'message' => $testResult['message'] ?? 'Test email sent successfully.',
+            'settings' => $validated['settings'],
         ]);
     }
 
@@ -866,13 +822,6 @@ try {
         }
     }
 
-    if ($clientId !== null && hasGovernmentAccountNumbersPayload($employeeDetails)) {
-        $governmentAccounts = extractGovernmentAccountNumbers($employeeDetails);
-        syncFinancialAccountsForClient($conn, (int)$clientId, array_keys($governmentAccounts), $governmentAccounts);
-    } elseif ($clientId !== null && hasFinancialDetailsPayload($employeeDetails)) {
-        syncFinancialAccountsForClient($conn, (int)$clientId, extractFinancialDetailsIds($employeeDetails));
-    }
-
     if (hasEmployeeProfilePayload($employeeDetails)) {
         [$guessFirst, $guessMiddle, $guessLast] = inferNamesFromUsername($username);
 
@@ -1003,44 +952,7 @@ try {
         3 => normalizeAccountNumber($fresh['profile_philhealth_account_number'] ?? null),
     ];
 
-    $hasGovernmentPayload = hasGovernmentAccountNumbersPayload($employeeDetails);
-    $governmentAccounts = $hasGovernmentPayload ? extractGovernmentAccountNumbers($employeeDetails) : [];
-    $fallbackGovernmentAccounts = [];
-    foreach ($governmentAccounts as $typeId => $accountNumber) {
-        if ($accountNumber !== null) {
-            $fallbackGovernmentAccounts[(int)$typeId] = $accountNumber;
-        }
-    }
-    if (empty($fallbackGovernmentAccounts)) {
-        foreach ($profileGovernmentAccounts as $typeId => $accountNumber) {
-            if ($accountNumber !== null) {
-                $fallbackGovernmentAccounts[(int)$typeId] = $accountNumber;
-            }
-        }
-    }
-
-    $details = loadFinancialDetailsForClient($conn, isset($fresh['client_id']) ? (int)$fresh['client_id'] : 0);
-    if (empty($details) && (!empty($fallbackGovernmentAccounts) || hasFinancialDetailsPayload($employeeDetails))) {
-        $ids = !empty($fallbackGovernmentAccounts)
-            ? array_values(array_map('intval', array_keys($fallbackGovernmentAccounts)))
-            : extractFinancialDetailsIds($employeeDetails);
-        $nameMap = loadAccountTypeMap($conn, $ids);
-        $details = array_values(array_map(function ($id) use ($nameMap, $fallbackGovernmentAccounts) {
-            $typeName = isset($nameMap[$id]) ? $nameMap[$id] : ('Account Type #' . $id);
-            $accountNumber = $fallbackGovernmentAccounts[$id] ?? null;
-            $label = $accountNumber !== null ? ($typeName . ': ' . $accountNumber) : $typeName;
-            return [
-                'id' => $id,
-                'name' => $typeName,
-                'account_name' => $accountNumber,
-                'amount' => null,
-                'rate' => null,
-                'effective_from' => null,
-                'effective_to' => null,
-                'label' => $label,
-            ];
-        }, $ids));
-    }
+    $details = buildGovernmentFinancialDetails($profileGovernmentAccounts);
 
     $detailIds = array_values(array_unique(array_map(function ($detail) {
         return isset($detail['id']) ? (int)$detail['id'] : 0;
@@ -1053,31 +965,9 @@ try {
         return $label !== '' ? $label : null;
     }, $details))));
     $firstDetail = !empty($details) ? $details[0] : null;
-    $sssAccount = extractAccountNumberByType($details, 1);
-    $pagibigAccount = extractAccountNumberByType($details, 2);
-    $philhealthAccount = extractAccountNumberByType($details, 3);
-
-    if ($sssAccount === null) {
-        $sssAccount = $profileGovernmentAccounts[1] ?? null;
-    }
-    if ($pagibigAccount === null) {
-        $pagibigAccount = $profileGovernmentAccounts[2] ?? null;
-    }
-    if ($philhealthAccount === null) {
-        $philhealthAccount = $profileGovernmentAccounts[3] ?? null;
-    }
-
-    if ($hasGovernmentPayload) {
-        if ($sssAccount === null && array_key_exists('sss_account_number', $employeeDetails)) {
-            $sssAccount = normalizeAccountNumber($employeeDetails['sss_account_number']);
-        }
-        if ($pagibigAccount === null && array_key_exists('pagibig_account_number', $employeeDetails)) {
-            $pagibigAccount = normalizeAccountNumber($employeeDetails['pagibig_account_number']);
-        }
-        if ($philhealthAccount === null && array_key_exists('philhealth_account_number', $employeeDetails)) {
-            $philhealthAccount = normalizeAccountNumber($employeeDetails['philhealth_account_number']);
-        }
-    }
+    $sssAccount = $profileGovernmentAccounts[1] ?? null;
+    $pagibigAccount = $profileGovernmentAccounts[2] ?? null;
+    $philhealthAccount = $profileGovernmentAccounts[3] ?? null;
 
     $payload = [
         'id' => (int)$fresh['id'],

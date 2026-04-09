@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/employee_specialization.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -167,6 +168,16 @@ try {
         $clientUsername = '';
         if ($clientId <= 0) {
             monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
+        }
+        if (!monitoring_client_consultations_enabled($conn)) {
+            $supportEmail = monitoring_get_system_support_email($conn);
+            respond(403, [
+                'success' => false,
+                'message' => monitoring_append_support_contact_message(
+                    'Consultation rescheduling is temporarily unavailable.',
+                    $supportEmail
+                ),
+            ]);
         }
     } elseif (!in_array($roleId, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY], true)) {
         monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);

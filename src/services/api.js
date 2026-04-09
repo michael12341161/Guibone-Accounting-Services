@@ -9,6 +9,7 @@ const baseURL = "http://localhost/Monitoring/monitoring/backend/api/";
 const AUTH_TOKEN_KEY = "auth:jwt";
 const JWT_REFRESH_HEADER = "x-monitoring-jwt";
 export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
+export const MONITORING_SYSTEM_CONFIG_UPDATED_EVENT = "monitoring:system-config-updated";
 
 function dispatchAuthInvalidEvent() {
   if (typeof window === "undefined") {
@@ -173,6 +174,13 @@ export const DEFAULT_SECURITY_SETTINGS = Object.freeze({
 export const DEFAULT_SYSTEM_CONFIGURATION = Object.freeze({
   companyName: "Guibone Accounting Services (GAS)",
   appBaseUrl: "",
+  allowClientSelfSignup: true,
+  allowClientAppointments: true,
+  allowClientConsultations: true,
+  supportEmail: "",
+  systemNotice: "",
+  taskReminderIntervalHours: 4,
+  taskReminderIntervalMinutes: 0,
   sendClientStatusEmails: false,
   smtpHost: "smtp.gmail.com",
   smtpPort: 587,
@@ -243,6 +251,28 @@ export function normalizeSystemConfiguration(input) {
   return {
     companyName: parseStringSetting(source.companyName, DEFAULT_SYSTEM_CONFIGURATION.companyName),
     appBaseUrl: String(source.appBaseUrl ?? "").trim(),
+    allowClientSelfSignup: parseBooleanSetting(
+      source.allowClientSelfSignup,
+      DEFAULT_SYSTEM_CONFIGURATION.allowClientSelfSignup
+    ),
+    allowClientAppointments: parseBooleanSetting(
+      source.allowClientAppointments,
+      DEFAULT_SYSTEM_CONFIGURATION.allowClientAppointments
+    ),
+    allowClientConsultations: parseBooleanSetting(
+      source.allowClientConsultations,
+      DEFAULT_SYSTEM_CONFIGURATION.allowClientConsultations
+    ),
+    supportEmail: String(source.supportEmail ?? "").trim(),
+    systemNotice: String(source.systemNotice ?? "").trim(),
+    taskReminderIntervalHours: parseIntegerSetting(
+      source.taskReminderIntervalHours,
+      DEFAULT_SYSTEM_CONFIGURATION.taskReminderIntervalHours
+    ),
+    taskReminderIntervalMinutes: parseIntegerSetting(
+      source.taskReminderIntervalMinutes,
+      DEFAULT_SYSTEM_CONFIGURATION.taskReminderIntervalMinutes
+    ),
     sendClientStatusEmails: parseBooleanSetting(
       source.sendClientStatusEmails,
       DEFAULT_SYSTEM_CONFIGURATION.sendClientStatusEmails
@@ -311,12 +341,50 @@ export async function fetchSystemConfiguration(config = {}) {
   };
 }
 
+export async function fetchPublicSystemConfiguration(config = {}) {
+  const response = await api.get("user_list.php", {
+    ...config,
+    params: {
+      ...(config?.params || {}),
+      scope: "system_configuration",
+    },
+  });
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      settings: normalizeSystemConfiguration(response?.data?.settings),
+    },
+  };
+}
+
 export async function saveSystemConfiguration(settings, config = {}) {
   const response = await api.post(
     "user_update.php",
     {
       action: "save_system_configuration",
       settings,
+    },
+    config
+  );
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      settings: normalizeSystemConfiguration(response?.data?.settings),
+    },
+  };
+}
+
+export async function sendSystemTestEmail({ settings, recipientEmail }, config = {}) {
+  const response = await api.post(
+    "user_update.php",
+    {
+      action: "send_system_test_email",
+      settings,
+      recipient_email: String(recipientEmail ?? "").trim(),
     },
     config
   );
@@ -494,6 +562,53 @@ export async function restoreOriginalAccount(config = {}) {
   );
 
   return response;
+}
+
+export async function fetchCertificateTemplates(config = {}) {
+  return api.get("certificate_templates.php", config);
+}
+
+export async function saveCertificateTemplate(payload, config = {}) {
+  return api.post(
+    "certificate_templates.php",
+    {
+      action: "save_template",
+      ...payload,
+    },
+    config
+  );
+}
+
+export async function saveSelectedCertificateTemplates(selectedTemplateIds, config = {}) {
+  return api.post(
+    "certificate_templates.php",
+    {
+      action: "save_selected_templates",
+      selected_template_ids: Array.isArray(selectedTemplateIds) ? selectedTemplateIds : [],
+    },
+    config
+  );
+}
+
+export async function deleteCertificateTemplate(templateId, config = {}) {
+  return api.post(
+    "certificate_templates.php",
+    {
+      action: "delete_template",
+      template_id: templateId,
+    },
+    config
+  );
+}
+
+export async function fetchCertificateRecord(params = {}, config = {}) {
+  return api.get("certificate_view.php", {
+    ...config,
+    params: {
+      ...(config?.params || {}),
+      ...(params && typeof params === "object" ? params : {}),
+    },
+  });
 }
 
 export function resolveBackendAssetUrl(path) {

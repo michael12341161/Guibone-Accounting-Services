@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
+import { Link } from "react-router-dom";
 import { api, fetchAvailableServices } from "../../services/api";
-import { Modal } from "../../components/UI/modal";
-import ArchiveTasksCompletedSecretary from "./archive_tasks_completed_secretary";
+import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { useAuth } from "../../hooks/useAuth";
+import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { useErrorToast } from "../../utils/feedback";
+import { getTaskDeadlineState } from "../../utils/task_deadline";
 import {
   createLocalStepTimestamp,
   formatStepDateTime,
@@ -20,22 +23,6 @@ const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
 const PROGRESS_RE = /^\s*\[Progress\]\s*(\d{1,3})\s*$/i;
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
 const ADMIN_ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
-
-const normalizeTaskIds = (ids) =>
-  Array.from(
-    new Set(
-      (Array.isArray(ids) ? ids : [])
-        .map((id) => String(id || "").trim())
-        .filter(Boolean)
-    )
-  );
-
-const areTaskIdListsEqual = (left, right) => {
-  const a = normalizeTaskIds(left);
-  const b = normalizeTaskIds(right);
-  if (a.length !== b.length) return false;
-  return a.every((id, index) => id === b[index]);
-};
 
 const normalizeStepAssignee = (value, fallback = "accountant") => {
   const v = String(value || "").trim().toLowerCase();
@@ -89,6 +76,10 @@ function StepAssigneeIdentity({ assignee }) {
     </span>
   );
 }
+
+const getUserRole = (userLike) => String(userLike?.role || "").trim().toLowerCase();
+const isSecretaryUser = (userLike) => getUserRole(userLike) === "secretary";
+const isAccountantUser = (userLike) => getUserRole(userLike) === "accountant";
 
 const parseTaskSteps = (descriptionRaw) => {
   const lines = String(descriptionRaw || "").split(/\r?\n/);
@@ -222,6 +213,8 @@ const formatStepNumberLabel = (steps) => {
 const statusStyle = (statusRaw) => {
   const s = (statusRaw || "Pending").toLowerCase();
   if (s === "completed") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (s === "overdue") return "bg-rose-50 text-rose-700 border-rose-200";
+  if (s === "incomplete") return "bg-orange-50 text-orange-700 border-orange-200";
   if (s === "declined") return "bg-rose-50 text-rose-700 border-rose-200";
   if (s === "in progress") return "bg-sky-50 text-sky-700 border-sky-200";
   if (s === "cancelled") return "bg-rose-50 text-rose-700 border-rose-200";
@@ -339,10 +332,9 @@ const getProgress = (task) => {
   return extractProgress(task?.description);
 };
 
-const isTaskCompleted = (task) => {
-  const progress = getProgress(task);
+const isHistoryTask = (task) => {
   const status = String(task?.status || "").trim().toLowerCase();
-  return progress >= 100 || ["done", "completed"].includes(status);
+  return status === "done" || status === "completed";
 };
 
 const getTaskKey = (task) => String(task?.id ?? task?.task_id ?? "").trim();
@@ -357,22 +349,6 @@ const isAdminArchivedTask = (task) => {
   return lines.some((line) => ADMIN_ARCHIVED_TAG_RE.test(String(line || "")));
 };
 
-const setTaskArchived = (descriptionRaw, archived) => {
-  const nextLines = String(descriptionRaw || "")
-    .split(/\r?\n/)
-    .filter((line) => !SECRETARY_ARCHIVED_TAG_RE.test(String(line || "")));
-
-  while (nextLines.length && !String(nextLines[nextLines.length - 1] || "").trim()) {
-    nextLines.pop();
-  }
-
-  if (archived) {
-    nextLines.push("[SecretaryArchived] 1");
-  }
-
-  return nextLines.join("\n").trim();
-};
-
 const cleanDescription = (desc) => {
   let d = String(desc || "");
 
@@ -381,7 +357,7 @@ const cleanDescription = (desc) => {
   // [Progress] 80
   // [Priority] Medium
   // [Deadline] 25/02/2026
-  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|Archived|SecretaryArchived)\]\s*.*$/gim, "");
+  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|Archived|SecretaryArchived|CreatedAt)\]\s*.*$/gim, "");
   d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   d = d.replace(/\s*\[Done\]\s*/gi, " ");
 
@@ -453,10 +429,18 @@ const parseSteps = (descRaw) => {
 // (parseSteps moved above)
 
 export default function WorkUpdate() {
+  const { user } = useAuth();
+  const { permissions } = useModulePermissions();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useErrorToast(error);
+  const canCheckTaskSteps = hasFeatureActionAccess(user, "work-update", "check-steps", permissions);
+  const canViewTaskUpdateHistory = hasFeatureActionAccess(user, "work-update", "history", permissions);
+  const canEditTaskUpdates = hasFeatureActionAccess(user, "work-update", "edit", permissions);
+  const canMarkTaskDone = hasFeatureActionAccess(user, "work-update", "mark-done", permissions);
+  const canDeclineTaskUpdates = hasFeatureActionAccess(user, "work-update", "decline", permissions);
+  const canManageStepRemarks = canViewTaskUpdateHistory && canEditTaskUpdates;
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -475,10 +459,7 @@ export default function WorkUpdate() {
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
   const [accountants, setAccountants] = useState([]);
-  const [editForm, setEditForm] = useState({ accountant_id: "", client_id: "", service: "", deadline: "" });
-  const [archiveOpen, setArchiveOpen] = useState(false);
-  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
-  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [editForm, setEditForm] = useState({ accountant_id: "", partner_id: "", client_id: "", service: "", deadline: "" });
 
   const openSteps = (task) => {
     setStepsTask(task);
@@ -493,6 +474,7 @@ export default function WorkUpdate() {
   };
 
   const beginStepRemarkEdit = (task, stepNumber, currentValue = "") => {
+    if (!canManageStepRemarks) return;
     const taskId = Number(task?.id || 0);
     if (!taskId) return;
 
@@ -513,6 +495,7 @@ export default function WorkUpdate() {
     Number(stepRemarkEditor?.stepNumber) === Number(stepNumber);
 
   const saveStepRemark = async (task, stepNumber) => {
+    if (!canManageStepRemarks) return;
     const taskId = Number(task?.id || 0);
     if (!taskId || !isEditingStepRemark(taskId, stepNumber)) return;
     if (parseCompletedStepNumbers(task?.description).has(stepNumber)) return;
@@ -544,6 +527,7 @@ export default function WorkUpdate() {
   };
 
   const updateStep = async (task, index, value) => {
+    if (!canCheckTaskSteps) return;
     if (value !== "done") return;
     const id = task?.id;
     if (!id) return;
@@ -684,24 +668,41 @@ export default function WorkUpdate() {
     };
   }, [editForm.client_id]);
 
-  const quickStats = useMemo(() => {
-    const data = { total: tasks.length, pending: 0, declined: 0, completed: 0, cancelled: 0, progress: 0 };
-    tasks.forEach((t) => {
-      const s = (t.status || "pending").toLowerCase();
-      if (s === "completed") data.completed += 1;
-      else if (s === "declined") data.declined += 1;
-      else if (s === "in progress") data.progress += 1;
-      else if (s === "cancelled") data.cancelled += 1;
-      else data.pending += 1;
-    });
-    return data;
-  }, [tasks]);
-
-  const allTaskIds = useMemo(
-    () => normalizeTaskIds((Array.isArray(tasks) ? tasks : []).map((task) => getTaskKey(task))),
-    [tasks]
+  const partnerAccountants = useMemo(
+    () => (Array.isArray(accountants) ? accountants : []).filter((accountant) => isAccountantUser(accountant)),
+    [accountants]
   );
-  const allTaskIdSet = useMemo(() => new Set(allTaskIds), [allTaskIds]);
+  const selectedEditAssignee = useMemo(
+    () =>
+      (Array.isArray(accountants) ? accountants : []).find(
+        (accountant) => String(accountant.id) === String(editForm.accountant_id || "")
+      ) || null,
+    [accountants, editForm.accountant_id]
+  );
+  const selectedEditAssigneeIsSecretary = useMemo(
+    () => isSecretaryUser(selectedEditAssignee),
+    [selectedEditAssignee]
+  );
+  const selectedEditPartner = useMemo(
+    () =>
+      partnerAccountants.find((accountant) => String(accountant.id) === String(editForm.partner_id || "")) || null,
+    [editForm.partner_id, partnerAccountants]
+  );
+
+  useEffect(() => {
+    if (!editForm.partner_id) return;
+    if (selectedEditAssigneeIsSecretary) return;
+    setEditForm((current) => ({ ...current, partner_id: "" }));
+  }, [editForm.partner_id, selectedEditAssigneeIsSecretary]);
+
+  useEffect(() => {
+    if (!editForm.partner_id) return;
+    const stillExists = partnerAccountants.some((accountant) => String(accountant.id) === String(editForm.partner_id));
+    if (!stillExists) {
+      setEditForm((current) => ({ ...current, partner_id: "" }));
+    }
+  }, [editForm.partner_id, partnerAccountants]);
+
   const archivedTaskIdSet = useMemo(
     () =>
       new Set(
@@ -722,27 +723,37 @@ export default function WorkUpdate() {
       ),
     [tasks]
   );
-  const selectedTaskIdSet = useMemo(() => new Set(selectedTaskIds), [selectedTaskIds]);
-
-  useEffect(() => {
-    setSelectedTaskIds((current) => {
-      const next = normalizeTaskIds(current).filter(
-        (id) => allTaskIdSet.has(id) && !archivedTaskIdSet.has(id) && !adminArchivedTaskIdSet.has(id)
-      );
-      return areTaskIdListsEqual(current, next) ? current : next;
+  const historyTaskCount = useMemo(
+    () => (Array.isArray(tasks) ? tasks : []).filter((task) => isHistoryTask(task)).length,
+    [tasks]
+  );
+  const activeTasks = useMemo(
+    () =>
+      (Array.isArray(tasks) ? tasks : []).filter((task) => {
+        const taskKey = getTaskKey(task);
+        if (taskKey && (archivedTaskIdSet.has(taskKey) || adminArchivedTaskIdSet.has(taskKey))) return false;
+        return !isHistoryTask(task);
+      }),
+    [tasks, archivedTaskIdSet, adminArchivedTaskIdSet]
+  );
+  const quickStats = useMemo(() => {
+    const data = { total: activeTasks.length, pending: 0, declined: 0 };
+    activeTasks.forEach((t) => {
+      const s = (t.status || "pending").toLowerCase();
+      if (s === "declined") data.declined += 1;
+      else data.pending += 1;
     });
-  }, [allTaskIdSet, archivedTaskIdSet, adminArchivedTaskIdSet]);
+    return data;
+  }, [activeTasks]);
 
   const filteredTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (Array.isArray(tasks) ? tasks : []).filter((t) => {
-      const taskKey = getTaskKey(t);
-      if (taskKey && (archivedTaskIdSet.has(taskKey) || adminArchivedTaskIdSet.has(taskKey))) return false;
+    return activeTasks.filter((t) => {
       const status = (t.status || "").toLowerCase();
       const selectedStatus = statusFilter.toLowerCase();
       if (selectedStatus !== "all") {
-        if (selectedStatus === "completed") {
-          if (!(status === "completed" || status === "done")) return false;
+        if (selectedStatus === "incomplete") {
+          if (status !== "incomplete") return false;
         } else if (selectedStatus === "declined") {
           if (status !== "declined") return false;
         } else if (selectedStatus === "not started") {
@@ -761,36 +772,7 @@ export default function WorkUpdate() {
       const service = (t.service || t.status || "").toLowerCase();
       return title.includes(q) || desc.includes(q) || cli.includes(q) || service.includes(q);
     });
-  }, [tasks, search, statusFilter, priorityFilter, archivedTaskIdSet, adminArchivedTaskIdSet]);
-
-  const archivedTaskRows = useMemo(() => {
-    return (Array.isArray(tasks) ? tasks : [])
-      .filter((task) => isTaskArchived(task))
-      .map((task) => {
-        const accId = String(task.accountant_id || "");
-        const accountantName =
-          task.accountant_name ||
-          accountants.find((accountant) => String(accountant.id) === String(accId))?.username ||
-          (accId ? `Accountant #${accId}` : "Unassigned");
-
-        const meta = extractMetaFromDescription(task.description);
-        const priorityValue = task.priority || task.task_priority || task.level || meta.priority || "Low";
-        const deadline = getDeadline(task);
-
-        return {
-          id: task.id || task.task_id || getTaskKey(task),
-          title: task.title || task.name || "Untitled task",
-          clientName: task.client_name || task.client_id || "Client",
-          serviceName: String(task.service || task.status || task.title || task.name || "").trim() || "Service",
-          accountantName,
-          statusLabel: String(task.status || (isTaskCompleted(task) ? "Completed" : "Pending")).trim() || "Pending",
-          priority: priorityValue,
-          dueDateLabel: formatDate(deadline),
-          description: cleanDescription(task.description),
-          stepCount: parseTaskSteps(task.description).length,
-        };
-      });
-  }, [tasks, accountants]);
+  }, [activeTasks, search, statusFilter, priorityFilter]);
 
   const canEditTask = (task) => {
     const s = (task?.status || "").toLowerCase();
@@ -798,9 +780,11 @@ export default function WorkUpdate() {
   };
 
   const openEdit = (task) => {
+    if (!canEditTaskUpdates) return;
     setEditTask(task);
     setEditForm({
       accountant_id: task?.accountant_id ? String(task.accountant_id) : "",
+      partner_id: task?.partner_id ? String(task.partner_id) : "",
       client_id: task?.client_id ? String(task.client_id) : "",
       service: String(task?.service || task?.status || ""),
       deadline: String(task?.deadline || task?.due_date || ""),
@@ -809,13 +793,41 @@ export default function WorkUpdate() {
   };
 
   const saveEdit = async () => {
-    if (!editTask?.id) return;
+    if (!canEditTaskUpdates || !editTask?.id) return;
+    const nextAssigneeId = String(editForm.accountant_id || "").trim();
+    const nextPartnerId = String(editForm.partner_id || "").trim();
+    const nextAssignee =
+      (Array.isArray(accountants) ? accountants : []).find((accountant) => String(accountant.id) === nextAssigneeId) ||
+      null;
+    const nextAssigneeIsSecretary = isSecretaryUser(nextAssignee);
+
+    if (nextAssigneeId && !nextAssignee) {
+      setError("Selected assignee is no longer available.");
+      return;
+    }
+
+    if (nextAssigneeIsSecretary) {
+      if (!partnerAccountants.length) {
+        setError("No accountant partners are available for a secretary-assigned task.");
+        return;
+      }
+      if (!nextPartnerId) {
+        setError("Select a partner accountant when assigning this task to a secretary.");
+        return;
+      }
+      if (!partnerAccountants.some((accountant) => String(accountant.id) === nextPartnerId)) {
+        setError("Selected partner accountant is no longer available.");
+        return;
+      }
+    }
+
     setEditSaving(true);
     setError("");
 
     const payload = {
       task_id: editTask.id,
-      accountant_id: editForm.accountant_id ? parseInt(editForm.accountant_id, 10) : 0,
+      accountant_id: nextAssigneeId ? parseInt(nextAssigneeId, 10) : 0,
+      partner_id: nextAssigneeIsSecretary && nextPartnerId ? parseInt(nextPartnerId, 10) : 0,
       client_id: editForm.client_id ? parseInt(editForm.client_id, 10) : 0,
       service: editForm.service || "",
       deadline: editForm.deadline || "",
@@ -826,11 +838,14 @@ export default function WorkUpdate() {
       prev.map((t) => {
         if (t.id !== editTask.id) return t;
         const accountant = accountants.find((a) => String(a.id) === String(payload.accountant_id));
+        const partner = partnerAccountants.find((a) => String(a.id) === String(payload.partner_id));
         const client = clients.find((c) => String(c.id) === String(payload.client_id));
         return {
           ...t,
           accountant_id: payload.accountant_id || null,
           accountant_name: accountant?.username || t.accountant_name,
+          partner_id: payload.partner_id || null,
+          partner_name: partner?.username || "",
           client_id: payload.client_id || null,
           client_name: client ? [client.first_name, client.middle_name, client.last_name].filter(Boolean).join(" ") : t.client_name,
           status: payload.service || t.status,
@@ -853,6 +868,7 @@ export default function WorkUpdate() {
   };
 
   const markDone = async (task) => {
+    if (!canMarkTaskDone) return;
     const id = task?.id;
     if (!id) return;
     if (getProgress(task) < 100) return;
@@ -869,53 +885,40 @@ export default function WorkUpdate() {
     }
   };
 
-  const archiveTasks = (taskIds) => {
-    const ids = normalizeTaskIds(taskIds).filter(
-      (id) => allTaskIdSet.has(id) && !archivedTaskIdSet.has(id) && !adminArchivedTaskIdSet.has(id)
-    );
-    if (ids.length === 0) return;
+  const declineTask = async (task) => {
+    if (!canDeclineTaskUpdates) return;
 
-    const taskMap = new Map((Array.isArray(tasks) ? tasks : []).map((task) => [getTaskKey(task), task]));
+    const id = task?.id;
+    if (!id) return;
 
-    const run = async () => {
-      try {
-        setArchiveLoading(true);
-        setError("");
+    const status = String(task?.status || "").toLowerCase();
+    if (["declined", "done", "completed"].includes(status)) return;
 
-        await Promise.all(
-          ids.map((id) => {
-            const task = taskMap.get(id);
-            if (!task || isAdminArchivedTask(task)) return Promise.resolve();
-            return api.post("task_update_status.php", {
-              task_id: Number(id),
-              description: setTaskArchived(String(task.description || ""), true),
-            });
-          })
-        );
-
-        await refresh({ silent: true });
-        setSelectedTaskIds((current) => current.filter((id) => !ids.includes(id)));
-      } catch (err) {
-        setError(err?.response?.data?.message || err?.message || "Failed to archive task.");
-      } finally {
-        setArchiveLoading(false);
-      }
-    };
-
-    void run();
-  };
-
-  const toggleTaskSelection = (taskId) => {
-    const normalizedId = String(taskId || "").trim();
-    if (!normalizedId || archivedTaskIdSet.has(normalizedId) || adminArchivedTaskIdSet.has(normalizedId)) return;
-
-    setSelectedTaskIds((current) => {
-      const ids = normalizeTaskIds(current);
-      if (ids.includes(normalizedId)) {
-        return ids.filter((id) => id !== normalizedId);
-      }
-      return [...ids, normalizedId];
+    const confirmation = await Swal.fire({
+      title: "Cancel this task?",
+      text: "This task will no longer stay active.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, cancel it",
+      cancelButtonText: "Keep task",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+      focusCancel: true,
     });
+
+    if (!confirmation.isConfirmed) return;
+
+    const prevStatus = task.status;
+    setTasks((prev) => (prev || []).map((t) => (String(t.id) === String(id) ? { ...t, status: "Declined" } : t)));
+
+    try {
+      await api.post("task_update_status.php", { task_id: id, status: "Declined" });
+      await refresh({ silent: true });
+    } catch (e) {
+      setTasks((prev) => (prev || []).map((t) => (String(t.id) === String(id) ? { ...t, status: prevStatus } : t)));
+      setError(e?.response?.data?.message || e?.message || "Failed to cancel task.");
+    }
   };
 
   return (
@@ -923,7 +926,7 @@ export default function WorkUpdate() {
       {/* Summary cards (match Task Management style) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-          <div className="text-[11px] uppercase tracking-wide text-slate-500">Total</div>
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">Total Active</div>
           <div className="mt-1 text-2xl font-bold text-slate-900">{quickStats.total}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
@@ -935,34 +938,44 @@ export default function WorkUpdate() {
           <div className="mt-1 text-2xl font-bold text-rose-700">{quickStats.declined}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-          <div className="text-[11px] uppercase tracking-wide text-slate-500">Done</div>
-          <div className="mt-1 text-2xl font-bold text-emerald-700">{quickStats.completed}</div>
+          <div className="text-[11px] uppercase tracking-wide text-slate-500">History</div>
+          <div className="mt-1 text-2xl font-bold text-emerald-700">{historyTaskCount}</div>
         </div>
       </div>
 
       {/* Filters (match the screenshot layout) */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center flex-1 min-w-[220px]">
+          <div className="relative flex-1 min-w-[220px]">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tasks by title, client, description or status..."
+              className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+          {canViewTaskUpdateHistory ? (
+            <Link
+              to="/secretary/work-update/history"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
             >
-              <circle cx="11" cy="11" r="7"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tasks by title, client, description or status..."
-            className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
-          />
+              History
+            </Link>
+          ) : null}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <select
@@ -971,57 +984,22 @@ export default function WorkUpdate() {
             className="w-full sm:w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
           >
             <option>All</option>
+            <option>Incomplete</option>
             <option>Declined</option>
-            <option>Completed</option>
+            <option>Overdue</option>
             <option>Not Started</option>
           </select>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="w-full sm:w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
-            >
-              <option>All</option>
-              <option>Low</option>
-              <option>Medium</option>
-              <option>High</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => archiveTasks(selectedTaskIds)}
-              disabled={selectedTaskIds.length === 0 || archiveLoading}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                selectedTaskIds.length === 0 || archiveLoading
-                  ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {selectedTaskIds.length > 0 ? `Archive Selected (${selectedTaskIds.length})` : "Archive Selected"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setArchiveOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5h18" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 7.5 6 4h12l1.5 3.5" />
-              </svg>
-              View Archive
-            </button>
-          </div>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="w-full sm:w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            <option>All</option>
+            <option>Low</option>
+            <option>Medium</option>
+            <option>High</option>
+          </select>
         </div>
       </div>
 
@@ -1041,6 +1019,11 @@ export default function WorkUpdate() {
               const meta = extractMetaFromDescription(t.description);
               const steps = parseTaskSteps(t.description);
               const doneSet = parseCompletedStepNumbers(t.description);
+              const taskStatus = String(t.status || "").toLowerCase();
+              const isTaskDone = ["done", "completed"].includes(taskStatus);
+              const isTaskDeclined = taskStatus === "declined";
+              const deadlineState = getTaskDeadlineState(t);
+              const isOverdue = taskStatus === "overdue" || deadlineState.isOverdue;
               const secretarySteps = getAssignedStepsForRole(steps, "secretary");
               const pendingSecretarySteps = secretarySteps.filter((step) => !doneSet.has(step.number));
               const nextRequiredStepNumber = (() => {
@@ -1055,27 +1038,24 @@ export default function WorkUpdate() {
               const priorityValue = t.priority || t.task_priority || t.level || meta.priority;
               const taskKey = getTaskKey(t);
               const cardKey = taskKey || String(idx);
-              const isSelected = taskKey ? selectedTaskIdSet.has(taskKey) : false;
+              const canOpenTaskEdit = canEditTaskUpdates && canEditTask(t);
+              const canUseDoneAction = canMarkTaskDone && !isTaskDone && getProgress(t) >= 100;
+              const canUseDeclineAction = canDeclineTaskUpdates && !isTaskDeclined && !isTaskDone;
 
               return (
                 <div
                   key={cardKey}
                   className={`group rounded-xl border p-4 shadow-sm hover:shadow-md transition-shadow ${
-                    String(t.status || "").toLowerCase() === "declined" ? "border-rose-300 bg-rose-50/40" : "border-slate-200 bg-white"
+                    isOverdue
+                      ? "border-rose-300 bg-rose-50/40"
+                      : String(t.status || "").toLowerCase() === "declined"
+                        ? "border-rose-300 bg-rose-50/40"
+                        : "border-slate-200 bg-white"
                   }`}
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleTaskSelection(taskKey)}
-                        disabled={archiveLoading || !taskKey}
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30"
-                        aria-label={`Select ${t.title || t.name || "task"}`}
-                      />
-
+                    <div className="min-w-0">
                       <div className="min-w-0 space-y-1">
                         <h3 className="text-sm font-semibold text-slate-900 truncate">{t.title || t.name || "Untitled"}</h3>
 
@@ -1123,11 +1103,11 @@ export default function WorkUpdate() {
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Deadline</div>
+                    <div className={`rounded-lg border px-3 py-2 ${isOverdue ? "border-rose-200 bg-rose-50/80" : "border-slate-200 bg-slate-50/60"}`}>
+                      <div className={`text-[11px] uppercase tracking-wide ${isOverdue ? "text-rose-600" : "text-slate-500"}`}>Deadline</div>
                       <div className="mt-1 flex items-center gap-2">
                         <svg
-                          className="h-4 w-4 text-slate-400"
+                          className={`h-4 w-4 ${isOverdue ? "text-rose-500" : "text-slate-400"}`}
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
@@ -1135,7 +1115,7 @@ export default function WorkUpdate() {
                         >
                           <path d="M8 7V3m8 4V3M4 11h16M5 21h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
                         </svg>
-                        <span className="text-sm font-medium text-slate-800 tabular-nums" title={String(deadline || "") || ""}>
+                        <span className={`text-sm font-medium tabular-nums ${isOverdue ? "text-rose-700" : "text-slate-800"}`} title={String(deadline || "") || ""}>
                           {formatDate(deadline)}
                         </span>
                       </div>
@@ -1253,37 +1233,65 @@ export default function WorkUpdate() {
                       )}
 
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(t)}
-                          disabled={!canEditTask(t)}
-                          className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
-                            canEditTask(t)
-                              ? "border-slate-300 text-slate-600 hover:bg-slate-50"
-                              : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                          }`}
-                          title={canEditTask(t) ? "Edit task" : "Declined/Completed tasks cannot be edited"}
-                        >
-                          Edit
-                        </button>
+                        {canDeclineTaskUpdates ? (
+                          <button
+                            type="button"
+                            onClick={() => declineTask(t)}
+                            disabled={!canUseDeclineAction}
+                            className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
+                              isTaskDeclined
+                                ? "border-rose-200 bg-rose-50 text-rose-700 cursor-not-allowed"
+                                : "border-rose-300 text-rose-700 hover:bg-rose-50"
+                            } ${!canUseDeclineAction ? "opacity-60 cursor-not-allowed" : ""}`}
+                            title={
+                              isTaskDeclined
+                                ? "Already Declined"
+                                : isTaskDone
+                                  ? "Completed tasks cannot be cancelled"
+                                  : "Cancel task"
+                            }
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
 
-                        <button
-                          type="button"
-                          onClick={() => markDone(t)}
-                          disabled={(["done", "completed"].includes(String(t.status || "").toLowerCase())) || getProgress(t) < 100}
-                          className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
-                            (["done", "completed"].includes(String(t.status || "").toLowerCase()))
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 cursor-not-allowed"
-                              : "border-slate-300 text-slate-600 hover:bg-slate-50"
-                          } ${getProgress(t) < 100 ? "opacity-60 cursor-not-allowed" : ""}`}
-                          title={
-                            (["done", "completed"].includes(String(t.status || "").toLowerCase()))
-                              ? "Already Done"
-                              : (getProgress(t) < 100 ? "Progress must be 100% to mark Done" : "Mark as Done")
-                          }
-                        >
-                          Done
-                        </button>
+                        {canEditTaskUpdates ? (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(t)}
+                            disabled={!canOpenTaskEdit}
+                            className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
+                              canOpenTaskEdit
+                                ? "border-slate-300 text-slate-600 hover:bg-slate-50"
+                                : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                            }`}
+                            title={canEditTask(t) ? "Edit task" : "Declined/Completed tasks cannot be edited"}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+
+                        {canMarkTaskDone ? (
+                          <button
+                            type="button"
+                            onClick={() => markDone(t)}
+                            disabled={!canUseDoneAction}
+                            className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
+                              isTaskDone
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 cursor-not-allowed"
+                                : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                            } ${!canUseDoneAction ? "opacity-60 cursor-not-allowed" : ""}`}
+                            title={
+                              isTaskDone
+                                ? "Already Done"
+                                : getProgress(t) < 100
+                                  ? "Progress must be 100% to mark Done"
+                                  : "Mark as Done"
+                            }
+                          >
+                            Done
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -1344,11 +1352,17 @@ export default function WorkUpdate() {
                               const done = doneSet.has(stepNumber);
                               const canCompleteByOrder = i === nextRequiredIndex;
                               const isAssignedToSecretary = roleCanCompleteStep(step.assignee, "secretary");
-                              const canComplete = !taskLocked && !done && canCompleteByOrder && isAssignedToSecretary;
-                              const canEditRemark = !taskLocked && !done && isAssignedToSecretary;
-                              const stepRemark = String(stepRemarks[stepNumber] || "").trim();
-                              const completionLabel = formatStepDateTime(completionTimestamps[stepNumber]);
-                              const stepRemarkTimeLabel = formatStepDateTime(stepRemarkTimestamps[stepNumber]);
+                              const canComplete =
+                                canCheckTaskSteps && !taskLocked && !done && canCompleteByOrder && isAssignedToSecretary;
+                              const canEditRemark =
+                                canManageStepRemarks && !taskLocked && !done && isAssignedToSecretary;
+                              const stepRemark = canViewTaskUpdateHistory ? String(stepRemarks[stepNumber] || "").trim() : "";
+                              const completionLabel = canViewTaskUpdateHistory
+                                ? formatStepDateTime(completionTimestamps[stepNumber])
+                                : "";
+                              const stepRemarkTimeLabel = canViewTaskUpdateHistory
+                                ? formatStepDateTime(stepRemarkTimestamps[stepNumber])
+                                : "";
                               const remarkEditorOpen = isEditingStepRemark(liveTask?.id, stepNumber);
                               return (
                                 <div
@@ -1365,6 +1379,17 @@ export default function WorkUpdate() {
                                       }}
                                       className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 ${done ? "opacity-60" : "opacity-100"}`}
                                       aria-label={`Step ${stepNumber}`}
+                                      title={
+                                        !canCheckTaskSteps
+                                          ? "Step completion is disabled for your role"
+                                          : done
+                                            ? "Step already completed"
+                                            : canComplete
+                                              ? `Mark Step ${stepNumber} as completed`
+                                              : !isAssignedToSecretary
+                                                ? "Only secretary-assigned steps can be completed"
+                                                : "This step will unlock after earlier steps are done"
+                                      }
                                     />
                                   </div>
 
@@ -1378,6 +1403,8 @@ export default function WorkUpdate() {
                                         <span className="text-[11px] font-medium text-emerald-700">Completed</span>
                                       ) : canComplete ? (
                                         <span className="text-[11px] font-medium text-indigo-700">Current</span>
+                                      ) : !canCheckTaskSteps && isAssignedToSecretary ? (
+                                        <span className="text-[11px] font-medium text-slate-400">Read only</span>
                                       ) : !isAssignedToSecretary ? (
                                         <span className="text-[11px] font-medium text-emerald-700">{stepAssigneeLabel(step.assignee)} step</span>
                                       ) : (
@@ -1413,30 +1440,32 @@ export default function WorkUpdate() {
                                       </div>
                                     ) : null}
 
-                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                      <button
-                                        type="button"
-                                        disabled={!canEditRemark || stepRemarkSaving}
-                                        onClick={() => beginStepRemarkEdit(liveTask, stepNumber, stepRemark)}
-                                        title={
-                                          canEditRemark
-                                            ? (stepRemark ? "Edit remark" : "Add remark")
-                                            : done
-                                              ? "Completed steps cannot add remarks"
-                                              : "Only secretary-assigned steps can add remarks"
-                                        }
-                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                                          !canEditRemark || stepRemarkSaving
-                                            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                                            : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                                        }`}
-                                      >
-                                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
-                                        </svg>
-                                        <span>{stepRemark ? "Edit remark" : "Add remark"}</span>
-                                      </button>
-                                    </div>
+                                    {canManageStepRemarks ? (
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <button
+                                          type="button"
+                                          disabled={!canEditRemark || stepRemarkSaving}
+                                          onClick={() => beginStepRemarkEdit(liveTask, stepNumber, stepRemark)}
+                                          title={
+                                            canEditRemark
+                                              ? (stepRemark ? "Edit remark" : "Add remark")
+                                              : done
+                                                ? "Completed steps cannot add remarks"
+                                                : "Only secretary-assigned steps can add remarks"
+                                          }
+                                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                                            !canEditRemark || stepRemarkSaving
+                                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                                          }`}
+                                        >
+                                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                                          </svg>
+                                          <span>{stepRemark ? "Edit remark" : "Add remark"}</span>
+                                        </button>
+                                      </div>
+                                    ) : null}
 
                                     {remarkEditorOpen ? (
                                       <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -1544,7 +1573,38 @@ export default function WorkUpdate() {
                             </option>
                           ))}
                         </select>
+                        {selectedEditAssigneeIsSecretary ? (
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Secretary assignments need a partner accountant.
+                          </p>
+                        ) : null}
                       </div>
+
+                      {selectedEditAssigneeIsSecretary ? (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Partner accountant</label>
+                          <select
+                            value={editForm.partner_id}
+                            onChange={(e) => setEditForm((f) => ({ ...f, partner_id: e.target.value }))}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                          >
+                            <option value="">Select partner accountant</option>
+                            {partnerAccountants.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.username || `User #${a.id}`}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            All accountants are available here, regardless of specialization.
+                          </p>
+                          {selectedEditPartner ? (
+                            <p className="mt-1 text-[11px] text-slate-600">
+                              Partner: {selectedEditPartner.username || `User #${selectedEditPartner.id}`}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Client</label>
@@ -1627,24 +1687,6 @@ export default function WorkUpdate() {
         </>
       )}
 
-      <Modal
-        open={archiveOpen}
-        onClose={() => setArchiveOpen(false)}
-        title="Archived Tasks"
-        description="Only tasks archived from this page are shown here."
-        size="lg"
-        footer={
-          <button
-            type="button"
-            onClick={() => setArchiveOpen(false)}
-            className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 border border-slate-300 bg-white hover:bg-slate-50"
-          >
-            Close
-          </button>
-        }
-      >
-        <ArchiveTasksCompletedSecretary tasks={archivedTaskRows} />
-      </Modal>
     </div>
   );
 }

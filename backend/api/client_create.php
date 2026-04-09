@@ -445,6 +445,7 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
 
     $smtp = smtpConfig();
     $companyName = monitoring_get_system_company_name($conn);
+    $supportEmail = monitoring_get_system_support_email($conn);
     $safeCompanyName = htmlspecialchars($companyName, ENT_QUOTES, 'UTF-8');
     if ($smtp['user'] === '' || $smtp['pass'] === '') {
         return [
@@ -490,6 +491,9 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
         $mail->Port = $smtp['port'];
 
         $mail->setFrom($smtp['user'], $companyName);
+        if ($supportEmail !== '') {
+            $mail->addReplyTo($supportEmail, $companyName . ' Support');
+        }
         $mail->addAddress($email);
         $mail->Subject = $companyName . ' Account Approved';
         $mail->isHTML(true);
@@ -582,6 +586,7 @@ function sendRejectionEmail(string $recipientEmail, array $options = []): array 
 
     $smtp = smtpConfig();
     $companyName = monitoring_get_system_company_name($conn);
+    $supportEmail = monitoring_get_system_support_email($conn);
     $safeCompanyName = htmlspecialchars($companyName, ENT_QUOTES, 'UTF-8');
     if ($smtp['user'] === '' || $smtp['pass'] === '') {
         return [
@@ -618,6 +623,9 @@ function sendRejectionEmail(string $recipientEmail, array $options = []): array 
         $mail->Port = $smtp['port'];
 
         $mail->setFrom($smtp['user'], $companyName);
+        if ($supportEmail !== '') {
+            $mail->addReplyTo($supportEmail, $companyName . ' Support');
+        }
         $mail->addAddress($email);
         $mail->Subject = $companyName . ' Application Update';
         $mail->isHTML(true);
@@ -1660,6 +1668,17 @@ try {
 
     $staffCanCreateClient = $sessionUser !== null
         && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
+
+    if (!$staffCanCreateClient && !monitoring_client_self_signup_enabled($conn)) {
+        $supportEmail = monitoring_get_system_support_email($conn);
+        respond(403, [
+            'success' => false,
+            'message' => monitoring_append_support_contact_message(
+                'Client sign-up is currently unavailable.',
+                $supportEmail
+            ),
+        ]);
+    }
 
     if (!$staffCanCreateClient) {
         $registrationSource = 'self_signup';

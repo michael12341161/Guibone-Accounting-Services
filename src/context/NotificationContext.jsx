@@ -60,7 +60,7 @@ function countUnread(list) {
 }
 
 export function NotificationProvider({ children }) {
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const idRef = useRef(0);
@@ -139,7 +139,7 @@ export function NotificationProvider({ children }) {
 
   const refreshNotifications = useCallback(async () => {
     const userId = normalizeIdValue(user?.id ?? user?.user_id ?? user?.User_ID);
-    if (!userId) {
+    if (!isAuthReady || !userId) {
       setNotifications([]);
       setUnreadCount(0);
       return;
@@ -157,12 +157,12 @@ export function NotificationProvider({ children }) {
         setUnreadCount(countUnread(items));
       }
     } catch (_) {}
-  }, [normalizeNotification, user]);
+  }, [isAuthReady, normalizeNotification, user]);
 
   useEffect(() => {
     let active = true;
     const userId = normalizeIdValue(user?.id ?? user?.user_id ?? user?.User_ID);
-    if (!userId) {
+    if (!isAuthReady || !userId) {
       setNotifications([]);
       setUnreadCount(0);
       return undefined;
@@ -172,13 +172,20 @@ export function NotificationProvider({ children }) {
     const intervalId = window.setInterval(() => {
       if (!active) return;
       void refreshNotifications();
-    }, 10000);
+    }, 5000);
+
+    const handleWindowFocus = () => {
+      if (!active) return;
+      void refreshNotifications();
+    };
+    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       active = false;
       window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [refreshNotifications, user]);
+  }, [isAuthReady, refreshNotifications, user]);
 
   const notifyTaskCreated = useCallback(() => {
     void refreshNotifications();

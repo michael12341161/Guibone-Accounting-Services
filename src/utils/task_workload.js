@@ -41,7 +41,7 @@ export function normalizeTaskWorkloadSettings(input) {
 
 export function isTaskCountedInWorkload(task) {
   const status = String(task?.status || task?.status_name || "").trim().toLowerCase();
-  return status !== "completed" && status !== "declined" && status !== "cancelled" && status !== "canceled";
+  return !["completed", "done", "declined", "cancelled", "canceled"].includes(status);
 }
 
 export function getTaskWorkloadLevel(totalTasks, limit) {

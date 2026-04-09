@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
@@ -9,6 +10,7 @@ import {
   parseStepRemarks,
   parseStepRemarkTimestamps,
 } from "../../utils/task_step_metadata";
+import { getTaskDeadlineState } from "../../utils/task_deadline";
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
 const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
@@ -80,13 +82,19 @@ function parseCompletedStepNumbers(desc) {
   return completed;
 }
 
-function statusMeta(statusText, progress) {
+function statusMeta(statusText, progress, options = {}) {
   const s = (statusText || "").toLowerCase();
   if (s.includes("declin")) {
     return { label: "Declined", pill: "bg-rose-50 text-rose-700 ring-1 ring-rose-200", bar: "bg-rose-500" };
   }
-  if (s.includes("done") || s.includes("complete")) {
+  if (s === "completed" || s === "done") {
     return { label: "Completed", pill: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200", bar: "bg-emerald-500" };
+  }
+  if (options.isOverdue || s === "overdue") {
+    return { label: "Overdue", pill: "bg-rose-50 text-rose-700 ring-1 ring-rose-200", bar: "bg-rose-500" };
+  }
+  if (s === "incomplete" || progress >= 100) {
+    return { label: "Incomplete", pill: "bg-orange-50 text-orange-700 ring-1 ring-orange-200", bar: "bg-orange-500" };
   }
   if (progress > 0 || s.includes("ongo")) {
     return { label: "Ongoing", pill: "bg-sky-50 text-sky-700 ring-1 ring-sky-200", bar: "bg-sky-500" };
@@ -184,7 +192,9 @@ export default function WorkProgress() {
       const progress = parseProgressFromDescription(t.description);
       const reason = parseDeclinedReasonFromDescription(t.description);
       const steps = parseTaskSteps(t.description);
-      const meta = statusMeta(t.status, progress);
+      const deadlineState = getTaskDeadlineState(t);
+      const isOverdue = String(t?.status || "").trim().toLowerCase() === "overdue" || deadlineState.isOverdue;
+      const meta = statusMeta(t.status, progress, { isOverdue });
       return {
         id: t.id,
         serviceName: t.name || "(Unnamed service)",
@@ -194,6 +204,7 @@ export default function WorkProgress() {
         statusPill: meta.pill,
         barColor: meta.bar,
         progress,
+        isOverdue,
         declinedReason: meta.label === "Declined" ? reason : "",
         steps,
         completedSteps: parseCompletedStepNumbers(t.description),
@@ -203,6 +214,16 @@ export default function WorkProgress() {
       };
     });
   }, [tasks]);
+
+  const historyRows = useMemo(
+    () => normalized.filter((row) => row.status === "Completed"),
+    [normalized]
+  );
+
+  const activeRows = useMemo(
+    () => normalized.filter((row) => row.status !== "Completed"),
+    [normalized]
+  );
 
   const selectedStepsTask = useMemo(
     () => normalized.find((row) => String(row.id) === String(stepsTaskId)) || null,
@@ -228,11 +249,9 @@ export default function WorkProgress() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Work Progress</h2>
             <p className="text-sm text-slate-500">
-              Track the status and completion percentage of your requested services.
+              Track the status and completion percentage of your requested services. Completed services are moved to
+              history.
             </p>
-          </div>
-          <div className="text-xs text-slate-500">
-            Updated by your assigned accountant
           </div>
         </div>
       </div>
@@ -246,12 +265,27 @@ export default function WorkProgress() {
               {error}
             </div>
           </div>
-        ) : normalized.length === 0 ? (
-          <div className="p-6 text-sm text-slate-600">No services found.</div>
+        ) : activeRows.length === 0 ? (
+          historyRows.length > 0 ? (
+            <div className="p-6 text-sm text-slate-600">
+              No active services right now. Your completed services are available in{" "}
+              <Link to="/client/work-progress/history" className="font-semibold text-emerald-700 hover:text-emerald-800">
+                History
+              </Link>
+              .
+            </div>
+          ) : (
+            <div className="p-6 text-sm text-slate-600">No services found.</div>
+          )
         ) : (
-          <div className="divide-y divide-slate-200">
-            {normalized.map((row) => (
-              <div key={row.id} className="p-5">
+          <div className="space-y-4 p-4">
+            {activeRows.map((row) => (
+              <div
+                key={row.id}
+                className={`rounded-xl border p-5 shadow-sm ${
+                  row.isOverdue ? "border-rose-300 bg-rose-50/40" : "border-slate-200 bg-white"
+                }`}
+              >
                 <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -315,13 +349,13 @@ export default function WorkProgress() {
                       />
                     </div>
                     <div className="mt-2 text-xs text-slate-500">
-                      {row.status === "Completed"
-                        ? "This service is completed."
-                        : row.status === "Declined"
-                          ? "This service was declined."
-                          : row.status === "Ongoing"
-                            ? "Work is currently in progress."
-                            : "Waiting to be started."}
+                      {row.status === "Declined"
+                        ? "This service was declined."
+                        : row.status === "Overdue"
+                          ? "This service is overdue and needs attention."
+                        : row.status === "Ongoing"
+                          ? "Work is currently in progress."
+                          : "Waiting to be started."}
                     </div>
                   </div>
                 </div>
@@ -353,7 +387,11 @@ export default function WorkProgress() {
       >
         {selectedStepsTask ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div
+              className={`rounded-xl border p-4 ${
+                selectedStepsTask.isOverdue ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50"
+              }`}
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progress</div>

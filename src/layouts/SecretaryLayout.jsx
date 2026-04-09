@@ -83,6 +83,30 @@ export const secretaryNavItems = [
     ],
   },
   {
+    key: "certificate-menu",
+    label: "Certificate Template",
+    icon: <FilePenLine {...sidebarIconProps} />,
+    sectionLabel: "Certificate",
+    accessKey: "certificate",
+    children: [
+      {
+        key: "certificate-view",
+        label: "Certificate",
+        to: "/secretary/certificate",
+        end: true,
+        icon: <FileText {...sidebarIconProps} />,
+        accessKey: "certificate",
+      },
+      {
+        key: "edit-certificate",
+        label: "Edit Certificate",
+        to: "/secretary/certificate/edit",
+        icon: <FilePenLine {...sidebarIconProps} />,
+        accessKey: "edit-certificate",
+      },
+    ],
+  },
+  {
     key: "appointments",
     label: "Appointments",
     to: "/secretary/appointments",
@@ -137,19 +161,20 @@ export const secretaryNavItems = [
     accessKey: "calendar",
   },
   {
+    key: "reports",
+    label: "Reports",
+    to: "/secretary/reports",
+    icon: <BarChart3 {...sidebarIconProps} />,
+    sectionLabel: "Insights",
+    accessKey: "reports",
+  },
+  {
     key: "user-management",
     label: "User Management",
     to: "/secretary/users",
     icon: <UserCog {...sidebarIconProps} />,
     sectionLabel: "System Users",
     accessKey: "user-management",
-  },
-  {
-    key: "reports",
-    label: "Reports",
-    to: "/secretary/reports",
-    icon: <BarChart3 {...sidebarIconProps} />,
-    accessKey: "reports",
   },
 ];
 

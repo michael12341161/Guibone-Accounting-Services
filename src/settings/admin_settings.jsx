@@ -12,8 +12,10 @@ import {
   fetchBackupDataOverview,
   fetchSecuritySettings,
   fetchSystemConfiguration,
+  MONITORING_SYSTEM_CONFIG_UPDATED_EVENT,
   saveSecuritySettings,
   saveSystemConfiguration,
+  sendSystemTestEmail,
 } from "../services/api";
 import { formatDateTime } from "../utils/helpers";
 import { showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../utils/feedback";
@@ -132,10 +134,18 @@ function isValidUrlValue(value) {
   }
 }
 
+function isValidEmailValue(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim());
+}
+
 function validateSystemConfiguration(values) {
   const errors = {};
   const companyName = String(values.companyName ?? "").trim();
   const appBaseUrl = String(values.appBaseUrl ?? "").trim();
+  const supportEmail = String(values.supportEmail ?? "").trim();
+  const systemNotice = String(values.systemNotice ?? "").trim();
+  const taskReminderIntervalHours = parseSecurityNumber(values.taskReminderIntervalHours);
+  const taskReminderIntervalMinutes = parseSecurityNumber(values.taskReminderIntervalMinutes);
   const smtpHost = String(values.smtpHost ?? "").trim();
   const smtpUsername = String(values.smtpUsername ?? "").trim();
   const smtpPassword = String(values.smtpPassword ?? "");
@@ -151,6 +161,35 @@ function validateSystemConfiguration(values) {
     errors.appBaseUrl = "Enter a valid URL like http://localhost:3000.";
   } else if (appBaseUrl.length > 255) {
     errors.appBaseUrl = "Frontend URL must be 255 characters or fewer.";
+  }
+
+  if (supportEmail && !isValidEmailValue(supportEmail)) {
+    errors.supportEmail = "Enter a valid support email address.";
+  } else if (supportEmail.length > 255) {
+    errors.supportEmail = "Support email must be 255 characters or fewer.";
+  }
+
+  if (systemNotice.length > 500) {
+    errors.systemNotice = "System notice must be 500 characters or fewer.";
+  }
+
+  if (taskReminderIntervalHours === null || taskReminderIntervalHours < 0 || taskReminderIntervalHours > 24) {
+    errors.taskReminderIntervalHours = "Enter a whole number from 0 to 24.";
+  }
+
+  if (taskReminderIntervalMinutes === null || taskReminderIntervalMinutes < 0 || taskReminderIntervalMinutes > 59) {
+    errors.taskReminderIntervalMinutes = "Enter a whole number from 0 to 59.";
+  }
+
+  if (taskReminderIntervalHours !== null && taskReminderIntervalMinutes !== null) {
+    const totalReminderMinutes = taskReminderIntervalHours * 60 + taskReminderIntervalMinutes;
+    if (totalReminderMinutes < 1) {
+      errors.taskReminderIntervalHours = "Reminder interval must be at least 1 minute.";
+      errors.taskReminderIntervalMinutes = "Reminder interval must be at least 1 minute.";
+    } else if (totalReminderMinutes > 1440) {
+      errors.taskReminderIntervalHours = "Reminder interval cannot exceed 24 hours.";
+      errors.taskReminderIntervalMinutes = "Reminder interval cannot exceed 24 hours.";
+    }
   }
 
   if (!smtpHost) {
@@ -189,6 +228,16 @@ function buildSystemPayload(values) {
   return {
     companyName: String(values.companyName ?? "").trim() || DEFAULT_SYSTEM_CONFIGURATION.companyName,
     appBaseUrl: String(values.appBaseUrl ?? "").trim(),
+    allowClientSelfSignup: !!values.allowClientSelfSignup,
+    allowClientAppointments: !!values.allowClientAppointments,
+    allowClientConsultations: !!values.allowClientConsultations,
+    supportEmail: String(values.supportEmail ?? "").trim(),
+    systemNotice: String(values.systemNotice ?? "").trim(),
+    taskReminderIntervalHours:
+      parseSecurityNumber(values.taskReminderIntervalHours) ?? DEFAULT_SYSTEM_CONFIGURATION.taskReminderIntervalHours,
+    taskReminderIntervalMinutes:
+      parseSecurityNumber(values.taskReminderIntervalMinutes) ??
+      DEFAULT_SYSTEM_CONFIGURATION.taskReminderIntervalMinutes,
     sendClientStatusEmails: !!values.sendClientStatusEmails,
     smtpHost: String(values.smtpHost ?? "").trim() || DEFAULT_SYSTEM_CONFIGURATION.smtpHost,
     smtpPort: parseSecurityNumber(values.smtpPort) ?? DEFAULT_SYSTEM_CONFIGURATION.smtpPort,
@@ -334,6 +383,8 @@ export default function AdminSettings() {
   const [systemErrors, setSystemErrors] = React.useState({});
   const [systemLoading, setSystemLoading] = React.useState(false);
   const [systemSaving, setSystemSaving] = React.useState(false);
+  const [systemTestSending, setSystemTestSending] = React.useState(false);
+  const [systemTestRecipient, setSystemTestRecipient] = React.useState(() => String(user?.email ?? "").trim());
   const [systemStatus, setSystemStatus] = React.useState({ type: "", text: "" });
   const [backupSummary, setBackupSummary] = React.useState({
     database_name: "",
@@ -567,6 +618,14 @@ export default function AdminSettings() {
     };
   }, [showSystem]);
 
+  React.useEffect(() => {
+    if (!showSystem) {
+      return;
+    }
+
+    setSystemTestRecipient((current) => current || String(user?.email ?? "").trim());
+  }, [showSystem, user?.email]);
+
   const updateSecurity = (key) => (event) => {
     const sanitized = event.target.value.replace(/[^\d]/g, "");
 
@@ -601,6 +660,19 @@ export default function AdminSettings() {
     setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
   };
 
+  const updateSystemTestRecipient = (event) => {
+    const nextValue = event.target.value.trimStart();
+    setSystemTestRecipient(nextValue);
+    setSystemErrors((current) => {
+      if (!current.recipientEmail) return current;
+
+      const nextErrors = { ...current };
+      delete nextErrors.recipientEmail;
+      return nextErrors;
+    });
+    setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
+  };
+
   const updateSystemPort = (event) => {
     const sanitized = event.target.value.replace(/[^\d]/g, "");
 
@@ -613,6 +685,24 @@ export default function AdminSettings() {
 
       const nextErrors = { ...current };
       delete nextErrors.smtpPort;
+      return nextErrors;
+    });
+    setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
+  };
+
+  const updateSystemReminderInterval = (key) => (event) => {
+    const sanitized = event.target.value.replace(/[^\d]/g, "");
+
+    setSystem((current) => ({
+      ...current,
+      [key]: sanitized === "" ? "" : Number.parseInt(sanitized, 10),
+    }));
+    setSystemErrors((current) => {
+      if (!current.taskReminderIntervalHours && !current.taskReminderIntervalMinutes) return current;
+
+      const nextErrors = { ...current };
+      delete nextErrors.taskReminderIntervalHours;
+      delete nextErrors.taskReminderIntervalMinutes;
       return nextErrors;
     });
     setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
@@ -736,6 +826,14 @@ export default function AdminSettings() {
         text: response?.data?.message || "System configuration saved successfully.",
       });
 
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(MONITORING_SYSTEM_CONFIG_UPDATED_EVENT, {
+            detail: { settings: savedSettings },
+          })
+        );
+      }
+
       showSuccessToast({
         title: "System configuration saved",
         description: statusEmailsChanged
@@ -756,6 +854,75 @@ export default function AdminSettings() {
       });
     } finally {
       setSystemSaving(false);
+    }
+  };
+
+  const handleSendSystemTestEmail = async () => {
+    const recipientEmail = String(systemTestRecipient ?? "").trim();
+    const errors = validateSystemConfiguration(system);
+
+    if (!recipientEmail || !isValidEmailValue(recipientEmail)) {
+      errors.recipientEmail = "Enter a valid recipient email address.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setSystemErrors(errors);
+      setSystemStatus({
+        type: "error",
+        text: "Fix the highlighted fields before sending a test email.",
+      });
+      showErrorToast({
+        title: "Unable to send test email",
+        description: Object.values(errors)[0] || "Fix the highlighted fields before sending a test email.",
+      });
+      return;
+    }
+
+    setSystemTestSending(true);
+    setSystemStatus({ type: "", text: "" });
+
+    try {
+      const payload = buildSystemPayload(system);
+      const response = await sendSystemTestEmail({
+        settings: payload,
+        recipientEmail,
+      });
+      const normalizedSettings = response?.data?.settings || payload;
+
+      setSystem(normalizedSettings);
+      setSystemErrors((current) => {
+        if (!current.recipientEmail) {
+          return current;
+        }
+
+        const nextErrors = { ...current };
+        delete nextErrors.recipientEmail;
+        return nextErrors;
+      });
+      setSystemStatus({
+        type: "success",
+        text: response?.data?.message || `Test email sent to ${recipientEmail}.`,
+      });
+
+      showSuccessToast({
+        title: "Test email sent",
+        description: response?.data?.message || `SMTP settings delivered a message to ${recipientEmail}.`,
+      });
+    } catch (error) {
+      setSystemErrors((current) => ({
+        ...current,
+        ...(error?.response?.data?.errors || {}),
+      }));
+      setSystemStatus({
+        type: "error",
+        text: error?.response?.data?.message || "Unable to send the test email.",
+      });
+      showErrorToast({
+        title: "Unable to send test email",
+        description: error?.response?.data?.message || "Unable to send the test email.",
+      });
+    } finally {
+      setSystemTestSending(false);
     }
   };
 
@@ -933,6 +1100,41 @@ export default function AdminSettings() {
       setBackupDeleting("");
     }
   };
+
+  const systemSummaryCards = [
+    {
+      key: "signup",
+      label: "Client sign-up",
+      value: system.allowClientSelfSignup ? "Open" : "Paused",
+      className: system.allowClientSelfSignup
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+        : "border-amber-200 bg-amber-50 text-amber-700",
+    },
+    {
+      key: "appointments",
+      label: "Appointments",
+      value: system.allowClientAppointments ? "Open" : "Paused",
+      className: system.allowClientAppointments
+        ? "border-sky-200 bg-sky-50 text-sky-700"
+        : "border-amber-200 bg-amber-50 text-amber-700",
+    },
+    {
+      key: "consultations",
+      label: "Consultations",
+      value: system.allowClientConsultations ? "Open" : "Paused",
+      className: system.allowClientConsultations
+        ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+        : "border-amber-200 bg-amber-50 text-amber-700",
+    },
+    {
+      key: "email",
+      label: "SMTP status",
+      value: system.smtpUsername && system.smtpPassword ? "Ready" : "Needs setup",
+      className: system.smtpUsername && system.smtpPassword
+        ? "border-violet-200 bg-violet-50 text-violet-700"
+        : "border-slate-200 bg-slate-100 text-slate-700",
+    },
+  ];
 
   const cards = [
     {
@@ -1449,12 +1651,12 @@ export default function AdminSettings() {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowSystem(false)} />
           <div className="relative z-10 grid h-full w-full place-items-center p-4">
-            <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-800">System Configuration</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Manage the organization name, frontend URL, SMTP delivery, and client status emails.
+                    Manage branding, public workflow access, support contact details, and SMTP delivery.
                   </p>
                 </div>
                 <button
@@ -1477,11 +1679,23 @@ export default function AdminSettings() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-4">
+                      {systemSummaryCards.map((card) => (
+                        <div
+                          key={card.key}
+                          className={`rounded-lg border px-4 py-3 ${card.className}`}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{card.label}</p>
+                          <p className="mt-2 text-base font-semibold">{card.value}</p>
+                        </div>
+                      ))}
+                    </div>
+
                     <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                       <div className="mb-4">
                         <h4 className="text-sm font-semibold text-slate-800">General Preferences</h4>
                         <p className="mt-1 text-xs text-slate-500">
-                          These values are reused in client emails and login links.
+                          These values are reused in client emails, login links, public notices, and paused-workflow messages.
                         </p>
                       </div>
 
@@ -1525,6 +1739,105 @@ export default function AdminSettings() {
                             <p className="mt-1 text-xs text-rose-600">{systemErrors.appBaseUrl}</p>
                           ) : null}
                         </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700">Support Email</label>
+                          <input
+                            type="email"
+                            value={system.supportEmail}
+                            onChange={updateSystemText("supportEmail")}
+                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
+                              systemErrors.supportEmail
+                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                            placeholder="support@example.com"
+                          />
+                          <p className="mt-1 text-xs text-slate-500">
+                            Used in paused workflow messages and as the reply-to address for outgoing emails.
+                          </p>
+                          {systemErrors.supportEmail ? (
+                            <p className="mt-1 text-xs text-rose-600">{systemErrors.supportEmail}</p>
+                          ) : null}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-slate-700">Portal Notice</label>
+                          <textarea
+                            value={system.systemNotice}
+                            onChange={updateSystemText("systemNotice")}
+                            rows={3}
+                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
+                              systemErrors.systemNotice
+                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                            placeholder="Example: Registration approvals may take 1-2 business days this week."
+                          />
+                          <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-500">
+                            <span>Shown on public and client booking pages when you need to announce an update.</span>
+                            <span>{String(system.systemNotice || "").trim().length}/500</span>
+                          </div>
+                          {systemErrors.systemNotice ? (
+                            <p className="mt-1 text-xs text-rose-600">{systemErrors.systemNotice}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                      <div className="mb-4">
+                        <h4 className="text-sm font-semibold text-slate-800">Client Workflow Controls</h4>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Pause public sign-up or booking flows without changing routes or touching code.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                          <div>
+                            <div className="text-sm font-medium text-slate-800">Allow Client Sign-up</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Controls the public registration form and self-service account creation.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={!!system.allowClientSelfSignup}
+                            onChange={updateSystemToggle("allowClientSelfSignup")}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                          />
+                        </label>
+
+                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                          <div>
+                            <div className="text-sm font-medium text-slate-800">Allow Appointments</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Lets clients submit service appointment requests from their dashboard.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={!!system.allowClientAppointments}
+                            onChange={updateSystemToggle("allowClientAppointments")}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                          />
+                        </label>
+
+                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                          <div>
+                            <div className="text-sm font-medium text-slate-800">Allow Consultations</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Controls consultation requests and client-side consultation rescheduling.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={!!system.allowClientConsultations}
+                            onChange={updateSystemToggle("allowClientConsultations")}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                          />
+                        </label>
                       </div>
                     </div>
 
@@ -1532,25 +1845,79 @@ export default function AdminSettings() {
                       <div className="mb-4">
                         <h4 className="text-sm font-semibold text-slate-800">Notifications</h4>
                         <p className="mt-1 text-xs text-slate-500">
-                          Control the automatic emails sent when client registrations are approved or rejected.
+                          Control task reminder timing and the automatic emails sent when client registrations are approved or rejected.
                         </p>
                       </div>
 
-                      <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                        <div>
-                          <div className="text-sm font-medium text-slate-800">Send Client Status Emails</div>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            Uses the SMTP settings below for approval and rejection emails. Password reset still uses the
-                            same SMTP credentials.
+                      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                          <label className="block text-sm font-medium text-slate-700">Task Reminder Interval</label>
+                          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Hours
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={24}
+                                step={1}
+                                value={system.taskReminderIntervalHours}
+                                onChange={updateSystemReminderInterval("taskReminderIntervalHours")}
+                                className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
+                                  systemErrors.taskReminderIntervalHours
+                                    ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                                }`}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Minutes
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={59}
+                                step={1}
+                                value={system.taskReminderIntervalMinutes}
+                                onChange={updateSystemReminderInterval("taskReminderIntervalMinutes")}
+                                className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
+                                  systemErrors.taskReminderIntervalMinutes
+                                    ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                                }`}
+                              />
+                            </div>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Controls how often task reminder notifications repeat for due tomorrow, due today, and overdue
+                            tasks. For quick testing, set Hours to 0 and Minutes to 2.
                           </p>
+                          {systemErrors.taskReminderIntervalHours || systemErrors.taskReminderIntervalMinutes ? (
+                            <p className="mt-1 text-xs text-rose-600">
+                              {systemErrors.taskReminderIntervalHours || systemErrors.taskReminderIntervalMinutes}
+                            </p>
+                          ) : null}
                         </div>
-                        <input
-                          type="checkbox"
-                          checked={!!system.sendClientStatusEmails}
-                          onChange={updateSystemToggle("sendClientStatusEmails")}
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                        />
-                      </label>
+
+                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                          <div>
+                            <div className="text-sm font-medium text-slate-800">Send Client Status Emails</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Uses the SMTP settings below for approval and rejection emails. Password reset still uses the
+                              same SMTP credentials.
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={!!system.sendClientStatusEmails}
+                            onChange={updateSystemToggle("sendClientStatusEmails")}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
@@ -1639,6 +2006,40 @@ export default function AdminSettings() {
                           ) : null}
                         </div>
                       </div>
+
+                      <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                          <div className="w-full md:max-w-sm">
+                            <label className="block text-sm font-medium text-slate-700">Send test email to</label>
+                            <input
+                              type="email"
+                              value={systemTestRecipient}
+                              onChange={updateSystemTestRecipient}
+                              className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
+                                systemErrors.recipientEmail
+                                  ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                  : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                              }`}
+                              placeholder={String(user?.email ?? "").trim() || "admin@example.com"}
+                            />
+                            <p className="mt-1 text-xs text-slate-500">
+                              Uses the current form values, so you can test SMTP before saving.
+                            </p>
+                            {systemErrors.recipientEmail ? (
+                              <p className="mt-1 text-xs text-rose-600">{systemErrors.recipientEmail}</p>
+                            ) : null}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleSendSystemTestEmail}
+                            disabled={systemLoading || systemSaving || systemTestSending}
+                            className="inline-flex items-center justify-center rounded-md border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {systemTestSending ? "Sending test..." : "Send Test Email"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1654,7 +2055,7 @@ export default function AdminSettings() {
                 <button
                   type="button"
                   onClick={handleSaveSystem}
-                  disabled={systemLoading || systemSaving}
+                  disabled={systemLoading || systemSaving || systemTestSending}
                   className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {systemSaving ? "Saving..." : "Save Configuration"}

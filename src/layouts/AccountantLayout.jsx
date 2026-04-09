@@ -4,6 +4,8 @@ import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
 import { getUserFirstName } from "../components/layout/layout_utils";
+import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
+import { accountantBreadcrumbConfig } from "../config/accountantBreadcrumbConfig";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
 import AccountantProfile from "../Pages/profile/AccountantProfile";
@@ -34,7 +36,7 @@ export const accountantNavItems = [
     to: "/accountant/my-tasks",
     icon: <ListTodo {...sidebarIconProps} />,
     sectionLabel: "Workspace",
-    accessKey: "my-tasks",
+    accessKey: "work-update",
   },
   {
     key: "calendar",
@@ -138,7 +140,10 @@ export default function AccountantLayout({ user, onLogout, children }) {
       desktopSidebarCollapsible
       desktopSidebarCollapseMode="icons"
     >
-      {children}
+      <>
+        <RouteBreadcrumbs config={accountantBreadcrumbConfig} />
+        {children}
+      </>
       <AccountantProfile
         open={profileOpen}
         onClose={() => setProfileOpen(false)}

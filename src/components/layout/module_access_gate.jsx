@@ -17,11 +17,12 @@ import {
 } from "../../utils/module_permissions";
 
 export function ModuleAccessGate({ moduleKey, actionKey = null, children }) {
-  const { user, role } = useAuth();
+  const { user, role, isAuthReady } = useAuth();
   const { permissions, isLoading, error, refreshPermissions } = useModulePermissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [requesting, setRequesting] = useState(false);
+  const hasResolvedUser = Boolean(user?.id || user?.username);
 
   const moduleLabel = useMemo(() => {
     const featureLabel = getModuleLabelByKey(moduleKey);
@@ -33,8 +34,24 @@ export function ModuleAccessGate({ moduleKey, actionKey = null, children }) {
     return actionLabel ? `${featureLabel}: ${actionLabel}` : featureLabel;
   }, [actionKey, moduleKey]);
 
+  if ((!isAuthReady && !hasResolvedUser) || (hasResolvedUser && !permissions && !error)) {
+    return (
+      <div className="py-8">
+        <RouteLoadingPanel />
+      </div>
+    );
+  }
+
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (isLoading && !permissions) {
+    return (
+      <div className="py-8">
+        <RouteLoadingPanel />
+      </div>
+    );
   }
 
   const hasAccess = actionKey
@@ -43,14 +60,6 @@ export function ModuleAccessGate({ moduleKey, actionKey = null, children }) {
 
   if (hasAccess) {
     return children;
-  }
-
-  if (isLoading) {
-    return (
-      <div className="py-8">
-        <RouteLoadingPanel />
-      </div>
-    );
   }
 
   if (error && !permissions) {

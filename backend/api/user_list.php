@@ -43,6 +43,65 @@ function normalizeOptionalString($value): ?string {
     return $raw !== '' ? $raw : null;
 }
 
+function publicSecuritySettings(array $settings): array {
+    $publicKeys = ['maxPasswordLength', 'passwordExpiryDays'];
+    $publicSettings = [];
+
+    foreach ($publicKeys as $key) {
+        if (!array_key_exists($key, $settings)) {
+            continue;
+        }
+
+        $publicSettings[$key] = (int)$settings[$key];
+    }
+
+    return $publicSettings;
+}
+
+function publicSystemConfiguration(array $settings): array {
+    $publicKeys = [
+        'companyName',
+        'appBaseUrl',
+        'allowClientSelfSignup',
+        'allowClientAppointments',
+        'allowClientConsultations',
+        'supportEmail',
+        'systemNotice',
+        'taskReminderIntervalHours',
+        'taskReminderIntervalMinutes',
+    ];
+    $booleanKeys = [
+        'allowClientSelfSignup',
+        'allowClientAppointments',
+        'allowClientConsultations',
+    ];
+    $integerKeys = [
+        'taskReminderIntervalHours',
+        'taskReminderIntervalMinutes',
+    ];
+    $publicSettings = [];
+
+    foreach ($publicKeys as $key) {
+        if (!array_key_exists($key, $settings)) {
+            continue;
+        }
+
+        if (in_array($key, $booleanKeys, true)) {
+            $publicSettings[$key] = !empty($settings[$key]);
+            continue;
+        }
+
+        if (in_array($key, $integerKeys, true)) {
+            $publicSettings[$key] = (int)$settings[$key];
+            continue;
+        }
+
+        $publicSettings[$key] = trim((string)$settings[$key]);
+    }
+
+    return $publicSettings;
+}
+
 function columnExists(PDO $conn, string $tableName, string $columnName): bool {
     try {
         $sql = 'SHOW COLUMNS FROM ' . quoteIdentifier($tableName) . ' LIKE :column_name';
@@ -52,40 +111,6 @@ function columnExists(PDO $conn, string $tableName, string $columnName): bool {
     } catch (Throwable $__) {
         return false;
     }
-}
-
-function tableExists(PDO $conn, string $tableName): bool {
-    static $cache = [];
-
-    $normalized = strtolower(trim($tableName));
-    if ($normalized === '') {
-        return false;
-    }
-    if (array_key_exists($normalized, $cache)) {
-        return $cache[$normalized];
-    }
-
-    $stmt = $conn->prepare(
-        'SELECT 1
-         FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = :table_name
-         LIMIT 1'
-    );
-    $stmt->execute([':table_name' => $tableName]);
-    $exists = $stmt->fetchColumn() !== false;
-    $cache[$normalized] = $exists;
-    return $exists;
-}
-
-function fallbackAccountTypeName(int $id): string {
-    $defaults = [
-        1 => 'SSS',
-        2 => 'Pag-IBIG',
-        3 => 'PhilHealth',
-    ];
-
-    return $defaults[$id] ?? 'Account';
 }
 
 function buildProfileImageSelect(PDO $conn, string $alias = 'profile_image'): string {
@@ -98,94 +123,36 @@ function buildProfileImageSelect(PDO $conn, string $alias = 'profile_image'): st
     return "COALESCE({$userExpr}, {$clientExpr}) AS {$alias},";
 }
 
-function loadFinancialDetailsByClient(PDO $conn): array {
-    if (!tableExists($conn, 'financial_account')) {
-        return [];
-    }
+function buildGovernmentFinancialDetails(array $accountsByType): array {
+    $definitions = [
+        1 => 'SSS',
+        2 => 'Pag-IBIG',
+        3 => 'PhilHealth',
+    ];
 
-    $hasAccountTypeTable = tableExists($conn, 'account_type');
-    $stmt = $conn->query(
-        $hasAccountTypeTable
-            ? 'SELECT fa.Client_ID,
-                      fa.account_type_id,
-                      fa.name AS account_name,
-                      at.account_type_name
-               FROM financial_account fa
-               LEFT JOIN account_type at ON at.account_type_id = fa.account_type_id
-               ORDER BY fa.Client_ID ASC, fa.financial_account_id ASC'
-            : 'SELECT fa.Client_ID,
-                      fa.account_type_id,
-                      fa.name AS account_name,
-                      NULL AS account_type_name
-               FROM financial_account fa
-               ORDER BY fa.Client_ID ASC, fa.financial_account_id ASC'
-    );
-
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    $grouped = [];
-
-    foreach ($rows as $row) {
-        $clientId = isset($row['Client_ID']) ? (int)$row['Client_ID'] : 0;
-        $accountTypeId = isset($row['account_type_id']) ? (int)$row['account_type_id'] : 0;
-        if ($clientId <= 0 || $accountTypeId <= 0) {
+    $details = [];
+    foreach ($definitions as $id => $name) {
+        $accountNumber = normalizeOptionalString($accountsByType[$id] ?? null);
+        if ($accountNumber === null) {
             continue;
         }
 
-        $typeName = trim((string)($row['account_type_name'] ?? ''));
-        if ($typeName === '') {
-            $typeName = fallbackAccountTypeName($accountTypeId);
-        }
-        $accountName = trim((string)($row['account_name'] ?? ''));
-        $label = $typeName;
-        if ($accountName !== '' && strcasecmp($accountName, $typeName) !== 0) {
-            $label = $typeName . ': ' . $accountName;
-        }
-
-        if (!isset($grouped[$clientId])) {
-            $grouped[$clientId] = [];
-        }
-
-        $grouped[$clientId][] = [
-            'id' => $accountTypeId,
-            'name' => $typeName,
-            'account_name' => $accountName !== '' ? $accountName : null,
+        $details[] = [
+            'id' => $id,
+            'name' => $name,
+            'account_name' => $accountNumber,
             'amount' => null,
             'rate' => null,
             'effective_from' => null,
             'effective_to' => null,
-            'label' => $label,
+            'label' => $name . ': ' . $accountNumber,
         ];
     }
 
-    return $grouped;
+    return $details;
 }
 
-function extractAccountNumberByType(array $details, int $accountTypeId): ?string {
-    foreach ($details as $detail) {
-        $id = isset($detail['id']) ? (int)$detail['id'] : 0;
-        if ($id !== $accountTypeId) {
-            continue;
-        }
-
-        $accountName = trim((string)($detail['account_name'] ?? ''));
-        if ($accountName !== '') {
-            return $accountName;
-        }
-
-        $label = trim((string)($detail['label'] ?? ''));
-        $separator = strpos($label, ':');
-        if ($separator !== false) {
-            $parsed = trim(substr($label, $separator + 1));
-            if ($parsed !== '') {
-                return $parsed;
-            }
-        }
-    }
-
-    return null;
-}
-
-function mapUserRow(array $row, array $financialByClient): array {
+function mapUserRow(array $row): array {
     $username = (string)($row['username'] ?? '');
     $clientId = isset($row['client_id']) ? (int)$row['client_id'] : 0;
 
@@ -216,34 +183,24 @@ function mapUserRow(array $row, array $financialByClient): array {
         }
     }
 
-    $details = ($clientId > 0 && isset($financialByClient[$clientId])) ? $financialByClient[$clientId] : [];
-    $detailIds = array_values(array_unique(array_map(function ($detail) {
-        return isset($detail['id']) ? (int)$detail['id'] : 0;
-    }, $details)));
-    $detailIds = array_values(array_filter($detailIds, function ($id) {
-        return $id > 0;
-    }));
-    $firstDetail = !empty($details) ? $details[0] : null;
-    $detailText = implode(', ', array_values(array_filter(array_map(function ($detail) {
-        $label = isset($detail['label']) ? trim((string)$detail['label']) : '';
-        return $label !== '' ? $label : null;
-    }, $details))));
-
     $profileSssAccount = normalizeOptionalString($row['profile_sss_account_number'] ?? null);
     $profilePagibigAccount = normalizeOptionalString($row['profile_pagibig_account_number'] ?? null);
     $profilePhilhealthAccount = normalizeOptionalString($row['profile_philhealth_account_number'] ?? null);
-    $sssAccount = extractAccountNumberByType($details, 1);
-    $pagibigAccount = extractAccountNumberByType($details, 2);
-    $philhealthAccount = extractAccountNumberByType($details, 3);
-    if ($sssAccount === null) {
-        $sssAccount = $profileSssAccount;
-    }
-    if ($pagibigAccount === null) {
-        $pagibigAccount = $profilePagibigAccount;
-    }
-    if ($philhealthAccount === null) {
-        $philhealthAccount = $profilePhilhealthAccount;
-    }
+    $details = buildGovernmentFinancialDetails([
+        1 => $profileSssAccount,
+        2 => $profilePagibigAccount,
+        3 => $profilePhilhealthAccount,
+    ]);
+    $detailIds = array_values(array_map(function ($detail) {
+        return isset($detail['id']) ? (int)$detail['id'] : 0;
+    }, $details));
+    $firstDetail = !empty($details) ? $details[0] : null;
+    $detailText = implode(', ', array_values(array_map(function ($detail) {
+        return (string)($detail['label'] ?? '');
+    }, $details)));
+    $sssAccount = $profileSssAccount;
+    $pagibigAccount = $profilePagibigAccount;
+    $philhealthAccount = $profilePhilhealthAccount;
 
     $employeeDateOfBirth = normalizeOptionalString($row['profile_date_of_birth'] ?? null);
     if ($employeeDateOfBirth === null) {
@@ -308,24 +265,31 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 $scope = isset($_GET['scope']) ? strtolower(trim((string)$_GET['scope'])) : '';
 
 try {
-    $sessionUser = monitoring_require_auth();
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $sessionUser = monitoring_read_session_user(true);
 
     if ($scope === 'security_settings') {
-        monitoring_require_roles([MONITORING_ROLE_ADMIN], $sessionUser);
+        $settings = monitoring_get_security_settings($conn);
+        $canViewFullSettings = $sessionUser !== null
+            && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN]);
+
         respond(200, [
             'success' => true,
-            'settings' => monitoring_get_security_settings($conn),
+            'settings' => $canViewFullSettings ? $settings : publicSecuritySettings($settings),
         ]);
     }
 
     if ($scope === 'system_configuration') {
-        monitoring_require_roles([MONITORING_ROLE_ADMIN], $sessionUser);
+        $settings = monitoring_get_system_configuration($conn);
+        $canViewFullSettings = $sessionUser !== null
+            && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN]);
         respond(200, [
             'success' => true,
-            'settings' => monitoring_get_system_configuration($conn),
+            'settings' => $canViewFullSettings ? $settings : publicSystemConfiguration($settings),
         ]);
     }
+
+    $sessionUser = $sessionUser ?? monitoring_require_auth();
 
     ensureEmployeeSpecializationSchema($conn);
     $profileImageSelect = buildProfileImageSelect($conn);
@@ -372,10 +336,8 @@ try {
     );
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    $financialByClient = loadFinancialDetailsByClient($conn);
-
-    $users = array_map(function ($row) use ($financialByClient) {
-        return mapUserRow($row, $financialByClient);
+    $users = array_map(function ($row) {
+        return mapUserRow($row);
     }, $rows);
 
     respond(200, ['success' => true, 'users' => $users]);

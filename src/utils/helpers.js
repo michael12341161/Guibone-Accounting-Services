@@ -100,6 +100,18 @@ export function parseDate(value) {
     return null;
   }
 
+  // Treat plain calendar dates as local dates so deadline-based features
+  // stay aligned with the server date regardless of browser timezone.
+  const isoDateParts = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDateParts) {
+    return buildDate(Number(isoDateParts[1]), Number(isoDateParts[2]) - 1, Number(isoDateParts[3]));
+  }
+
+  const slashDateParts = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (slashDateParts) {
+    return buildDate(Number(slashDateParts[1]), Number(slashDateParts[2]) - 1, Number(slashDateParts[3]));
+  }
+
   const nativeDate = new Date(text);
   if (!Number.isNaN(nativeDate.getTime())) {
     return nativeDate;

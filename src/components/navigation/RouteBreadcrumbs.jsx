@@ -67,6 +67,9 @@ function normalizeBreadcrumbEntry(entry, context) {
   return {
     label,
     icon: entry.icon || null,
+    accessKey: entry.accessKey || null,
+    actionKey: entry.actionKey || null,
+    hideCurrent: Boolean(entry.hideCurrent),
     trailingItems: Array.isArray(entry.trailingItems)
       ? entry.trailingItems
           .map((item) => normalizeTrailEntry(item, context))
@@ -133,6 +136,29 @@ export function buildBreadcrumbItems(pathname, config = {}, canAccessTrailItem =
     }
 
     const meta = resolveBreadcrumbMeta(itemPath, segment, config);
+
+    if (meta?.accessKey && !canAccessTrailItem(meta)) {
+      return;
+    }
+
+    if (index === segments.length - 1 && meta?.hideCurrent) {
+      if (Array.isArray(meta?.trailingItems)) {
+        meta.trailingItems.forEach((trailItem) => {
+          if (!canAccessTrailItem(trailItem)) {
+            return;
+          }
+
+          items.push({
+            path: trailItem.path,
+            label: trailItem.label,
+            icon: trailItem.icon || null,
+            isCurrent: false,
+          });
+        });
+      }
+
+      return;
+    }
 
     items.push({
       path: itemPath,

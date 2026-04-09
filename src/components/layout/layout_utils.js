@@ -39,8 +39,9 @@ export function findMatchingNavItem(pathname, items) {
     }
 
     const isDashboardItem = item.key === "dashboard";
+    const requiresExactMatch = Boolean(item?.end || item?.exact);
     const isExactMatch = currentPath === targetPath;
-    const isNestedMatch = !isDashboardItem && currentPath.startsWith(`${targetPath}/`);
+    const isNestedMatch = !isDashboardItem && !requiresExactMatch && currentPath.startsWith(`${targetPath}/`);
 
     if (isExactMatch || isNestedMatch) {
       return item;

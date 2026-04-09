@@ -212,10 +212,14 @@ export default function SecretaryDashboard({ user, onLogout }) {
       {currentKey !== "client-management" &&
         currentKey !== "new-client-management" &&
         currentKey !== "documents" &&
+        currentKey !== "certificate-menu" &&
+        currentKey !== "certificate-view" &&
+        currentKey !== "edit-certificate" &&
         currentKey !== "business-status" &&
         currentKey !== "tasks" &&
         currentKey !== "appointments" &&
         currentKey !== "user-management" &&
+        currentKey !== "reports" &&
         currentKey !== "work-update" &&
         (currentKey !== "dashboard" || canViewDashboard) && (
         currentKey === "dashboard" ? (

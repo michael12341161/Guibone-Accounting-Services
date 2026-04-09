@@ -5,7 +5,13 @@ import PasswordRequirementsPanel from "../../components/auth/PasswordRequirement
 import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
 import InputField from "../../components/UI/InputField";
-import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
+import {
+  api,
+  DEFAULT_SECURITY_SETTINGS,
+  DEFAULT_SYSTEM_CONFIGURATION,
+  fetchPublicSystemConfiguration,
+  fetchSecuritySettings,
+} from "../../services/api";
 import { useAddress } from "../../hooks/useAddress";
 import { validatePasswordValue } from "../../utils/passwordValidation";
 import { isValidEmail, isValidPhoneNumber } from "../../utils/helpers";
@@ -298,6 +304,7 @@ export default function SignUpPage() {
   const { isDarkMode } = useTheme();
   const [form, setForm] = useState(createEmptyForm);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
+  const [systemConfig, setSystemConfig] = useState(DEFAULT_SYSTEM_CONFIGURATION);
   const [businessTypes, setBusinessTypes] = useState(FALLBACK_BUSINESS_TYPES);
   const [civilStatusTypes, setCivilStatusTypes] = useState(FALLBACK_CIVIL_STATUS_TYPES);
   const [documentTypes, setDocumentTypes] = useState(FALLBACK_DOCUMENT_TYPES);
@@ -366,6 +373,12 @@ export default function SignUpPage() {
       ? "Auto-filled based on your selected province and city."
       : "Postal code unavailable for the selected city."
     : "Auto-filled once a province and city are selected.";
+  const companyName = String(systemConfig.companyName || DEFAULT_SYSTEM_CONFIGURATION.companyName).trim();
+  const supportEmail = String(systemConfig.supportEmail || "").trim();
+  const systemNotice = String(systemConfig.systemNotice || "").trim();
+  const signupDisabledMessage = systemConfig.allowClientSelfSignup
+    ? ""
+    : `Client sign-up is currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`;
 
   useEffect(() => {
     let active = true;
@@ -422,6 +435,29 @@ export default function SignUpPage() {
     };
 
     loadSecuritySettings();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    const loadSystemConfiguration = async () => {
+      try {
+        const response = await fetchPublicSystemConfiguration({ signal: controller.signal });
+        if (!active) return;
+        setSystemConfig(response?.data?.settings || DEFAULT_SYSTEM_CONFIGURATION);
+      } catch (_) {
+        if (!active) return;
+        setSystemConfig(DEFAULT_SYSTEM_CONFIGURATION);
+      }
+    };
+
+    loadSystemConfiguration();
 
     return () => {
       active = false;
@@ -648,6 +684,10 @@ export default function SignUpPage() {
   };
 
   const handleEmailBlur = async () => {
+    if (!systemConfig.allowClientSelfSignup) {
+      return;
+    }
+
     const normalizedEmail = form.email.trim().toLowerCase();
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       return;
@@ -664,6 +704,11 @@ export default function SignUpPage() {
     event.preventDefault();
     setError("");
     setWarning("");
+
+    if (!systemConfig.allowClientSelfSignup) {
+      setError(signupDisabledMessage || "Client sign-up is currently unavailable.");
+      return;
+    }
 
     const validationMessage = validateForm();
     if (validationMessage) {
@@ -786,14 +831,14 @@ export default function SignUpPage() {
                     <div className="flex items-center gap-3">
                       <img
                         src={appLogo}
-                        alt="Guibone Accounting Services"
+                        alt={companyName}
                         className="h-11 w-11 rounded-2xl border border-emerald-100 bg-emerald-50 object-contain p-1.5"
                       />
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
                           Client Sign Up
                         </p>
-                        <p className="text-sm font-semibold text-slate-900">Guibone Accounting Services</p>
+                        <p className="text-sm font-semibold text-slate-900">{companyName}</p>
                       </div>
                     </div>
 
@@ -830,7 +875,9 @@ export default function SignUpPage() {
 
               <form onSubmit={handleSubmit} className="mt-8 space-y-6">
               <StatusMessage tone="error">{error}</StatusMessage>
+              <StatusMessage tone="warning">{signupDisabledMessage}</StatusMessage>
               <StatusMessage tone="warning">{warning}</StatusMessage>
+              <StatusMessage tone="warning">{systemNotice}</StatusMessage>
 
               <SectionPanel
                 title="Personal Information"
@@ -1112,10 +1159,16 @@ export default function SignUpPage() {
                 </p>
                 <button
                   type="submit"
-                  disabled={submitting || checkingEmail}
+                  disabled={submitting || checkingEmail || !systemConfig.allowClientSelfSignup}
                   className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {submitting ? "Creating account..." : checkingEmail ? "Checking email..." : "Sign Up"}
+                  {submitting
+                    ? "Creating account..."
+                    : checkingEmail
+                      ? "Checking email..."
+                      : systemConfig.allowClientSelfSignup
+                        ? "Sign Up"
+                        : "Sign-up Paused"}
                 </button>
               </div>
             </form>

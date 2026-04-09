@@ -6,6 +6,7 @@ import {
   FEATURE_SECTIONS,
   getFeatureDefinition,
   createFeaturePermissions,
+  featureUsesIndependentAccess,
 } from "../../utils/module_permissions";
 
 const ROLE_COLUMNS = [
@@ -15,7 +16,14 @@ const ROLE_COLUMNS = [
   { key: "client", label: "Client", description: "Client portal access." },
 ];
 
-const VISIBLE_FEATURE_SECTIONS = FEATURE_SECTIONS.filter((section) => section.label !== "Finance");
+const HIDDEN_FEATURE_KEYS = new Set(["my-tasks", "invoices"]);
+
+const VISIBLE_FEATURE_SECTIONS = FEATURE_SECTIONS
+  .map((section) => ({
+    ...section,
+    features: section.features.filter((feature) => !HIDDEN_FEATURE_KEYS.has(feature.key)),
+  }))
+  .filter((section) => section.features.length > 0);
 const ROLE_EDITING_STORAGE_KEY = "monitoring:permission-role-editing-states";
 
 function createRoleEditingStates() {
@@ -181,25 +189,23 @@ export default function PermissionsPage() {
       }
 
       const nextEnabled = !Boolean(actionPermissions[roleKey]);
+      const nextActions = {
+        ...(featurePermissions.actions || defaultFeaturePermissions.actions || {}),
+        [actionKey]: {
+          ...actionPermissions,
+          [roleKey]: nextEnabled,
+        },
+      };
+      const nextRoleEnabled = featureUsesIndependentAccess(featureKey)
+        ? Boolean(featurePermissions[roleKey])
+        : Object.values(nextActions).some((value) => Boolean(value?.[roleKey]));
 
       return {
         ...current,
         [featureKey]: {
           ...featurePermissions,
-          [roleKey]: Object.values({
-            ...(featurePermissions.actions || defaultFeaturePermissions.actions || {}),
-            [actionKey]: {
-              ...actionPermissions,
-              [roleKey]: nextEnabled,
-            },
-          }).some((value) => Boolean(value?.[roleKey])),
-          actions: {
-            ...(featurePermissions.actions || defaultFeaturePermissions.actions || {}),
-            [actionKey]: {
-              ...actionPermissions,
-              [roleKey]: nextEnabled,
-            },
-          },
+          [roleKey]: nextRoleEnabled,
+          actions: nextActions,
         },
       };
     });

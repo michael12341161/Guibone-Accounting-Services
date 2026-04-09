@@ -1,5 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { formatDateTime } from "../../utils/helpers";
+import {
+  formatTaskDeadlineNotificationMessage,
+  getTaskDeadlineNotificationKind,
+} from "../../utils/task_deadline";
 import { Modal } from "../UI/modal";
 
 function isReadNotification(notification) {
@@ -13,23 +17,38 @@ export default function NotificationItem({ notification, onMarkRead }) {
   const [open, setOpen] = useState(false);
   if (!notification) return null;
 
-  const message = String(notification.message || "Notification").trim();
+  const message = formatTaskDeadlineNotificationMessage(
+    notification.message,
+    notification?.type ?? notification?.kind
+  );
   const createdAtValue = notification.createdAt ?? notification.created_at ?? notification.created;
   const createdAt = createdAtValue ? formatDateTime(createdAtValue) : "";
   const isRead = isReadNotification(notification);
   const notificationId = notification?.notifications_ID ?? notification?.id ?? null;
   const canMarkRead = Boolean(notificationId) && !isRead;
+  const deadlineKind = getTaskDeadlineNotificationKind(notification?.type ?? notification?.kind);
+  const tone =
+    deadlineKind === "overdue"
+      ? {
+          iconWrap: isRead ? "bg-rose-100 text-rose-500" : "bg-rose-100 text-rose-700",
+          cardWrap: isRead ? "border-rose-200 bg-rose-50/70" : "border-rose-200 bg-white",
+        }
+      : deadlineKind === "today" || deadlineKind === "soon"
+        ? {
+            iconWrap: isRead ? "bg-amber-100 text-amber-500" : "bg-amber-100 text-amber-700",
+            cardWrap: isRead ? "border-amber-200 bg-amber-50/70" : "border-amber-200 bg-white",
+          }
+        : {
+            iconWrap: isRead ? "bg-slate-200 text-slate-500" : "bg-indigo-50 text-indigo-600",
+            cardWrap: isRead ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-white",
+          };
 
   return (
     <li
-      className={`flex gap-3 rounded-lg border px-3 py-2 shadow-sm ${
-        isRead ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-white"
-      }`}
+      className={`flex gap-3 rounded-lg border px-3 py-2 shadow-sm ${tone.cardWrap}`}
     >
       <div
-        className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-          isRead ? "bg-slate-200 text-slate-500" : "bg-indigo-50 text-indigo-600"
-        }`}
+        className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tone.iconWrap}`}
       >
         <BellIcon className="h-4 w-4" />
       </div>

@@ -63,7 +63,7 @@
             },
             "add-new-client": {
                 "admin": true,
-                "secretary": true,
+                "secretary": false,
                 "accountant": false,
                 "client": false
             },
@@ -107,9 +107,49 @@
             }
         }
     },
-    "business-status": {
+    "certificate": {
         "admin": true,
         "secretary": false,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "edit": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "remove": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            },
+            "remove-auto-send": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "edit-certificate": {
+        "admin": true,
+        "secretary": false,
+        "accountant": false,
+        "client": false,
+        "actions": {
+            "header-tools-properties": {
+                "admin": true,
+                "secretary": false,
+                "accountant": false,
+                "client": false
+            }
+        }
+    },
+    "business-status": {
+        "admin": true,
+        "secretary": true,
         "accountant": false,
         "client": false
     },
@@ -219,7 +259,51 @@
         "admin": true,
         "secretary": true,
         "accountant": true,
-        "client": false
+        "client": false,
+        "actions": {
+            "check-steps": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            },
+            "history": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            },
+            "edit": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "mark-done": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            },
+            "decline": {
+                "admin": true,
+                "secretary": true,
+                "accountant": true,
+                "client": false
+            },
+            "archive": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            },
+            "restore": {
+                "admin": true,
+                "secretary": true,
+                "accountant": false,
+                "client": false
+            }
+        }
     },
     "my-tasks": {
         "admin": true,
@@ -247,7 +331,7 @@
     },
     "client-account": {
         "admin": true,
-        "secretary": true,
+        "secretary": false,
         "accountant": false,
         "client": true
     }

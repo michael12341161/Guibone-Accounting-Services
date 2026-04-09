@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "../../components/UI/modal";
-import { api, fetchAvailableServices } from "../../services/api";
+import {
+  api,
+  DEFAULT_SYSTEM_CONFIGURATION,
+  fetchAvailableServices,
+  fetchPublicSystemConfiguration,
+} from "../../services/api";
 import { fetchConsultationSlots } from "../../services/consultationSlots";
 import { getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
@@ -54,6 +59,15 @@ function isConsultationService(value) {
 
 function isProcessingService(value) {
   return String(value || "").trim().toLowerCase() === "processing";
+}
+
+function filterServicesForPortal(names, portalConfig) {
+  const allowAppointments = portalConfig?.allowClientAppointments !== false;
+  const allowConsultations = portalConfig?.allowClientConsultations !== false;
+
+  return (Array.isArray(names) ? names : []).filter((name) =>
+    isConsultationService(name) ? allowConsultations : allowAppointments
+  );
 }
 
 function normalizeAppointmentStatus(value) {
@@ -338,6 +352,7 @@ function toOpenFileUrl(path, filename) {
 export default function ClientAppointment() {
   const isMountedRef = useRef(true);
   const [services, setServices] = useState([]);
+  const [portalConfig, setPortalConfig] = useState(DEFAULT_SYSTEM_CONFIGURATION);
   const [serviceAccess, setServiceAccess] = useState(DEFAULT_SERVICE_ACCESS);
   const [loadingServices, setLoadingServices] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -381,6 +396,14 @@ export default function ClientAppointment() {
     () => isConsultationService(form.service),
     [form.service]
   );
+  const appointmentsEnabled = portalConfig.allowClientAppointments !== false;
+  const consultationsEnabled = portalConfig.allowClientConsultations !== false;
+  const supportEmail = String(portalConfig.supportEmail || "").trim();
+  const portalNotice = String(portalConfig.systemNotice || "").trim();
+  const bookingPausedMessage =
+    appointmentsEnabled || consultationsEnabled
+      ? ""
+      : `Appointment and consultation requests are currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`;
   const selectedServiceDuration = useMemo(
     () => getEstimatedServiceDuration(form.service),
     [form.service]
@@ -391,6 +414,29 @@ export default function ClientAppointment() {
 
     return () => {
       isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    const loadPortalConfiguration = async () => {
+      try {
+        const response = await fetchPublicSystemConfiguration({ signal: controller.signal });
+        if (!active) return;
+        setPortalConfig(response?.data?.settings || DEFAULT_SYSTEM_CONFIGURATION);
+      } catch (_) {
+        if (!active) return;
+        setPortalConfig(DEFAULT_SYSTEM_CONFIGURATION);
+      }
+    };
+
+    loadPortalConfiguration();
+
+    return () => {
+      active = false;
+      controller.abort();
     };
   }, []);
 
@@ -421,16 +467,33 @@ export default function ClientAppointment() {
       : normalizedAccess.restrictedToProcessing
         ? ["Processing"]
         : [];
+    const portalFilteredServices = filterServicesForPortal(resolvedServices, portalConfig);
 
     setServiceAccess(normalizedAccess);
-    setServices(resolvedServices);
+    setServices(portalFilteredServices);
     setForm((current) => ({
       ...current,
-      service: resolvedServices.includes(current.service)
+      service: portalFilteredServices.includes(current.service)
         ? current.service
-        : resolvedServices[0] || "",
+        : portalFilteredServices[0] || "",
     }));
   };
+
+  useEffect(() => {
+    setServices((current) =>
+      filterServicesForPortal(current, {
+        allowClientAppointments: appointmentsEnabled,
+        allowClientConsultations: consultationsEnabled,
+      })
+    );
+  }, [appointmentsEnabled, consultationsEnabled]);
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      service: services.includes(current.service) ? current.service : services[0] || "",
+    }));
+  }, [services]);
 
   const loadServices = async ({ silent } = { silent: false }) => {
     try {
@@ -602,6 +665,10 @@ export default function ClientAppointment() {
   const openCreateModal = () => {
     setError("");
     setSuccess("");
+    if (!appointmentsEnabled && !consultationsEnabled) {
+      setError(bookingPausedMessage || "Appointment and consultation requests are currently unavailable.");
+      return;
+    }
     if (
       isMountedRef.current &&
       (!Array.isArray(services) || services.length === 0)
@@ -886,6 +953,20 @@ export default function ClientAppointment() {
     setError("");
     setSuccess("");
 
+    if (isConsultationSelected && !consultationsEnabled) {
+      setError(
+        `Consultation requests are currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`
+      );
+      return;
+    }
+
+    if (!isConsultationSelected && !appointmentsEnabled) {
+      setError(
+        `Appointment requests are currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`
+      );
+      return;
+    }
+
     if (loadingServices) {
       setError("Please wait while the available services are loading.");
       return;
@@ -1045,6 +1126,13 @@ export default function ClientAppointment() {
     setError("");
     setSuccess("");
 
+    if (!consultationsEnabled) {
+      setError(
+        `Consultation rescheduling is currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`
+      );
+      return;
+    }
+
     if (!rescheduleTarget?.schedulingId) {
       setError("Cannot reschedule: missing consultation id.");
       return;
@@ -1119,11 +1207,30 @@ export default function ClientAppointment() {
           <button
             type="button"
             onClick={openCreateModal}
-            className="inline-flex items-center justify-center self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            disabled={!appointmentsEnabled && !consultationsEnabled}
+            className="inline-flex items-center justify-center self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Create
           </button>
         </div>
+
+        {bookingPausedMessage ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {bookingPausedMessage}
+          </div>
+        ) : null}
+        {!bookingPausedMessage && (!appointmentsEnabled || !consultationsEnabled) ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {!appointmentsEnabled
+              ? `Service appointments are paused.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`
+              : `Consultation requests are paused.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`}
+          </div>
+        ) : null}
+        {portalNotice ? (
+          <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
+            {portalNotice}
+          </div>
+        ) : null}
 
         {!isCreateOpen && success ? (
           <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
@@ -1158,6 +1265,11 @@ export default function ClientAppointment() {
           {serviceAccess.restrictedToProcessing ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               Only Processing is available until your Business Permit is uploaded and your business is registered.
+            </div>
+          ) : null}
+          {portalNotice ? (
+            <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
+              {portalNotice}
             </div>
           ) : null}
 
@@ -1605,9 +1717,14 @@ export default function ClientAppointment() {
                     isConsultationService(readMeta("Type")) ||
                     isConsultationService(service);
                   const canRescheduleRow =
+                    consultationsEnabled &&
                     isConsultationRow &&
                     schedulingId &&
                     canRescheduleConsultation(status);
+                  const actionAvailabilityLabel =
+                    isConsultationRow && !consultationsEnabled
+                      ? "Consultations paused"
+                      : getActionAvailabilityLabel(status);
                   const meetingType =
                     a.meeting_type ||
                     a.meetingType ||
@@ -1798,11 +1915,11 @@ export default function ClientAppointment() {
                           </button>
                         ) : isConsultationRow ? (
                           <span className="text-xs text-slate-400">
-                            {getActionAvailabilityLabel(status)}
+                            {actionAvailabilityLabel}
                           </span>
                         ) : (
                           <span className="text-xs text-slate-400">
-                            {getActionAvailabilityLabel(status)}
+                            {actionAvailabilityLabel}
                           </span>
                         )}
                       </td>

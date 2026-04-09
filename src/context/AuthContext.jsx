@@ -4,15 +4,20 @@ import {
   api,
   clearStoredAuthToken,
   DEFAULT_SECURITY_SETTINGS,
+  getStoredAuthToken,
   MONITORING_AUTH_INVALID_EVENT,
   normalizeSecuritySettings,
 } from "../services/api";
-import { getUserRole, hasRole as userHasRole } from "../utils/helpers";
+import { getUserRole, hasRole as userHasRole, ROLE_IDS } from "../utils/helpers";
+import { getTaskDeadlineState, readTaskMetaLine } from "../utils/task_deadline";
 
 const SESSION_USER_KEY = "session:user";
 const LOGIN_STATE_KEY = "isLoggedIn";
 const USER_ROLE_KEY = "user_role";
 const USER_ID_KEY = "user_id";
+export const LOGIN_SESSION_STORAGE_KEY = "monitoring:login-session-id";
+export const DEADLINE_ALERT_SESSION_STORAGE_KEY = "monitoring:deadline-alerts";
+export const DEADLINE_REMINDER_SESSION_STORAGE_KEY = "monitoring:deadline-reminder";
 const ONE_MINUTE_MS = 60 * 1000;
 
 const ROLE_HOME_PATHS = {
@@ -48,6 +53,76 @@ function normalizeSessionUser(user) {
   };
 }
 
+function isArchivedTask(task) {
+  const description = String(task?.description || "");
+  const archivedValue = String(readTaskMetaLine(description, "Archived") || "")
+    .trim()
+    .toLowerCase();
+  const secretaryArchivedValue = String(readTaskMetaLine(description, "SecretaryArchived") || "")
+    .trim()
+    .toLowerCase();
+
+  return ["1", "true", "yes"].includes(archivedValue) || ["1", "true", "yes"].includes(secretaryArchivedValue);
+}
+
+function shouldWarnOnLogout(roleId) {
+  return [ROLE_IDS.ADMIN, ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT].includes(Number(roleId));
+}
+
+async function countUrgentUnfinishedTasksForLogout(roleId) {
+  if (!shouldWarnOnLogout(roleId)) {
+    return 0;
+  }
+
+  try {
+    const response = await api.get("task_list.php");
+    const tasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
+
+    return tasks.filter((task) => {
+      if (!task || isArchivedTask(task)) return false;
+
+      const deadlineState = getTaskDeadlineState(task);
+      return !deadlineState.isClosed && (deadlineState.isDueToday || deadlineState.isOverdue);
+    }).length;
+  } catch (_) {
+    return 0;
+  }
+}
+
+async function confirmLogoutWithUrgentTasks(roleId) {
+  const unfinishedCount = await countUrgentUnfinishedTasksForLogout(roleId);
+  if (unfinishedCount > 0) {
+    const taskLabel = unfinishedCount === 1 ? "task" : "tasks";
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Logout Warning",
+      html: `<div style="padding:4px 0;line-height:1.6;color:inherit;">\u26A0\uFE0F You have ${unfinishedCount} unfinished ${taskLabel}. Are you sure you want to log out?</div>`,
+      showCancelButton: true,
+      confirmButtonText: "Logout",
+      cancelButtonText: "Stay Logged In",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+    });
+
+    return result.isConfirmed;
+  }
+
+  const result = await Swal.fire({
+    icon: "question",
+    title: "Log out?",
+    html: '<div style="padding:4px 0;line-height:1.6;color:inherit;">Are you sure you want to log out?</div>',
+    showCancelButton: true,
+    confirmButtonText: "Logout",
+    cancelButtonText: "Cancel",
+    confirmButtonColor: "#2563eb",
+    cancelButtonColor: "#64748b",
+    reverseButtons: true,
+  });
+
+  return result.isConfirmed;
+}
+
 function readSessionUser() {
   try {
     const raw = localStorage.getItem(SESSION_USER_KEY);
@@ -55,6 +130,11 @@ function readSessionUser() {
   } catch (_) {
     return null;
   }
+}
+
+function shouldVerifyStoredSession() {
+  const storedState = readStoredLoginState();
+  return storedState.isLoggedIn || Boolean(getStoredAuthToken());
 }
 
 export function readStoredLoginState() {
@@ -93,12 +173,27 @@ function persistStoredAuth(user) {
   localStorage.setItem(USER_ID_KEY, String(user.id ?? ""));
 }
 
+function startLoginSession(user) {
+  try {
+    const userId = user?.id ?? user?.user_id ?? user?.User_ID ?? "";
+    sessionStorage.setItem(LOGIN_SESSION_STORAGE_KEY, `${String(userId || "user")}:${Date.now()}`);
+    sessionStorage.removeItem(DEADLINE_ALERT_SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(DEADLINE_REMINDER_SESSION_STORAGE_KEY);
+  } catch (_) {}
+}
+
 function clearStoredAuth() {
   localStorage.removeItem(SESSION_USER_KEY);
   localStorage.removeItem(LOGIN_STATE_KEY);
   localStorage.removeItem(USER_ROLE_KEY);
   localStorage.removeItem(USER_ID_KEY);
   clearStoredAuthToken();
+
+  try {
+    sessionStorage.removeItem(LOGIN_SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(DEADLINE_ALERT_SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(DEADLINE_REMINDER_SESSION_STORAGE_KEY);
+  } catch (_) {}
 }
 
 export function getHomePathForRole(roleId) {
@@ -107,6 +202,7 @@ export function getHomePathForRole(roleId) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readSessionUser());
+  const [isAuthReady, setIsAuthReady] = useState(() => !shouldVerifyStoredSession());
   const sessionWarningVisibleRef = React.useRef(false);
   const activeUserId = user?.id ?? null;
   const sessionTimeoutMinutes = Math.max(
@@ -121,6 +217,7 @@ export function AuthProvider({ children }) {
     }
 
     setUser(null);
+    setIsAuthReady(true);
 
     try {
       clearStoredAuth();
@@ -136,19 +233,28 @@ export function AuthProvider({ children }) {
     }
 
     setUser(normalizedUser);
+    setIsAuthReady(true);
 
     try {
       if (normalizedUser) {
         persistStoredAuth(normalizedUser);
+        startLoginSession(normalizedUser);
       } else {
         clearStoredAuth();
       }
     } catch (_) {}
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const roleId = getUserRole(user);
+    const shouldContinue = await confirmLogoutWithUrgentTasks(roleId);
+    if (!shouldContinue) {
+      return false;
+    }
+
     void api.post("logout.php").catch(() => {});
     clearActiveClientAuth();
+    return true;
   };
 
   useEffect(() => {
@@ -270,6 +376,11 @@ export function AuthProvider({ children }) {
   }, [activeUserId, sessionTimeoutMinutes]);
 
   useEffect(() => {
+    if (!shouldVerifyStoredSession()) {
+      setIsAuthReady(true);
+      return undefined;
+    }
+
     let active = true;
 
     const syncSession = async () => {
@@ -294,6 +405,11 @@ export function AuthProvider({ children }) {
 
         if (error?.response?.status === 401) {
           clearActiveClientAuth();
+          return;
+        }
+      } finally {
+        if (active) {
+          setIsAuthReady(true);
         }
       }
     };
@@ -346,6 +462,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider
       value={{
         user,
+        isAuthReady,
         isAuthenticated: !!(user && (user.username || user.id)),
         login,
         logout,

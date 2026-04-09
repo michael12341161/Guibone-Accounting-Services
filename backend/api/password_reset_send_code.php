@@ -87,6 +87,7 @@ $smtpPass = trim((string)($smtp['pass'] ?? ''));
 $smtpHost = trim((string)($smtp['host'] ?? 'smtp.gmail.com'));
 $smtpPort = (int)($smtp['port'] ?? 587);
 $companyName = monitoring_get_system_company_name($conn);
+$supportEmail = monitoring_get_system_support_email($conn);
 
 if (!$smtpUser || !$smtpPass) {
   respond(500, [
@@ -116,6 +117,9 @@ try {
   $safeCompanyName = htmlspecialchars($companyName, ENT_QUOTES, 'UTF-8');
 
   $mail->setFrom($smtpUser, $companyName);
+  if ($supportEmail !== '') {
+    $mail->addReplyTo($supportEmail, $companyName . ' Support');
+  }
   $mail->addAddress($email);
   $mail->Subject = $companyName . ' Password Reset Verification Code';
   $mail->isHTML(true);

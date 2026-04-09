@@ -19,30 +19,51 @@ import BusinessPage from "../Pages/client_page/business";
 import WorkProgress from "../Pages/client_page/work_progress";
 import ClientAppointment from "../Pages/client_page/client_appointment";
 import ClientDocumentsPage from "../Pages/client_page/document";
+import ClientCertificatePage from "../Pages/client_page/client_certificate";
 import ClientManagementSecretary from "../Pages/secretary_page/client_management_secretary";
 import SecretaryTaskManagement from "../Pages/secretary_page/task_management_secretary";
 import AppointmentManagement from "../Pages/secretary_page/appointment_management";
 import SchedulingManagementSecretary from "../Pages/secretary_page/scheduling_management_secretary";
 import WorkUpdate from "../Pages/secretary_page/work_update";
+import SecretaryReports from "../Pages/secretary_page/secretary_reports";
 import AdminAppointmentManagement from "../Pages/admin_page/client_appointment";
 import AdminWorkUpdate from "../Pages/admin_page/accountant_work_update";
 import AdminAccountantTaskManagement from "../Pages/admin_page/accountant_task";
+import AdminReports from "../Pages/admin_page/admin_reports";
+import ClientHistory from "../Pages/history/client_history";
+import TasksUpdateHistory from "../Pages/history/tasks_update_history";
 import MyTasks from "../Pages/accountant_page/my_tasks";
 import MessagingPage from "../Pages/messaging_page/messaging_page";
 import Calendar from "../calendar/calendary";
 import AdminSettings from "../settings/admin_settings";
 import SchedulingManagementAdmin from "../Pages/admin_page/scheduling_management_admin";
+import CertificatePage from "../Pages/certificate/certificate";
+import EditCertificate from "../Pages/certificate/Edit_certificate";
 import { ModuleAccessGate } from "../components/layout/module_access_gate";
 import TaskClientAppointmentsPage from "../Pages/shared/task_client_appointments";
+import { RouteLoadingPanel } from "../components/layout/route_loading_panel";
 
 function RoleProtectedRoute({ allowedRoleId, LayoutComponent }) {
   const navigate = useNavigate();
-  const { user, role, logout } = useAuth();
+  const { user, role, logout, isAuthReady } = useAuth();
+  const hasResolvedUser = Boolean(user?.id || user?.username);
 
-  const onLogout = () => {
-    logout();
-    navigate("/", { replace: true });
+  const onLogout = async () => {
+    const didLogout = await logout();
+    if (!didLogout) {
+      return;
+    }
+
+    navigate("/login", { replace: true });
   };
+
+  if (!isAuthReady && !hasResolvedUser) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+        <RouteLoadingPanel />
+      </div>
+    );
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -85,6 +106,7 @@ const privateRouteGroups = [
     component: AdminDashboard,
     children: [
       { path: "appointments", element: withModuleAccess("appointments", <AdminAppointmentManagement />) },
+      { path: "work-update/history", element: withModuleAccess("work-update", <TasksUpdateHistory />, "history") },
       { path: "work-update", element: withModuleAccess("work-update", <AdminWorkUpdate />) },
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
       { path: "settings", element: withModuleAccess("settings", <AdminSettings />) },
@@ -92,11 +114,14 @@ const privateRouteGroups = [
       { path: "permissions", element: withModuleAccess("permissions", <Permissions />) },
       { path: "client-management", element: withModuleAccess("client-management", <ClientManagement />) },
       { path: "documents", element: withModuleAccess("documents", <DocumentAdminPage />) },
+      { path: "certificate", element: withModuleAccess("certificate", <CertificatePage />) },
+      { path: "certificate/edit", element: withModuleAccess("edit-certificate", <EditCertificate />) },
       { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
       { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
       { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
       { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
       { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
+      { path: "reports", element: withModuleAccess("reports", <AdminReports />) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],
   },
@@ -106,17 +131,20 @@ const privateRouteGroups = [
     component: SecretaryDashboard,
     children: [
       { path: "appointments", element: withModuleAccess("appointments", <AppointmentManagement />) },
+      { path: "work-update/history", element: withModuleAccess("work-update", <TasksUpdateHistory />, "history") },
       { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementSecretary />) },
       { path: "clients", element: <Navigate to="/secretary" replace /> },
       { path: "client-management", element: withModuleAccess("client-management", <ClientManagementSecretary />) },
       { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
       { path: "documents", element: withModuleAccess("documents", <DocumentAdminPage />) },
+      { path: "certificate", element: withModuleAccess("certificate", <CertificatePage />) },
+      { path: "certificate/edit", element: withModuleAccess("edit-certificate", <EditCertificate />) },
       { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
       { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
       { path: "tasks", element: withModuleAccess("tasks", <SecretaryTaskManagement />) },
       { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
-      { path: "reports", element: withModuleAccess("reports", <div style={{ padding: 20 }}>Reports page</div>) },
+      { path: "reports", element: withModuleAccess("reports", <SecretaryReports />) },
       { path: "work-update", element: withModuleAccess("work-update", <WorkUpdate />) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],
@@ -128,7 +156,8 @@ const privateRouteGroups = [
     children: [
       { path: "invoices", element: withModuleAccess("invoices", <div style={{ padding: 20 }}>Invoices page</div>) },
       { path: "reports", element: withModuleAccess("reports", <div style={{ padding: 20 }}>Reports page</div>) },
-      { path: "my-tasks", element: withModuleAccess("my-tasks", <MyTasks />) },
+      { path: "my-tasks", element: withModuleAccess("work-update", <MyTasks />) },
+      { path: "my-tasks/history", element: withModuleAccess("work-update", <TasksUpdateHistory />, "history") },
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
       { path: "settings", element: withModuleAccess("settings", <div style={{ padding: 20 }}>Settings page</div>) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
@@ -142,6 +171,8 @@ const privateRouteGroups = [
       { path: "businesses", element: withModuleAccess("client-account", <BusinessPage />) },
       { path: "appointment", element: withModuleAccess("client-account", <ClientAppointment />) },
       { path: "work-progress", element: withModuleAccess("client-account", <WorkProgress />) },
+      { path: "work-progress/history", element: withModuleAccess("client-account", <ClientHistory />) },
+      { path: "certificate", element: withModuleAccess("client-account", <ClientCertificatePage />) },
       { path: "documents", element: withModuleAccess("client-account", <ClientDocumentsPage />) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],

@@ -76,7 +76,6 @@ try {
 
     if (!$user) {
         monitoring_write_audit_log($conn, null, 'Failed login attempt', $auditContext);
-        http_response_code(401);
         echo json_encode(['success' => false, 'message' => 'Incorrect email or password']);
         exit;
     }
@@ -87,7 +86,6 @@ try {
         $lockedUntilTimestamp = strtotime($lockedUntilRaw);
         if ($lockedUntilTimestamp !== false && $lockedUntilTimestamp > time()) {
             monitoring_write_audit_log($conn, $userId, 'Blocked login attempt on locked account', $auditContext);
-            http_response_code(423);
             echo json_encode([
                 'success' => false,
                 'message' => 'Account locked due to too many failed login attempts. Try again later.',
@@ -130,7 +128,6 @@ try {
             ]);
             monitoring_write_audit_log($conn, $userId, 'Account locked after failed login attempts', $auditContext);
 
-            http_response_code(423);
             echo json_encode([
                 'success' => false,
                 'message' => 'Account locked due to too many failed login attempts. Try again later.',
@@ -151,7 +148,6 @@ try {
         ]);
         monitoring_write_audit_log($conn, $userId, 'Failed login attempt', $auditContext);
 
-        http_response_code(401);
         echo json_encode(['success' => false, 'message' => 'Incorrect email or password']);
         exit;
     }
@@ -175,7 +171,6 @@ try {
 
         if (strcasecmp($approvalStatus, 'Approved') !== 0) {
             monitoring_write_audit_log($conn, $userId, 'Blocked login due to client approval status', $auditContext);
-            http_response_code(403);
             echo json_encode([
                 'success' => false,
                 'message' => $approvalStatus === 'Rejected'
@@ -199,7 +194,6 @@ try {
                 $expiresAtTimestamp = strtotime('+' . $passwordExpiryDays . ' days', $passwordChangedAtTimestamp);
                 if ($expiresAtTimestamp !== false && $expiresAtTimestamp <= time()) {
                     monitoring_write_audit_log($conn, $userId, 'Blocked login due to expired password', $auditContext);
-                    http_response_code(403);
                     echo json_encode([
                         'success' => false,
                         'message' => 'Your password has expired. Reset it to continue.',

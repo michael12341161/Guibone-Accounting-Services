@@ -2,6 +2,17 @@ import React, { useEffect, useRef, useState } from "react";
 import { IconButton } from "../UI/buttons";
 import { useNotification } from "../../hooks/useNotification";
 import NotificationList from "./NotificationList";
+import { getTaskDeadlineNotificationKind } from "../../utils/task_deadline";
+
+function pluralizeTask(count) {
+  return count === 1 ? "task" : "tasks";
+}
+
+function buildOverdueSummaryMessage(count) {
+  const taskLabel = pluralizeTask(count);
+  const pronoun = count === 1 ? "it" : "them";
+  return `\u26A0\uFE0F You have ${count} overdue ${taskLabel}. Please complete ${pronoun} as soon as possible.`;
+}
 
 export default function NotificationBell({
   buttonClass = "",
@@ -12,6 +23,9 @@ export default function NotificationBell({
   const rootRef = useRef(null);
   const count = total || 0;
   const badgeText = count > 99 ? "99+" : String(count);
+  const overdueCount = (Array.isArray(notifications) ? notifications : []).reduce((totalCount, notification) => {
+    return totalCount + (getTaskDeadlineNotificationKind(notification?.type ?? notification?.kind) === "overdue" ? 1 : 0);
+  }, 0);
 
   useEffect(() => {
     function handleDocClick(event) {
@@ -74,6 +88,16 @@ export default function NotificationBell({
               {count}
             </div>
           </div>
+          {overdueCount > 0 ? (
+            <div className="border-b border-rose-100 bg-rose-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-700">
+                Overdue Task Alert
+              </div>
+              <p className="mt-1 text-sm leading-relaxed text-rose-800">
+                {buildOverdueSummaryMessage(overdueCount)}
+              </p>
+            </div>
+          ) : null}
           <div className="max-h-80 overflow-auto">
             <NotificationList notifications={notifications} onMarkRead={markNotificationRead} />
           </div>

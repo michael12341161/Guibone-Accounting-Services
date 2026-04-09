@@ -88,6 +88,26 @@ function module_permissions_definitions(): array
                 'view-only' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
             ],
         ],
+        'certificate' => [
+            'admin' => true,
+            'secretary' => false,
+            'accountant' => false,
+            'client' => false,
+            'actions' => [
+                'edit' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
+                'remove' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
+                'remove-auto-send' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
+            ],
+        ],
+        'edit-certificate' => [
+            'admin' => true,
+            'secretary' => false,
+            'accountant' => false,
+            'client' => false,
+            'actions' => [
+                'header-tools-properties' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
+            ],
+        ],
         'business-status' => ['admin' => true, 'secretary' => false, 'accountant' => false, 'client' => false],
         'appointments' => [
             'admin' => true,
@@ -126,7 +146,21 @@ function module_permissions_definitions(): array
             ],
         ],
         'calendar' => ['admin' => true, 'secretary' => true, 'accountant' => true, 'client' => false],
-        'work-update' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+        'work-update' => [
+            'admin' => true,
+            'secretary' => true,
+            'accountant' => false,
+            'client' => false,
+            'actions' => [
+                'check-steps' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'history' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'edit' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'mark-done' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'decline' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'archive' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+                'restore' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
+            ],
+        ],
         'my-tasks' => ['admin' => true, 'secretary' => false, 'accountant' => true, 'client' => false],
         'messaging' => ['admin' => true, 'secretary' => true, 'accountant' => false, 'client' => false],
         'invoices' => ['admin' => true, 'secretary' => false, 'accountant' => true, 'client' => false],
@@ -233,23 +267,25 @@ function module_permissions_normalize(array $permissions): array
                 ];
             }
 
-            $actionValues = array_values($normalized[$featureKey]['actions']);
-            $normalized[$featureKey]['admin'] = false;
-            $normalized[$featureKey]['secretary'] = false;
-            $normalized[$featureKey]['accountant'] = false;
-            $normalized[$featureKey]['client'] = false;
-            foreach ($actionValues as $actionValue) {
-                if (($actionValue['admin'] ?? false) === true) {
-                    $normalized[$featureKey]['admin'] = true;
-                }
-                if (($actionValue['secretary'] ?? false) === true) {
-                    $normalized[$featureKey]['secretary'] = true;
-                }
-                if (($actionValue['accountant'] ?? false) === true) {
-                    $normalized[$featureKey]['accountant'] = true;
-                }
-                if (($actionValue['client'] ?? false) === true) {
-                    $normalized[$featureKey]['client'] = true;
+            if (!in_array($featureKey, ['certificate', 'edit-certificate'], true)) {
+                $actionValues = array_values($normalized[$featureKey]['actions']);
+                $normalized[$featureKey]['admin'] = false;
+                $normalized[$featureKey]['secretary'] = false;
+                $normalized[$featureKey]['accountant'] = false;
+                $normalized[$featureKey]['client'] = false;
+                foreach ($actionValues as $actionValue) {
+                    if (($actionValue['admin'] ?? false) === true) {
+                        $normalized[$featureKey]['admin'] = true;
+                    }
+                    if (($actionValue['secretary'] ?? false) === true) {
+                        $normalized[$featureKey]['secretary'] = true;
+                    }
+                    if (($actionValue['accountant'] ?? false) === true) {
+                        $normalized[$featureKey]['accountant'] = true;
+                    }
+                    if (($actionValue['client'] ?? false) === true) {
+                        $normalized[$featureKey]['client'] = true;
+                    }
                 }
             }
         }

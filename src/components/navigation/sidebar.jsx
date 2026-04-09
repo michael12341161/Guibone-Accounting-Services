@@ -293,7 +293,7 @@ export function Sidebar({
                 ) : (
                   <NavLink
                     to={item.to}
-                    end={item?.key === "dashboard"}
+                    end={Boolean(item?.end || item?.exact || item?.key === "dashboard")}
                     onClick={(event) => {
                       if (typeof onItemClick === "function") {
                         onItemClick(item, event, {
@@ -365,6 +365,7 @@ export function Sidebar({
                         <NavLink
                           key={child.key || child.to}
                           to={child.to}
+                          end={Boolean(child?.end || child?.exact)}
                           onClick={(event) => {
                             if (typeof onItemClick === "function") {
                               onItemClick(child, event, {
@@ -402,7 +403,7 @@ export function Sidebar({
 
                   <NavLink
                     to={item.to}
-                    end={item?.key === "dashboard"}
+                    end={Boolean(item?.end || item?.exact || item?.key === "dashboard")}
                     onClick={(event) => {
                       if (typeof onItemClick === "function") {
                         onItemClick(item, event, {

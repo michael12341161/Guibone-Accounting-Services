@@ -10,6 +10,7 @@ const ROLE_KEY_BY_ID = Object.freeze({
   [ROLE_IDS.ACCOUNTANT]: "accountant",
   [ROLE_IDS.CLIENT]: "client",
 });
+const FEATURES_WITH_INDEPENDENT_ACTION_ACCESS = new Set(["certificate", "edit-certificate"]);
 
 function humanizePermissionKey(value) {
   return String(value || "")
@@ -17,6 +18,10 @@ function humanizePermissionKey(value) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function featureUsesIndependentAccess(featureKey) {
+  return FEATURES_WITH_INDEPENDENT_ACTION_ACCESS.has(String(featureKey || "").trim());
 }
 
 export const FEATURE_SECTIONS = [
@@ -137,6 +142,46 @@ export const FEATURE_SECTIONS = [
         ],
       },
       {
+        key: "certificate",
+        label: "Certificate",
+        description: "Allow the role to open and review certificate templates.",
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+        actions: [
+          {
+            key: "edit",
+            label: "Edit",
+            description: "Allow the role to use the Edit button from the Certificate page.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+          {
+            key: "remove",
+            label: "Remove",
+            description: "Allow the role to remove saved certificate templates from the Certificate page.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+          {
+            key: "remove-auto-send",
+            label: "Remove Auto-send",
+            description: "Allow the role to assign or remove templates for automatic certificate delivery.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+        ],
+      },
+      {
+        key: "edit-certificate",
+        label: "Edit Certificate",
+        description: "Allow the role to create or update certificate templates.",
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+        actions: [
+          {
+            key: "header-tools-properties",
+            label: "Can Access Header Tools and Properties",
+            description: "Allow the role to use the Header Tools and Properties controls in the Edit Certificate page.",
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+          },
+        ],
+      },
+      {
         key: "business-status",
         label: "Business Status",
         description: "Review which client businesses are registered and which still need a Business Permit.",
@@ -231,8 +276,8 @@ export const FEATURE_SECTIONS = [
           },
           {
             key: "edit-step",
-            label: "Edit Step",
-            description: "Allow the role to edit task steps.",
+            label: "Can Edit Tasks To-Do",
+            description: "Allow the role to edit task to-do items, add new steps, and update step assignees from Task Management.",
             defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
           },
           {
@@ -254,6 +299,50 @@ export const FEATURE_SECTIONS = [
         label: "Task Update",
         description: "Review and update task progress.",
         defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+        actions: [
+          {
+            key: "check-steps",
+            label: "Can Check Steps",
+            description: "Allow the role to mark assigned task steps as completed.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "history",
+            label: "Can View History",
+            description: "Allow the role to open task update history and view saved task update logs.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "edit",
+            label: "Can Edit",
+            description: "Allow the role to edit task update details.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "mark-done",
+            label: "Can Mark Done",
+            description: "Allow the role to mark task updates as done.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "decline",
+            label: "Can Decline",
+            description: "Allow the role to decline task updates.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "archive",
+            label: "Can Archive",
+            description: "Allow the role to archive completed task updates from history.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "restore",
+            label: "Can Restore",
+            description: "Allow the role to restore archived task updates back into history.",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+        ],
       },
       {
         key: "my-tasks",
@@ -275,7 +364,7 @@ export const FEATURE_SECTIONS = [
     ],
   },
   {
-    label: "Finance",
+    label: "Insights",
     features: [
       {
         key: "invoices",
@@ -393,6 +482,47 @@ export function createDefaultPermissions() {
   }, {});
 }
 
+function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
+  const directPermissions = storedPermissions?.[featureKey];
+
+  if (featureKey === "certificate" && directPermissions && typeof directPermissions === "object") {
+    const storedActions = directPermissions.actions && typeof directPermissions.actions === "object" ? directPermissions.actions : null;
+    if (!storedActions) {
+      return directPermissions;
+    }
+
+    const hasCurrentActionKeys = ["edit", "remove", "remove-auto-send"].some(
+      (actionKey) => storedActions[actionKey] && typeof storedActions[actionKey] === "object"
+    );
+    if (hasCurrentActionKeys) {
+      return directPermissions;
+    }
+
+    const migratedActions = {};
+    if (storedActions.edit && typeof storedActions.edit === "object") {
+      migratedActions.edit = storedActions.edit;
+    }
+
+    return {
+      ...directPermissions,
+      actions: migratedActions,
+    };
+  }
+
+  if (featureKey === "edit-certificate") {
+    if (directPermissions && typeof directPermissions === "object") {
+      return directPermissions;
+    }
+
+    const legacyEditPermissions = storedPermissions?.certificate?.actions?.edit;
+    if (legacyEditPermissions && typeof legacyEditPermissions === "object") {
+      return legacyEditPermissions;
+    }
+  }
+
+  return directPermissions;
+}
+
 export function mergePermissions(storedPermissions) {
   const defaults = createDefaultPermissions();
 
@@ -402,7 +532,7 @@ export function mergePermissions(storedPermissions) {
 
   return FEATURE_SECTIONS.reduce((accumulator, section) => {
     section.features.forEach((feature) => {
-      const storedFeature = storedPermissions[feature.key];
+      const storedFeature = resolveStoredFeaturePermissions(storedPermissions, feature.key);
       const mergedFeature = {
         admin: Boolean(storedFeature?.admin ?? defaults[feature.key].admin),
         secretary: Boolean(storedFeature?.secretary ?? defaults[feature.key].secretary),
@@ -429,11 +559,13 @@ export function mergePermissions(storedPermissions) {
           return actionAccumulator;
         }, {});
 
-        const mergedActionValues = Object.values(mergedFeature.actions);
-        mergedFeature.admin = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.admin));
-        mergedFeature.secretary = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.secretary));
-        mergedFeature.accountant = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.accountant));
-        mergedFeature.client = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.client));
+        if (!featureUsesIndependentAccess(feature.key)) {
+          const mergedActionValues = Object.values(mergedFeature.actions);
+          mergedFeature.admin = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.admin));
+          mergedFeature.secretary = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.secretary));
+          mergedFeature.accountant = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.accountant));
+          mergedFeature.client = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.client));
+        }
       }
 
       accumulator[feature.key] = mergedFeature;
@@ -520,7 +652,11 @@ export function hasModuleAccess(user, moduleKey, permissions = null) {
   }
 
   const featureDefinition = getFeatureDefinition(moduleKey);
-  if (Array.isArray(featureDefinition?.actions) && featureDefinition.actions.length > 0) {
+  if (
+    Array.isArray(featureDefinition?.actions) &&
+    featureDefinition.actions.length > 0 &&
+    !featureUsesIndependentAccess(moduleKey)
+  ) {
     const actionPermissions = modulePermissions.actions;
     if (actionPermissions && typeof actionPermissions === "object") {
       return Object.values(actionPermissions).some((actionPermission) => Boolean(actionPermission?.[roleKey]));
@@ -540,7 +676,12 @@ export function filterNavItemsByAccess(user, navItems, permissions = null) {
       ? filterNavItemsByAccess(user, item.children, permissions)
       : [];
     const accessKey = item.accessKey || null;
-    const canAccessSelf = accessKey ? hasModuleAccess(user, accessKey, permissions) : true;
+    const actionKey = item.actionKey || null;
+    const canAccessSelf = accessKey
+      ? actionKey
+        ? hasFeatureActionAccess(user, accessKey, actionKey, permissions)
+        : hasModuleAccess(user, accessKey, permissions)
+      : true;
     const shouldKeep = canAccessSelf || nextChildren.length > 0;
 
     if (!shouldKeep) {

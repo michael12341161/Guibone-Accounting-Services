@@ -10,7 +10,11 @@ if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
 
 $user = monitoring_read_session_user(true);
 if ($user === null) {
-    monitoring_auth_respond(401, ['success' => false, 'message' => 'No active session.']);
+    monitoring_auth_respond(200, [
+        'success' => true,
+        'authenticated' => false,
+        'user' => null,
+    ]);
 }
 if (session_status() === PHP_SESSION_ACTIVE) {
     session_write_close();
@@ -18,6 +22,7 @@ if (session_status() === PHP_SESSION_ACTIVE) {
 
 monitoring_auth_respond(200, [
     'success' => true,
+    'authenticated' => true,
     'user' => [
         'id' => (int)$user['id'],
         'username' => $user['username'] ?? null,

@@ -18,6 +18,7 @@ import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { findClientById, getClientId, matchesClientId } from "../../utils/client_identity";
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
+import { getTaskDeadlineState } from "../../utils/task_deadline";
 import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import {
   DEFAULT_TASK_WORKLOAD_SETTINGS,
@@ -43,13 +44,6 @@ const normalizeTaskIds = (ids) =>
         .filter(Boolean)
     )
   );
-
-const areTaskIdListsEqual = (left, right) => {
-  const a = normalizeTaskIds(left);
-  const b = normalizeTaskIds(right);
-  if (a.length !== b.length) return false;
-  return a.every((id, index) => id === b[index]);
-};
 
 const normalizeStepAssignee = (value, fallback = "accountant") => {
   const v = String(value || "").trim().toLowerCase();
@@ -308,6 +302,8 @@ const setProgress = (descriptionRaw, progressRaw) => {
 const statusStyle = (statusRaw) => {
   const s = (statusRaw || "Pending").toLowerCase();
   if (s === "completed") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (s === "overdue") return "bg-rose-50 text-rose-700 border-rose-200";
+  if (s === "incomplete") return "bg-orange-50 text-orange-700 border-orange-200";
   if (s === "declined") return "bg-rose-50 text-rose-700 border-rose-200";
   if (s === "in progress") return "bg-sky-50 text-sky-700 border-sky-200";
   if (s === "cancelled") return "bg-rose-50 text-rose-700 border-rose-200";
@@ -321,18 +317,9 @@ const StatusBadge = ({ value }) => (
   </span>
 );
 
-const getProgress = (task) => {
-  const desc = String(task?.description || "");
-  const m = desc.match(/^\s*\[Progress\]\s*(\d{1,3})\s*$/im);
-  const p = m ? parseInt(m[1], 10) : 0;
-  if (Number.isNaN(p)) return 0;
-  return Math.max(0, Math.min(100, p));
-};
-
 const isTaskCompleted = (task) => {
-  const progress = getProgress(task);
   const status = String(task?.status || "").trim().toLowerCase();
-  return progress >= 100 || ["done", "completed"].includes(status);
+  return ["done", "completed"].includes(status);
 };
 
 const isTaskArchived = (task) => {
@@ -353,6 +340,33 @@ const setTaskArchived = (descriptionRaw, archived) => {
 
   if (archived) {
     nextLines.push("[Archived] 1");
+  }
+
+  return nextLines.join("\n").trim();
+};
+
+const upsertTaskMetaLine = (descriptionRaw, tag, value) => {
+  const lines = String(descriptionRaw || "").split(/\r?\n/);
+  const nextLines = [];
+  let replaced = false;
+  const tagPattern = new RegExp(`^\\s*\\[${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*`, "i");
+
+  for (const line of lines) {
+    if (tagPattern.test(String(line || ""))) {
+      if (!replaced) {
+        nextLines.push(`[${tag}] ${String(value || "").trim()}`);
+        replaced = true;
+      }
+      continue;
+    }
+    nextLines.push(line);
+  }
+
+  if (!replaced) {
+    while (nextLines.length && !String(nextLines[nextLines.length - 1] || "").trim()) {
+      nextLines.pop();
+    }
+    nextLines.push(`[${tag}] ${String(value || "").trim()}`);
   }
 
   return nextLines.join("\n").trim();
@@ -605,6 +619,10 @@ function getReadableUserRole(user) {
 
 function isSecretaryUser(user) {
   return getUserRoleLabel(user).toLowerCase() === "secretary";
+}
+
+function isAccountantUser(user) {
+  return getUserRoleLabel(user).toLowerCase() === "accountant";
 }
 
 function accountantMatchesService(accountant, serviceName) {
@@ -955,7 +973,6 @@ export default function AdminAccountantTaskManagement() {
 
   // To-Do filters
   const [todoSearch, setTodoSearch] = useState("");
-  const [todoStatus, setTodoStatus] = useState("All"); // All | Completed | Uncompleted
   const [todoPriority, setTodoPriority] = useState("All"); // All | Low | Medium | High
 
   // Step edit floating card
@@ -963,8 +980,14 @@ export default function AdminAccountantTaskManagement() {
   const [stepEditCtx, setStepEditCtx] = useState(null); // { taskId, taskStatus, isCompleted, stepIndex, currentText }
   const [stepEditValue, setStepEditValue] = useState("");
   const [stepEditAssignee, setStepEditAssignee] = useState("accountant");
+  const [taskAssigneeEditOpen, setTaskAssigneeEditOpen] = useState(false);
+  const [taskAssigneeEditCtx, setTaskAssigneeEditCtx] = useState(null);
+  const [taskAssigneeEditValue, setTaskAssigneeEditValue] = useState("");
+  const [taskPartnerEditValue, setTaskPartnerEditValue] = useState("");
+  const [taskPriorityEditValue, setTaskPriorityEditValue] = useState("Low");
+  const [taskEditError, setTaskEditError] = useState("");
+  const [taskAssigneeSaving, setTaskAssigneeSaving] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [staffWorkloadOpen, setStaffWorkloadOpen] = useState(false);
   const [staffWorkloadSearch, setStaffWorkloadSearch] = useState("");
@@ -987,6 +1010,7 @@ export default function AdminAccountantTaskManagement() {
     // Single-select service (validated by backend via `status`)
     service_name: "",
     accountant_id: "",
+    partner_id: "",
     priority: "Low",
     period_date: "",
     start_date: "",
@@ -999,6 +1023,7 @@ export default function AdminAccountantTaskManagement() {
   const [error, setError] = useState("");
   useErrorToast(error);
   const [success, setSuccess] = useState("");
+  const taskAssigneeResetTimerRef = useRef(null);
   const workloadLimit = normalizeTaskWorkloadLimit(taskWorkloadSettings?.limit, DEFAULT_TASK_WORKLOAD_SETTINGS.limit);
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);
@@ -1008,10 +1033,24 @@ export default function AdminAccountantTaskManagement() {
       accountantMatchesService(accountant, form.service_name || form.title)
     );
   }, [accountants, form.service_name, form.title]);
+  const partnerAccountants = useMemo(
+    () => (Array.isArray(accountants) ? accountants : []).filter((accountant) => isAccountantUser(accountant)),
+    [accountants]
+  );
+  const selectedAssignee = useMemo(
+    () => (Array.isArray(accountants) ? accountants : []).find((accountant) => String(accountant.id) === String(form.accountant_id || "")) || null,
+    [accountants, form.accountant_id]
+  );
+  const selectedAssigneeIsSecretary = Boolean(selectedAssignee && isSecretaryUser(selectedAssignee));
+  const selectedPartnerAccountant = useMemo(
+    () => partnerAccountants.find((accountant) => String(accountant.id) === String(form.partner_id || "")) || null,
+    [form.partner_id, partnerAccountants]
+  );
   const canCreateTask = hasFeatureActionAccess(user, "tasks", "create-task", permissions);
   const canOpenClientAppointments = hasFeatureActionAccess(user, "tasks", "client-appointments", permissions);
   const canViewTaskLimit = hasFeatureActionAccess(user, "tasks", "task-limit", permissions);
-  const canEditStep = hasFeatureActionAccess(user, "tasks", "edit-step", permissions);
+  const canEditTaskTodo = hasFeatureActionAccess(user, "tasks", "edit-step", permissions);
+  const canEditTaskAssignee = canEditTaskTodo;
   const canRemoveStep = hasFeatureActionAccess(user, "tasks", "remove-step", permissions);
   const createTaskDescription = canOpenClientAppointments
     ? "Use Select Client (F2F) for walk-in tasks, or open Client Appointments to load an approved appointment here before assigning an accountant or secretary."
@@ -1050,11 +1089,7 @@ export default function AdminAccountantTaskManagement() {
     () => Boolean(selectedBundle && bundleDraftSteps[selectedBundle.key]),
     [bundleDraftSteps, selectedBundle]
   );
-  const allTaskIds = useMemo(
-    () => normalizeTaskIds((Array.isArray(tasks) ? tasks : []).map((task) => getTaskKey(task))),
-    [tasks]
-  );
-  const allTaskIdSet = useMemo(() => new Set(allTaskIds), [allTaskIds]);
+  const sortedTodoTasks = useMemo(() => sortTasksNewestFirst(tasks), [tasks]);
   const archivedTaskIdSet = useMemo(
     () =>
       new Set(
@@ -1065,8 +1100,19 @@ export default function AdminAccountantTaskManagement() {
       ),
     [tasks]
   );
-  const selectedTaskIdSet = useMemo(() => new Set(selectedTaskIds), [selectedTaskIds]);
-
+  const activeTodoTasks = useMemo(
+    () =>
+      sortedTodoTasks.filter((task) => {
+        const taskKey = getTaskKey(task);
+        return Boolean(taskKey) && !archivedTaskIdSet.has(taskKey) && !isTaskCompleted(task);
+      }),
+    [sortedTodoTasks, archivedTaskIdSet]
+  );
+  const activeTaskIds = useMemo(
+    () => normalizeTaskIds(activeTodoTasks.map((task) => getTaskKey(task))),
+    [activeTodoTasks]
+  );
+  const activeTaskIdSet = useMemo(() => new Set(activeTaskIds), [activeTaskIds]);
   useEffect(() => {
     let stop = false;
     (async () => {
@@ -1186,13 +1232,6 @@ export default function AdminAccountantTaskManagement() {
   }, []);
 
   useEffect(() => {
-    setSelectedTaskIds((current) => {
-      const next = normalizeTaskIds(current).filter((id) => allTaskIdSet.has(id) && !archivedTaskIdSet.has(id));
-      return areTaskIdListsEqual(current, next) ? current : next;
-    });
-  }, [allTaskIdSet, archivedTaskIdSet]);
-
-  useEffect(() => {
     const hasSelectedService = String(form.service_name || form.title || "").trim();
     if (hasSelectedService) return;
 
@@ -1228,6 +1267,7 @@ export default function AdminAccountantTaskManagement() {
       title: nextServiceName,
       service_name: nextServiceName,
       accountant_id: "",
+      partner_id: "",
       due_date: nextDueDate || fallbackDueDate,
     }));
     setSelectedAppointmentId(String(appointment?.id || ""));
@@ -1356,6 +1396,7 @@ export default function AdminAccountantTaskManagement() {
       start_date: "",
       due_date: "",
       accountant_id: "",
+      partner_id: "",
     });
     setSelectedAppointmentId("");
     setSelectedBundleKey("");
@@ -1415,6 +1456,20 @@ export default function AdminAccountantTaskManagement() {
       setError("Please assign a matching accountant or secretary for the selected service.");
       return;
     }
+    if (selectedAssigneeIsSecretary) {
+      if (partnerAccountants.length === 0) {
+        setError("No accountant partners are available right now.");
+        return;
+      }
+      if (!String(form.partner_id || "").trim()) {
+        setError("Please select an accountant partner for the secretary.");
+        return;
+      }
+      if (!partnerAccountants.some((accountant) => String(accountant.id) === String(form.partner_id))) {
+        setError("Please select a valid accountant partner.");
+        return;
+      }
+    }
     if (!String(form.priority || "").trim()) {
       setError("Please select a priority.");
       return;
@@ -1465,6 +1520,7 @@ export default function AdminAccountantTaskManagement() {
         deadline: form.due_date || null,
         status: form.service_name || "",
         accountant_id: form.accountant_id ? parseInt(form.accountant_id, 10) : undefined,
+        partner_id: selectedAssigneeIsSecretary && form.partner_id ? parseInt(form.partner_id, 10) : 0,
       };
       const res = await api.post("task_create.php", payload);
       if (res?.data?.success) {
@@ -1502,6 +1558,7 @@ export default function AdminAccountantTaskManagement() {
           start_date: "",
           due_date: "",
           accountant_id: "",
+          partner_id: "",
         });
         setSelectedAppointmentId("");
         setSelectedBundleKey("");
@@ -1544,6 +1601,20 @@ export default function AdminAccountantTaskManagement() {
       setForm((current) => ({ ...current, accountant_id: "" }));
     }
   }, [form.accountant_id, matchingAccountants]);
+
+  useEffect(() => {
+    if (selectedAssigneeIsSecretary) return;
+    if (!form.partner_id) return;
+    setForm((current) => ({ ...current, partner_id: "" }));
+  }, [form.partner_id, selectedAssigneeIsSecretary]);
+
+  useEffect(() => {
+    if (!form.partner_id) return;
+    const stillExists = partnerAccountants.some((accountant) => String(accountant.id) === String(form.partner_id));
+    if (!stillExists) {
+      setForm((current) => ({ ...current, partner_id: "" }));
+    }
+  }, [form.partner_id, partnerAccountants]);
 
   useEffect(() => {
     const nextBundleKey = suggestedBundleKey || "";
@@ -1601,6 +1672,63 @@ export default function AdminAccountantTaskManagement() {
     if (!form.accountant_id) return null;
     return staffWorkloadRows.find((staff) => String(staff.id) === String(form.accountant_id)) || null;
   }, [form.accountant_id, staffWorkloadRows]);
+  const taskAssigneeOptions = useMemo(() => {
+    if (!taskAssigneeEditCtx) return [];
+
+    const serviceName = String(taskAssigneeEditCtx.serviceName || "").trim();
+    const available = (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
+      accountantMatchesService(accountant, serviceName)
+    );
+    const currentId = String(taskAssigneeEditCtx.currentAssigneeId || "").trim();
+    if (!currentId) return available;
+
+    const alreadyIncluded = available.some((accountant) => String(accountant.id) === currentId);
+    if (alreadyIncluded) return available;
+
+    const currentAssignee = (Array.isArray(accountants) ? accountants : []).find(
+      (accountant) => String(accountant.id) === currentId
+    );
+    return currentAssignee ? [currentAssignee, ...available] : available;
+  }, [accountants, taskAssigneeEditCtx]);
+  const selectedTaskAssignee = useMemo(() => {
+    if (!taskAssigneeEditValue) return null;
+    return taskAssigneeOptions.find((accountant) => String(accountant.id) === String(taskAssigneeEditValue)) || null;
+  }, [taskAssigneeEditValue, taskAssigneeOptions]);
+  const selectedTaskAssigneeIsSecretary = Boolean(selectedTaskAssignee && isSecretaryUser(selectedTaskAssignee));
+  const selectedTaskPartnerAccountant = useMemo(() => {
+    if (!taskPartnerEditValue) return null;
+    return partnerAccountants.find((accountant) => String(accountant.id) === String(taskPartnerEditValue)) || null;
+  }, [partnerAccountants, taskPartnerEditValue]);
+  const selectedTaskAssigneeWorkload = useMemo(() => {
+    if (!taskAssigneeEditValue) return null;
+    return staffWorkloadRows.find((staff) => String(staff.id) === String(taskAssigneeEditValue)) || null;
+  }, [staffWorkloadRows, taskAssigneeEditValue]);
+  const isTaskAssigneeEditActive = Boolean(taskAssigneeEditOpen && taskAssigneeEditCtx);
+  const taskAssigneeCurrentMatchesService = useMemo(() => {
+    const currentId = String(taskAssigneeEditCtx?.currentAssigneeId || "").trim();
+    if (!currentId) return true;
+
+    const currentAssignee = (Array.isArray(accountants) ? accountants : []).find(
+      (accountant) => String(accountant.id) === currentId
+    );
+    if (!currentAssignee) return true;
+
+    return accountantMatchesService(currentAssignee, taskAssigneeEditCtx?.serviceName);
+  }, [accountants, taskAssigneeEditCtx]);
+
+  useEffect(() => {
+    if (selectedTaskAssigneeIsSecretary) return;
+    if (!taskPartnerEditValue) return;
+    setTaskPartnerEditValue("");
+  }, [selectedTaskAssigneeIsSecretary, taskPartnerEditValue]);
+
+  useEffect(() => {
+    return () => {
+      if (taskAssigneeResetTimerRef.current) {
+        window.clearTimeout(taskAssigneeResetTimerRef.current);
+      }
+    };
+  }, []);
 
   // Sorting & filtering state
   const [sortBy, setSortBy] = useState("date_desc");
@@ -1654,32 +1782,23 @@ export default function AdminAccountantTaskManagement() {
     return out;
   }, [tasks, sortBy, statusFilter, ownerFilter, dateFrom, dateTo, search]);
 
-  const sortedTodoTasks = useMemo(() => sortTasksNewestFirst(tasks), [tasks]);
-
   const archivedTodoTasks = useMemo(
     () => sortedTodoTasks.filter((task) => isTaskArchived(task)),
     [sortedTodoTasks]
   );
 
   const filteredTodoTasks = useMemo(() => {
-    return sortedTodoTasks.filter((task) => {
-      const taskKey = getTaskKey(task);
-      if (!taskKey || archivedTaskIdSet.has(taskKey)) return false;
-
+    return activeTodoTasks.filter((task) => {
       const clientName = String(task.client_name || "");
       const query = todoSearch.trim().toLowerCase();
       if (query && !clientName.toLowerCase().includes(query)) return false;
-
-      const completed = isTaskCompleted(task);
-      if (todoStatus === "Completed" && !completed) return false;
-      if (todoStatus === "Uncompleted" && completed) return false;
 
       const priority = parsePriority(task.description);
       if (todoPriority !== "All" && String(priority).toLowerCase() !== String(todoPriority).toLowerCase()) return false;
 
       return true;
     });
-  }, [sortedTodoTasks, archivedTaskIdSet, todoSearch, todoStatus, todoPriority]);
+  }, [activeTodoTasks, todoSearch, todoPriority]);
 
   const archivedTaskRows = useMemo(() => {
     return archivedTodoTasks.map((task) => {
@@ -1704,54 +1823,88 @@ export default function AdminAccountantTaskManagement() {
     });
   }, [archivedTodoTasks, accountants]);
 
-  const archiveTasks = (taskIds) => {
-    const ids = normalizeTaskIds(taskIds).filter((id) => allTaskIdSet.has(id) && !archivedTaskIdSet.has(id));
+  const archiveTasks = async (taskIds) => {
+    const ids = normalizeTaskIds(taskIds).filter((id) => activeTaskIdSet.has(id));
     if (ids.length === 0) return;
 
-    const taskMap = new Map((Array.isArray(tasks) ? tasks : []).map((task) => [getTaskKey(task), task]));
-
-    const run = async () => {
-      try {
-        setArchiveLoading(true);
-        setError("");
-
-        await Promise.all(
-          ids.map((id) => {
-            const task = taskMap.get(id);
-            if (!task) return Promise.resolve();
-            return api.post("task_update_status.php", {
-              task_id: Number(id),
-              description: setTaskArchived(String(task.description || ""), true),
-            });
-          })
-        );
-
-        const listRes = await api.get("task_list.php");
-        if (Array.isArray(listRes.data?.tasks)) setTasks(listRes.data.tasks);
-        setSelectedTaskIds((current) => current.filter((id) => !ids.includes(id)));
-        setSuccess(ids.length === 1 ? "Task archived." : `${ids.length} tasks archived.`);
-        setTimeout(() => setSuccess(""), 1200);
-      } catch (err) {
-        setError(err?.response?.data?.message || err?.message || "Failed to archive task.");
-      } finally {
-        setArchiveLoading(false);
-      }
-    };
-
-    void run();
-  };
-
-  const toggleTaskSelection = (taskId) => {
-    const normalizedId = String(taskId || "").trim();
-    if (!normalizedId || archivedTaskIdSet.has(normalizedId)) return;
-
-    setSelectedTaskIds((current) => {
-      const ids = normalizeTaskIds(current);
-      if (ids.includes(normalizedId)) {
-        return ids.filter((id) => id !== normalizedId);
-      }
-      return [...ids, normalizedId];
+    const confirmation = await Swal.fire({
+      title: ids.length === 1 ? "Archive selected task?" : `Archive ${ids.length} selected tasks?`,
+      text: 'Type "archive" to confirm this action.',
+      icon: "warning",
+      background: "#ffffff",
+      color: "#0f172a",
+      input: "text",
+      inputLabel: "Confirmation",
+      inputPlaceholder: "Type archive",
+      showCancelButton: true,
+      confirmButtonText: "Archive",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#475569",
+      cancelButtonColor: "#94a3b8",
+      reverseButtons: true,
+      focusCancel: true,
+      didOpen: () => {
+        const popup = Swal.getPopup();
+        const input = Swal.getInput();
+        const confirmButton = Swal.getConfirmButton();
+        const cancelButton = Swal.getCancelButton();
+        if (popup) {
+          popup.style.backgroundColor = "#ffffff";
+          popup.style.color = "#0f172a";
+        }
+        if (!input) return;
+        input.style.backgroundColor = "#ffffff";
+        input.style.color = "#0f172a";
+        input.style.borderColor = "#cbd5e1";
+        if (confirmButton) {
+          confirmButton.style.backgroundColor = "#dc2626";
+          confirmButton.style.color = "#ffffff";
+          confirmButton.style.border = "1px solid #dc2626";
+          confirmButton.style.boxShadow = "none";
+        }
+        if (cancelButton) {
+          cancelButton.style.backgroundColor = "#e2e8f0";
+          cancelButton.style.color = "#0f172a";
+          cancelButton.style.border = "1px solid #cbd5e1";
+          cancelButton.style.boxShadow = "none";
+        }
+      },
+      preConfirm: (value) => {
+        if (String(value || "").trim().toLowerCase() !== "archive") {
+          Swal.showValidationMessage('Please type "archive" to continue.');
+          return false;
+        }
+        return true;
+      },
     });
+
+    if (!confirmation.isConfirmed) return;
+
+    const taskMap = new Map((Array.isArray(tasks) ? tasks : []).map((task) => [getTaskKey(task), task]));
+    try {
+      setArchiveLoading(true);
+      setError("");
+
+      await Promise.all(
+        ids.map((id) => {
+          const task = taskMap.get(id);
+          if (!task) return Promise.resolve();
+          return api.post("task_update_status.php", {
+            task_id: Number(id),
+            description: setTaskArchived(String(task.description || ""), true),
+          });
+        })
+      );
+
+      const listRes = await api.get("task_list.php");
+      if (Array.isArray(listRes.data?.tasks)) setTasks(listRes.data.tasks);
+      setSuccess(ids.length === 1 ? "Task archived." : `${ids.length} tasks archived.`);
+      setTimeout(() => setSuccess(""), 1200);
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Failed to archive task.");
+    } finally {
+      setArchiveLoading(false);
+    }
   };
 
   const closeStaffWorkload = () => {
@@ -1785,6 +1938,197 @@ export default function AdminAccountantTaskManagement() {
     }
   };
 
+  const resetTaskAssigneeEditState = () => {
+    setTaskAssigneeEditCtx(null);
+    setTaskAssigneeEditValue("");
+    setTaskPartnerEditValue("");
+    setTaskPriorityEditValue("Low");
+    setTaskEditError("");
+  };
+
+  const closeTaskAssigneeEdit = () => {
+    setTaskAssigneeEditOpen(false);
+    setTaskEditError("");
+
+    if (taskAssigneeResetTimerRef.current) {
+      window.clearTimeout(taskAssigneeResetTimerRef.current);
+    }
+
+    taskAssigneeResetTimerRef.current = window.setTimeout(() => {
+      resetTaskAssigneeEditState();
+      taskAssigneeResetTimerRef.current = null;
+    }, 220);
+  };
+
+  const openTaskAssigneeEdit = ({
+    taskId,
+    taskStatus,
+    isCompleted,
+    serviceName,
+    taskLabel,
+    currentAssigneeId,
+    currentAssigneeName,
+    currentPartnerId,
+    currentPartnerName,
+  }) => {
+    if (!canEditTaskAssignee) {
+      showErrorToast("You do not have permission to edit task details.");
+      return;
+    }
+
+    if (taskAssigneeResetTimerRef.current) {
+      window.clearTimeout(taskAssigneeResetTimerRef.current);
+      taskAssigneeResetTimerRef.current = null;
+    }
+
+    const normalizedCurrentId = String(currentAssigneeId || "").trim();
+    const currentAssignee = (Array.isArray(accountants) ? accountants : []).find(
+      (accountant) => String(accountant.id) === normalizedCurrentId
+    );
+    const matchingAssignees = (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
+      accountantMatchesService(accountant, serviceName)
+    );
+    const hasCurrent = matchingAssignees.some((accountant) => String(accountant.id) === normalizedCurrentId);
+    const nextDefaultValue = currentAssignee ? normalizedCurrentId : String(matchingAssignees[0]?.id || "");
+
+    const taskRow = (Array.isArray(tasks) ? tasks : []).find(
+      (task) => String(task?.id || task?.task_id) === String(taskId)
+    );
+
+    setTaskAssigneeEditCtx({
+      taskId: Number(taskId),
+      taskStatus: String(taskStatus || ""),
+      isCompleted: Boolean(isCompleted),
+      serviceName: String(serviceName || "").trim(),
+      taskLabel: String(taskLabel || "").trim() || "Task",
+      currentAssigneeId: normalizedCurrentId,
+      currentAssigneeName: String(currentAssigneeName || "").trim() || "Unassigned",
+      currentPartnerId: String(currentPartnerId || "").trim(),
+      currentPartnerName: String(currentPartnerName || "").trim(),
+      currentPriority: parsePriority(taskRow?.description || ""),
+      hasLegacyAssignee: Boolean(currentAssignee && normalizedCurrentId && !hasCurrent),
+    });
+    setTaskAssigneeEditValue(nextDefaultValue);
+    setTaskPartnerEditValue(String(currentPartnerId || "").trim());
+    setTaskPriorityEditValue(parsePriority(taskRow?.description || ""));
+    setTaskEditError("");
+    setTaskAssigneeEditOpen(true);
+  };
+
+  const saveTaskAssigneeEdit = async () => {
+    if (!canEditTaskAssignee) {
+      setTaskEditError("You do not have permission to edit task details.");
+      return;
+    }
+    if (!taskAssigneeEditCtx) return;
+
+    const statusLocked = ["done", "completed"].includes(String(taskAssigneeEditCtx.taskStatus || "").toLowerCase());
+    if (Boolean(taskAssigneeEditCtx.isCompleted) || statusLocked) {
+      closeTaskAssigneeEdit();
+      return;
+    }
+
+    const nextAssigneeId = String(taskAssigneeEditValue || "").trim();
+    const currentAssigneeId = String(taskAssigneeEditCtx.currentAssigneeId || "").trim();
+    const currentPartnerId = String(taskAssigneeEditCtx.currentPartnerId || "").trim();
+    const nextPriority = ["Low", "Medium", "High"].includes(String(taskPriorityEditValue || ""))
+      ? String(taskPriorityEditValue)
+      : "";
+    if (!nextPriority) {
+      setTaskEditError("Please select a priority.");
+      return;
+    }
+
+    const assigneeChanged = nextAssigneeId !== currentAssigneeId;
+    const nextAssignee = taskAssigneeOptions.find((accountant) => String(accountant.id) === nextAssigneeId) || null;
+    const shouldRequirePartner = Boolean(nextAssignee && isSecretaryUser(nextAssignee));
+    const nextPartnerId = shouldRequirePartner ? String(taskPartnerEditValue || "").trim() : "";
+    const partnerChanged = nextPartnerId !== currentPartnerId;
+    const priorityChanged = nextPriority !== String(taskAssigneeEditCtx.currentPriority || "Low");
+    if (!assigneeChanged && !partnerChanged && !priorityChanged) {
+      closeTaskAssigneeEdit();
+      return;
+    }
+
+    if (assigneeChanged) {
+      if (!nextAssigneeId) {
+        setTaskEditError("Please assign an accountant or secretary.");
+        return;
+      }
+      if (!nextAssignee || !accountantMatchesService(nextAssignee, taskAssigneeEditCtx.serviceName)) {
+        setTaskEditError("Please assign a matching accountant or secretary for the selected service.");
+        return;
+      }
+      if (hasReachedTaskWorkloadLimit(selectedTaskAssigneeWorkload?.totalTasks || 0, workloadLimit)) {
+        const assigneeName = selectedTaskAssigneeWorkload?.name || nextAssignee.username || "The selected staff member";
+        showErrorToast(
+          `${assigneeName} already has ${selectedTaskAssigneeWorkload?.totalTasks || 0} active tasks and has reached the workload limit of ${workloadLimit}. Please choose another accountant or secretary.`
+        );
+        return;
+      }
+    }
+    if (shouldRequirePartner) {
+      if (!partnerAccountants.length) {
+        setTaskEditError("No accountant partners are available right now.");
+        return;
+      }
+      if (!nextPartnerId) {
+        setTaskEditError("Please select an accountant partner for the secretary.");
+        return;
+      }
+      if (!partnerAccountants.some((accountant) => String(accountant.id) === nextPartnerId)) {
+        setTaskEditError("Please select a valid accountant partner.");
+        return;
+      }
+    }
+
+    const taskRow = (Array.isArray(tasks) ? tasks : []).find(
+      (task) => String(task?.id || task?.task_id) === String(taskAssigneeEditCtx.taskId)
+    );
+    if (!taskRow) {
+      setTaskEditError("Unable to find the latest task details. Please refresh and try again.");
+      return;
+    }
+
+    const payload = {
+      task_id: Number(taskAssigneeEditCtx.taskId),
+    };
+
+    if (assigneeChanged) {
+      payload.accountant_id = Number.parseInt(nextAssigneeId, 10);
+    }
+    if (partnerChanged || shouldRequirePartner || currentPartnerId) {
+      payload.partner_id = nextPartnerId ? Number.parseInt(nextPartnerId, 10) : 0;
+    }
+    if (priorityChanged) {
+      payload.description = upsertTaskMetaLine(String(taskRow.description || ""), "Priority", nextPriority);
+    }
+
+    try {
+      setTaskAssigneeSaving(true);
+      setTaskEditError("");
+
+      const response = await api.post("task_update_status.php", payload);
+
+      if (response?.data?.success) {
+        const listRes = await api.get("task_list.php");
+        if (Array.isArray(listRes.data?.tasks)) setTasks(listRes.data.tasks);
+        showSuccessToast("Task updated.");
+        closeTaskAssigneeEdit();
+      } else {
+        setTaskEditError(response?.data?.message || "Failed to update task.");
+      }
+    } catch (err) {
+      if (err?.response?.data?.workload_limit_reached) {
+        showErrorToast(err?.response?.data?.message || "The selected staff member already reached the workload limit.");
+        return;
+      }
+      setTaskEditError(err?.response?.data?.message || err?.message || "Request failed.");
+    } finally {
+      setTaskAssigneeSaving(false);
+    }
+  };
+
   const closeStepEdit = () => {
     setStepEditOpen(false);
     setStepEditCtx(null);
@@ -1793,8 +2137,8 @@ export default function AdminAccountantTaskManagement() {
   };
 
   const saveStepEdit = async () => {
-    if (!canEditStep) {
-      setError("You do not have permission to edit task steps.");
+    if (!canEditTaskTodo) {
+      setError("You do not have permission to edit task to-do items.");
       return;
     }
     if (!stepEditCtx) return;
@@ -1943,6 +2287,38 @@ export default function AdminAccountantTaskManagement() {
                           (selectedAssigneeWorkload?.totalTasks || 0) === 1 ? "" : "s"
                         } out of the ${workloadLimit}-task limit.`}
                   </p>
+                ) : null}
+                {selectedAssigneeIsSecretary ? (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Partner Accountant</label>
+                    <select
+                      value={form.partner_id || ""}
+                      onChange={(event) => setForm((current) => ({ ...current, partner_id: event.target.value }))}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="">Select accountant partner</option>
+                      {partnerAccountants.map((accountant) => {
+                        const name = accountant.username || `User #${accountant.id}`;
+                        const specialization = getAccountantSpecialization(accountant);
+                        return (
+                          <option key={accountant.id} value={String(accountant.id)}>
+                            {specialization ? `${name} (${specialization})` : name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Required for secretary-assigned tasks. All accountants are available here, even if their specialization does not match the service.
+                    </p>
+                    {selectedPartnerAccountant ? (
+                      <p className="mt-1 text-[11px] text-slate-600">
+                        Partner: {selectedPartnerAccountant.username || `User #${selectedPartnerAccountant.id}`}
+                        {getAccountantSpecialization(selectedPartnerAccountant)
+                          ? ` - ${getAccountantSpecialization(selectedPartnerAccountant)}`
+                          : ""}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
@@ -2114,20 +2490,10 @@ export default function AdminAccountantTaskManagement() {
                   type="text"
                   value={todoSearch}
                   onChange={(e) => setTodoSearch(e.target.value)}
-                  placeholder="Search by client name..."
+                  placeholder="Search active tasks by client name..."
                   className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
-
-              <select
-                value={todoStatus}
-                onChange={(e) => setTodoStatus(e.target.value)}
-                className="min-w-[150px] flex-[1_1_160px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 xl:w-[160px] xl:flex-none"
-              >
-                <option>All</option>
-                <option>Completed</option>
-                <option>Uncompleted</option>
-              </select>
 
               <select
                 value={todoPriority}
@@ -2140,41 +2506,6 @@ export default function AdminAccountantTaskManagement() {
                 <option>High</option>
               </select>
 
-              <div className="flex basis-full flex-col gap-3 sm:basis-auto sm:flex-row sm:flex-nowrap sm:justify-end xl:flex-none">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => archiveTasks(selectedTaskIds)}
-                  disabled={selectedTaskIds.length === 0 || archiveLoading}
-                  className="w-full justify-center gap-2 sm:min-w-[190px] sm:w-auto sm:flex-none"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 3v4" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 3v4" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 11h16" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 7h14a1 1 0 0 1 1 1v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8a1 1 0 0 1 1-1Z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m10 15 2 2 4-4" />
-                  </svg>
-                  <span>{selectedTaskIds.length > 0 ? `Archive Selected (${selectedTaskIds.length})` : "Archive Selected"}</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setArchiveOpen(true)}
-                  className="w-full justify-center gap-2 sm:min-w-[170px] sm:w-auto sm:flex-none"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5h18" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 7.5 6 4h12l1.5 3.5" />
-                  </svg>
-                  <span>View Archive</span>
-                </Button>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -2189,7 +2520,7 @@ export default function AdminAccountantTaskManagement() {
                   </svg>
                 </div>
                 <div className="text-sm">
-                  No matching tasks found.
+                  No matching active tasks found.
                 </div>
               </div>
             );
@@ -2200,16 +2531,26 @@ export default function AdminAccountantTaskManagement() {
             const taskKey = getTaskKey(t) || String(taskId || "");
             const accId = String(t.accountant_id || "");
             const accName = t.accountant_name || accountants.find((a) => String(a.id) === accId)?.username || (accId ? `Accountant #${accId}` : "Unassigned");
+            const partnerId = String(t.partner_id || "");
+            const partnerName =
+              t.partner_name ||
+              partnerAccountants.find((accountant) => String(accountant.id) === partnerId)?.username ||
+              (partnerId ? `Accountant #${partnerId}` : "");
+            const mainAssignee = (Array.isArray(accountants) ? accountants : []).find((accountant) => String(accountant.id) === accId) || null;
+            const mainAssigneeIsSecretary = Boolean(mainAssignee && isSecretaryUser(mainAssignee));
             const creatorLabel = getTaskCreatorLabel(t);
             const serviceName = String(t.service_name || t.title || t.name || "").trim() || "Uncategorized";
             const serviceDuration = getEstimatedServiceDuration(serviceName);
 
             const isCompleted = isTaskCompleted(t);
-            const isSelected = selectedTaskIdSet.has(taskKey);
+            const deadlineState = getTaskDeadlineState(t);
+            const isOverdue = String(t.status || "").trim().toLowerCase() === "overdue" || deadlineState.isOverdue;
 
             const cardClassName = isCompleted
               ? "rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-sm overflow-hidden"
-              : "rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden";
+              : isOverdue
+                ? "rounded-xl border border-rose-300 bg-rose-50/40 shadow-sm overflow-hidden"
+                : "rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden";
 
             const desc = String(t.description || "");
             const steps = parseTaskSteps(desc);
@@ -2281,20 +2622,27 @@ export default function AdminAccountantTaskManagement() {
 
             return (
               <div key={taskKey} className={cardClassName}>
-                <div className={`px-5 py-3 border-b ${isCompleted ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-white"}`}>
+                <div
+                  className={`px-5 py-3 border-b ${
+                    isCompleted
+                      ? "border-emerald-200 bg-emerald-50/60"
+                      : isOverdue
+                        ? "border-rose-200 bg-rose-50/70"
+                        : "border-slate-200 bg-white"
+                  }`}
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleTaskSelection(taskKey)}
-                        disabled={archiveLoading}
-                        className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                        aria-label={`Select ${t.title || t.name || serviceName}`}
-                      />
-
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className={isCompleted ? "text-emerald-700 text-sm font-semibold" : "text-indigo-600 text-sm font-semibold"}>
+                        <span
+                          className={
+                            isCompleted
+                              ? "text-emerald-700 text-sm font-semibold"
+                              : isOverdue
+                                ? "text-rose-700 text-sm font-semibold"
+                                : "text-indigo-600 text-sm font-semibold"
+                          }
+                        >
                           To-Do
                         </span>
                         {isCompleted && (
@@ -2303,9 +2651,23 @@ export default function AdminAccountantTaskManagement() {
                             Completed
                           </span>
                         )}
+                        {!isCompleted && isOverdue && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-600" />
+                            Overdue
+                          </span>
+                        )}
                         <span className="text-sm font-medium text-slate-800 truncate">{t.client_name || "Client"}</span>
                         <span className="text-xs text-slate-400">|</span>
-                        <span className={isCompleted ? "text-sm font-medium text-emerald-700 truncate" : "text-sm font-medium text-indigo-500 truncate"}>
+                        <span
+                          className={
+                            isCompleted
+                              ? "text-sm font-medium text-emerald-700 truncate"
+                              : isOverdue
+                                ? "text-sm font-medium text-rose-700 truncate"
+                                : "text-sm font-medium text-indigo-500 truncate"
+                          }
+                        >
                           {serviceName}
                         </span>
                         {serviceDuration ? (
@@ -2316,22 +2678,35 @@ export default function AdminAccountantTaskManagement() {
                       </div>
                     </div>
 
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => archiveTasks([taskKey])}
-                      disabled={archiveLoading}
-                      className="justify-center gap-2 sm:self-start"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5h18" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 7.5 6 4h12l1.5 3.5" />
-                      </svg>
-                      <span>Archive</span>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2 sm:self-start">
+                      {canEditTaskAssignee ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            openTaskAssigneeEdit({
+                              taskId,
+                              taskStatus: t.status,
+                              isCompleted,
+                              serviceName,
+                              taskLabel: t.title || t.name || serviceName,
+                              currentAssigneeId: accId,
+                              currentAssigneeName: accName,
+                              currentPartnerId: partnerId,
+                              currentPartnerName: partnerName,
+                            })
+                          }
+                          disabled={archiveLoading || taskAssigneeSaving}
+                          className="justify-center gap-2"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.5 17.79 4 19l1.21-4.5L16.862 3.487Z" />
+                          </svg>
+                          <span>Edit</span>
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
@@ -2354,17 +2729,22 @@ export default function AdminAccountantTaskManagement() {
                       </div>
                     </div>
                     <div className="col-span-3 px-3 py-2 flex items-center">
-                      <div className="inline-flex items-center gap-2 text-sm text-slate-700 min-w-0">
-                        <span className="inline-grid place-items-center h-7 w-7 rounded-full bg-slate-100 text-slate-500">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm0 2c-3.33 0-6 2.24-6 5v1h12v-1c0-2.76-2.67-5-6-5Z" /></svg>
-                        </span>
-                        <span className="truncate">{accName}</span>
+                      <div className="min-w-0 text-sm text-slate-700">
+                        <div className="inline-flex min-w-0 items-center gap-2">
+                          <span className="inline-grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-slate-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm0 2c-3.33 0-6 2.24-6 5v1h12v-1c0-2.76-2.67-5-6-5Z" /></svg>
+                          </span>
+                          <span className="truncate">{accName}</span>
+                        </div>
+                        {mainAssigneeIsSecretary && partnerName ? (
+                          <div className="mt-1 truncate text-[11px] text-slate-500">Partner accountant: {partnerName}</div>
+                        ) : null}
                       </div>
                     </div>
                     <div className="col-span-2 px-3 py-2 flex items-center">
                       <PriorityPill description={t.description} />
                     </div>
-                    <div className="col-span-2 px-3 py-2 text-sm text-slate-700 flex items-center">
+                    <div className={`col-span-2 px-3 py-2 text-sm flex items-center ${isOverdue ? "text-rose-700" : "text-slate-700"}`}>
                       {(() => {
                         const raw = t.deadline || t.due_date;
                         if (!raw) return <span className="text-slate-400">ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â</span>;
@@ -2416,10 +2796,10 @@ export default function AdminAccountantTaskManagement() {
 
                         <div className="col-span-2 px-3 py-2" />
 
-                        {canEditStep || canRemoveStep ? (
+                        {canEditTaskTodo || canRemoveStep ? (
                           <div className="col-span-2 px-3 py-2 flex items-center justify-end">
                             <div className="flex items-center gap-2">
-                              {canEditStep ? (
+                              {canEditTaskTodo ? (
                                 <button
                                   type="button"
                                   disabled={stepLocked || stepLoading}
@@ -2500,61 +2880,63 @@ export default function AdminAccountantTaskManagement() {
 
                     return (
                       <div className={stepLocked ? "opacity-60 pointer-events-none" : ""}>
-                        <InlineAddRow
-                          onAddNextStep={async (e, localForm) => {
-                            e?.preventDefault?.();
-                            e?.stopPropagation?.();
-                            if (stepLocked) return;
+                        {canEditTaskTodo ? (
+                          <InlineAddRow
+                            onAddNextStep={async (e, localForm) => {
+                              e?.preventDefault?.();
+                              e?.stopPropagation?.();
+                              if (stepLocked) return;
 
-                            const stepText = String(localForm.title || "").trim();
-                            if (!stepText) return;
+                              const stepText = String(localForm.title || "").trim();
+                              if (!stepText) return;
 
-                            const currentDesc = String(t.description || "");
-                            const currentSteps = parseTaskSteps(currentDesc);
-                            const nextSteps = [
-                              ...currentSteps,
-                              {
-                                text: stepText,
-                                assignee: normalizeStepAssignee(localForm.step_owner, "accountant"),
-                              },
-                            ];
+                              const currentDesc = String(t.description || "");
+                              const currentSteps = parseTaskSteps(currentDesc);
+                              const nextSteps = [
+                                ...currentSteps,
+                                {
+                                  text: stepText,
+                                  assignee: normalizeStepAssignee(localForm.step_owner, "accountant"),
+                                },
+                              ];
 
-                            let updatedDesc = replaceTaskSteps(currentDesc, nextSteps);
-                            const doneSet = parseCompletedStepNumbers(currentDesc);
-                            const nextDone = new Set([...doneSet].filter((n) => n > 0 && n <= nextSteps.length));
-                            updatedDesc = setCompletedStepNumbers(updatedDesc, nextDone);
-                            const nextProgress = nextSteps.length ? Math.round((nextDone.size / nextSteps.length) * 100) : 0;
-                            updatedDesc = setProgress(updatedDesc, nextProgress);
+                              let updatedDesc = replaceTaskSteps(currentDesc, nextSteps);
+                              const doneSet = parseCompletedStepNumbers(currentDesc);
+                              const nextDone = new Set([...doneSet].filter((n) => n > 0 && n <= nextSteps.length));
+                              updatedDesc = setCompletedStepNumbers(updatedDesc, nextDone);
+                              const nextProgress = nextSteps.length ? Math.round((nextDone.size / nextSteps.length) * 100) : 0;
+                              updatedDesc = setProgress(updatedDesc, nextProgress);
 
-                            try {
-                              setStepLoading(true);
-                              const res = await api.post("task_update_status.php", {
-                                task_id: Number(taskId),
-                                description: updatedDesc,
-                              });
-                              if (res?.data?.success) {
-                                const listRes = await api.get("task_list.php");
-                                if (Array.isArray(listRes.data?.tasks)) setTasks(listRes.data.tasks);
-                                setSuccess("Step added.");
-                                setTimeout(() => setSuccess(""), 1200);
-                              } else {
-                                setError(res?.data?.message || "Failed to add step.");
+                              try {
+                                setStepLoading(true);
+                                const res = await api.post("task_update_status.php", {
+                                  task_id: Number(taskId),
+                                  description: updatedDesc,
+                                });
+                                if (res?.data?.success) {
+                                  const listRes = await api.get("task_list.php");
+                                  if (Array.isArray(listRes.data?.tasks)) setTasks(listRes.data.tasks);
+                                  setSuccess("Step added.");
+                                  setTimeout(() => setSuccess(""), 1200);
+                                } else {
+                                  setError(res?.data?.message || "Failed to add step.");
+                                }
+                              } catch (err) {
+                                setError(err?.response?.data?.message || err?.message || "Request failed.");
+                              } finally {
+                                setStepLoading(false);
                               }
-                            } catch (err) {
-                              setError(err?.response?.data?.message || err?.message || "Request failed.");
-                            } finally {
-                              setStepLoading(false);
-                            }
-                          }}
-                          initialForm={form}
-                          setParentForm={setForm}
-                          clients={clients}
-                          accountants={accountants}
-                          services={services}
-                          loading={stepLoading || stepLocked}
-                          variant="monday"
-                          defaultAccountantId={String(accId)}
-                        />
+                            }}
+                            initialForm={form}
+                            setParentForm={setForm}
+                            clients={clients}
+                            accountants={accountants}
+                            services={services}
+                            loading={stepLoading || stepLocked}
+                            variant="monday"
+                            defaultAccountantId={String(accId)}
+                          />
+                        ) : null}
 
                         {stepLocked && (
                           <div className="px-3 pb-3 text-[11px] text-slate-500">
@@ -2889,6 +3271,154 @@ export default function AdminAccountantTaskManagement() {
           </div>
         </Modal>
       ) : null}
+
+      <Modal
+        open={Boolean(taskAssigneeEditOpen && taskAssigneeEditCtx)}
+        onClose={closeTaskAssigneeEdit}
+        title={taskAssigneeEditCtx ? `Edit ${taskAssigneeEditCtx.taskLabel}` : "Edit Task"}
+        description="Task details"
+        size="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeTaskAssigneeEdit}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={saveTaskAssigneeEdit}
+              disabled={taskAssigneeSaving}
+            >
+              {taskAssigneeSaving ? "Saving..." : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Priority</label>
+            <select
+              value={taskPriorityEditValue}
+              onChange={(event) => {
+                setTaskPriorityEditValue(event.target.value);
+                setTaskEditError("");
+              }}
+              disabled={taskAssigneeSaving}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current assignee</div>
+            <div className="mt-1 text-sm font-medium text-slate-800">
+              {taskAssigneeEditCtx?.currentAssigneeName || "Unassigned"}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {taskAssigneeEditCtx?.serviceName
+                ? `Showing matching accountants and all secretaries for ${taskAssigneeEditCtx.serviceName}.`
+                : "Choose an accountant or secretary for this task."}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Assign To (Accountant or Secretary)</label>
+            <select
+              value={taskAssigneeEditValue}
+              onChange={(event) => {
+                setTaskAssigneeEditValue(event.target.value);
+                setTaskEditError("");
+              }}
+              disabled={taskAssigneeSaving || taskAssigneeOptions.length === 0}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              <option value="">Select assignee</option>
+              {taskAssigneeOptions.map((accountant) => {
+                const roleLabel = getReadableUserRole(accountant);
+                const specialization = getAccountantSpecialization(accountant);
+                const name = accountant.username || `User #${accountant.id}`;
+                return (
+                  <option key={accountant.id} value={String(accountant.id)}>
+                    {specialization ? `${name} (${roleLabel} - ${specialization})` : `${name} (${roleLabel})`}
+                  </option>
+                );
+              })}
+            </select>
+            {isTaskAssigneeEditActive && taskAssigneeOptions.length === 0 ? (
+              <div className="mt-2 text-[11px] text-rose-600">No assignees are available for the selected service.</div>
+            ) : null}
+            {isTaskAssigneeEditActive && taskAssigneeEditCtx?.hasLegacyAssignee && !taskAssigneeCurrentMatchesService ? (
+              <div className="mt-2 text-[11px] text-amber-700">
+                The current assignee does not match this service, but it remains selectable until you save a new assignment.
+              </div>
+            ) : null}
+          </div>
+
+          {selectedTaskAssigneeIsSecretary ? (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Partner Accountant</label>
+              <select
+                value={taskPartnerEditValue}
+                onChange={(event) => {
+                  setTaskPartnerEditValue(event.target.value);
+                  setTaskEditError("");
+                }}
+                disabled={taskAssigneeSaving || partnerAccountants.length === 0}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+              >
+                <option value="">Select accountant partner</option>
+                {partnerAccountants.map((accountant) => {
+                  const name = accountant.username || `User #${accountant.id}`;
+                  const specialization = getAccountantSpecialization(accountant);
+                  return (
+                    <option key={accountant.id} value={String(accountant.id)}>
+                      {specialization ? `${name} (${specialization})` : name}
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="mt-2 text-[11px] text-slate-500">
+                Required for secretary-assigned tasks. The partner list includes all accountants regardless of specialization.
+              </div>
+              {selectedTaskPartnerAccountant ? (
+                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-sm font-medium text-slate-900">
+                    {selectedTaskPartnerAccountant.username || `User #${selectedTaskPartnerAccountant.id}`}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-600">
+                    {getAccountantSpecialization(selectedTaskPartnerAccountant) || "Accountant"}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {isTaskAssigneeEditActive && selectedTaskAssignee ? (
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+              <div className="text-sm font-medium text-slate-900">
+                {selectedTaskAssignee.username || `User #${selectedTaskAssignee.id}`}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-600">
+                {getReadableUserRole(selectedTaskAssignee)}
+                {getAccountantSpecialization(selectedTaskAssignee)
+                  ? ` - ${getAccountantSpecialization(selectedTaskAssignee)}`
+                  : ""}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500">
+                Active tasks: {selectedTaskAssigneeWorkload?.totalTasks || 0} / {workloadLimit}
+              </div>
+            </div>
+          ) : null}
+
+          {isTaskAssigneeEditActive && taskEditError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {taskEditError}
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       {/* Step Edit Floating Card */}
       <Modal

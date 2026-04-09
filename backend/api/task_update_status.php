@@ -3,6 +3,8 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
+require_once __DIR__ . '/certificate_helpers.php';
+require_once __DIR__ . '/task_deadline_monitor.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -42,6 +44,98 @@ function upsertMetaLine(string $description, string $tag, string $value): string
         $next[] = '[' . $tag . '] ' . $value;
     }
     return implode("\n", $next);
+}
+
+function removeMetaLine(string $description, string $tag): string {
+    $lines = preg_split('/\R/', $description);
+    $next = [];
+
+    foreach ($lines as $line) {
+        if (preg_match('/^\s*\[' . preg_quote($tag, '/') . '\]\s*.*$/i', (string)$line)) {
+            continue;
+        }
+        $next[] = $line;
+    }
+
+    while (!empty($next) && trim((string)$next[0]) === '') {
+        array_shift($next);
+    }
+    while (!empty($next) && trim((string)$next[count($next) - 1]) === '') {
+        array_pop($next);
+    }
+
+    return implode("\n", $next);
+}
+
+function readMetaLine(string $description, string $tag): string {
+    if (preg_match('/^\s*\[' . preg_quote($tag, '/') . '\]\s*([^\r\n]*)\s*$/im', $description, $matches)) {
+        return trim((string)($matches[1] ?? ''));
+    }
+    return '';
+}
+
+function resolveTaskPartnerId(string $description): int {
+    $value = (int)readMetaLine($description, 'PartnerId');
+    return $value > 0 ? $value : 0;
+}
+
+function buildPersonName($first, $middle, $last): string {
+    $parts = [];
+    foreach ([$first, $middle, $last] as $part) {
+        $value = trim((string)($part ?? ''));
+        if ($value !== '') {
+            $parts[] = $value;
+        }
+    }
+    return trim(implode(' ', $parts));
+}
+
+function fetchTaskAssignableUser(PDO $conn, int $userId): ?array {
+    if ($userId <= 0) {
+        return null;
+    }
+
+    $stmt = $conn->prepare(
+        'SELECT
+            u.User_id AS id,
+            u.Username AS username,
+            u.first_name AS first_name,
+            u.middle_name AS middle_name,
+            u.last_name AS last_name,
+            u.Role_id AS role_id,
+            r.Role_name AS role_name
+         FROM user u
+         LEFT JOIN role r ON r.Role_id = u.Role_id
+         WHERE u.User_id = :uid
+         LIMIT 1'
+    );
+    $stmt->execute([':uid' => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function resolveTaskUserDisplayName(array $user): string {
+    $fullName = buildPersonName($user['first_name'] ?? '', $user['middle_name'] ?? '', $user['last_name'] ?? '');
+    if ($fullName !== '') {
+        return $fullName;
+    }
+    return trim((string)($user['username'] ?? ''));
+}
+
+function isTaskSecretaryUser(array $user): bool {
+    $roleId = isset($user['role_id']) ? (int)$user['role_id'] : 0;
+    if ($roleId === MONITORING_ROLE_SECRETARY) {
+        return true;
+    }
+    return strtolower(trim((string)($user['role_name'] ?? ''))) === 'secretary';
+}
+
+function isTaskAccountantUser(array $user): bool {
+    $roleId = isset($user['role_id']) ? (int)$user['role_id'] : 0;
+    if ($roleId === MONITORING_ROLE_ACCOUNTANT) {
+        return true;
+    }
+    return strtolower(trim((string)($user['role_name'] ?? ''))) === 'accountant';
 }
 
 function ensureProgressTag(string $description): string {
@@ -136,6 +230,15 @@ function normalizeTaskStatus(string $statusName, string $description): string {
     if ($status === 'completed' || $status === 'done') {
         return 'Completed';
     }
+    if ($status === 'overdue') {
+        return 'Overdue';
+    }
+    if ($status === 'incomplete') {
+        return 'Incomplete';
+    }
+    if (extractProgress($description) >= 100) {
+        return 'Incomplete';
+    }
     if ($status === 'in progress' || $status === 'started') {
         return 'In Progress';
     }
@@ -171,6 +274,7 @@ try {
     }
 
     $hasAccountant = array_key_exists('accountant_id', $data);
+    $hasPartner = array_key_exists('partner_id', $data);
     $hasClient = array_key_exists('client_id', $data);
     $hasService = array_key_exists('service', $data) && trim((string)$data['service']) !== '';
     $hasDeadline = array_key_exists('deadline', $data);
@@ -178,7 +282,7 @@ try {
     $hasProgressAdd = array_key_exists('progress_add', $data);
     $hasStatus = $statusInput !== '';
 
-    if (!$hasAccountant && !$hasClient && !$hasService && !$hasDeadline && !$hasDescription && !$hasProgressAdd && !$hasStatus) {
+    if (!$hasAccountant && !$hasPartner && !$hasClient && !$hasService && !$hasDeadline && !$hasDescription && !$hasProgressAdd && !$hasStatus) {
         respond(422, ['success' => false, 'message' => 'No update fields were provided']);
     }
 
@@ -188,7 +292,8 @@ try {
     }
 
     if (monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ACCOUNTANT])) {
-        if ((int)($task['accountant_id'] ?? 0) !== (int)$sessionUser['id']) {
+        $taskPartnerId = resolveTaskPartnerId((string)($task['description'] ?? ''));
+        if ((int)($task['accountant_id'] ?? 0) !== (int)$sessionUser['id'] && $taskPartnerId !== (int)$sessionUser['id']) {
             monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
         }
     } elseif (!monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY])) {
@@ -199,30 +304,63 @@ try {
     $inProgressId = resolveStatusId($conn, 'TASK', 'In Progress', 11);
     $completedId = resolveStatusId($conn, 'TASK', 'Completed', 12);
     $cancelledId = resolveStatusId($conn, 'TASK', 'Cancelled', 13);
+    $incompleteId = resolveStatusId($conn, 'TASK', 'Incomplete', 20);
 
     $currentDescription = (string)$task['description'];
     $currentStatusId = isset($task['status_id']) ? (int)$task['status_id'] : $notStartedId;
     $currentClientId = isset($task['client_id']) ? (int)$task['client_id'] : 0;
     $currentServiceId = isset($task['service_id']) ? (int)$task['service_id'] : 0;
     $currentServiceName = isset($task['service_name']) ? trim((string)$task['service_name']) : '';
-
+    $currentAssigneeId = isset($task['accountant_id']) ? (int)$task['accountant_id'] : 0;
+    $currentPartnerId = resolveTaskPartnerId($currentDescription);
     $conn->beginTransaction();
 
+    $nextAssigneeId = $currentAssigneeId;
     if ($hasAccountant) {
-        $accountantId = (int)$data['accountant_id'];
-        if ($accountantId > 0) {
-            $checkUser = $conn->prepare('SELECT User_id FROM user WHERE User_id = :id LIMIT 1');
-            $checkUser->execute([':id' => $accountantId]);
-            if (!$checkUser->fetchColumn()) {
+        $nextAssigneeId = (int)$data['accountant_id'];
+        if ($nextAssigneeId > 0) {
+            $nextAssigneeUser = fetchTaskAssignableUser($conn, $nextAssigneeId);
+            if ($nextAssigneeUser === null) {
                 $conn->rollBack();
                 respond(422, ['success' => false, 'message' => 'Invalid accountant_id']);
             }
         }
         $updTaskUser = $conn->prepare('UPDATE client_services SET User_ID = :uid WHERE Client_services_ID = :id');
         $updTaskUser->execute([
-            ':uid' => ($accountantId > 0 ? $accountantId : null),
+            ':uid' => ($nextAssigneeId > 0 ? $nextAssigneeId : null),
             ':id' => $taskId,
         ]);
+    }
+
+    $nextAssigneeUser = $nextAssigneeId > 0 ? fetchTaskAssignableUser($conn, $nextAssigneeId) : null;
+    $nextPartnerId = $hasPartner ? (int)$data['partner_id'] : $currentPartnerId;
+    $nextPartnerUser = null;
+    if ($nextPartnerId > 0) {
+        $nextPartnerUser = fetchTaskAssignableUser($conn, $nextPartnerId);
+        if ($nextPartnerUser === null) {
+            $conn->rollBack();
+            respond(422, ['success' => false, 'message' => 'Invalid partner_id']);
+        }
+    } else {
+        $nextPartnerId = 0;
+    }
+
+    if ($nextAssigneeUser !== null && isTaskSecretaryUser($nextAssigneeUser)) {
+        if ($nextPartnerId <= 0) {
+            $conn->rollBack();
+            respond(422, ['success' => false, 'message' => 'Please select an accountant partner when assigning the task to a secretary.']);
+        }
+        if ($nextPartnerId === $nextAssigneeId) {
+            $conn->rollBack();
+            respond(422, ['success' => false, 'message' => 'The partner accountant must be different from the main assignee.']);
+        }
+        if ($nextPartnerUser === null || !isTaskAccountantUser($nextPartnerUser)) {
+            $conn->rollBack();
+            respond(422, ['success' => false, 'message' => 'Partner must be an accountant.']);
+        }
+    } else {
+        $nextPartnerId = 0;
+        $nextPartnerUser = null;
     }
 
     if ($hasClient) {
@@ -284,10 +422,17 @@ try {
         $next = extractProgress($currentDescription) + $progressAdd;
         $next = max(0, min(100, $next));
         $currentDescription = setProgress($currentDescription, $next);
-        if ($currentStatusId === $notStartedId && $next > 0) {
-            $currentStatusId = $inProgressId;
-        }
     }
+
+    if ($nextPartnerUser !== null) {
+        $currentDescription = upsertMetaLine($currentDescription, 'PartnerId', (string)$nextPartnerId);
+        $currentDescription = upsertMetaLine($currentDescription, 'PartnerName', resolveTaskUserDisplayName($nextPartnerUser));
+    } else {
+        $currentDescription = removeMetaLine($currentDescription, 'PartnerId');
+        $currentDescription = removeMetaLine($currentDescription, 'PartnerName');
+    }
+
+    $statusShouldFollowProgress = false;
 
     if ($hasStatus) {
         $normalizedStatus = strtolower($statusInput);
@@ -295,12 +440,14 @@ try {
 
         if ($normalizedStatus === 'done' || $normalizedStatus === 'completed') {
             $currentStatusId = $completedId;
+            $currentDescription = removeMetaLine($currentDescription, 'Declined reason');
             if (!preg_match('/^\s*\[Done\]\s*$/mi', $currentDescription)) {
                 $currentDescription = trim($currentDescription);
                 $currentDescription = $currentDescription !== '' ? ($currentDescription . "\n[Done]") : '[Done]';
             }
         } elseif ($normalizedStatus === 'declined' || $normalizedStatus === 'cancelled' || $normalizedStatus === 'canceled') {
             $currentStatusId = $cancelledId;
+            $currentDescription = removeMetaLine($currentDescription, 'Done');
             if (!preg_match('/^\s*\[Declined reason\]\s*/mi', $currentDescription)) {
                 $declineText = $reason !== '' ? $reason : 'Declined';
                 $currentDescription = trim($currentDescription);
@@ -308,10 +455,18 @@ try {
                     ? ($currentDescription . "\n[Declined reason] " . $declineText)
                     : ('[Declined reason] ' . $declineText);
             }
+        } elseif ($normalizedStatus === 'incomplete') {
+            $currentDescription = removeMetaLine($currentDescription, 'Done');
+            $currentDescription = removeMetaLine($currentDescription, 'Declined reason');
+            $statusShouldFollowProgress = true;
         } elseif ($normalizedStatus === 'in progress' || $normalizedStatus === 'started' || $normalizedStatus === 'start') {
-            $currentStatusId = $inProgressId;
+            $currentDescription = removeMetaLine($currentDescription, 'Done');
+            $currentDescription = removeMetaLine($currentDescription, 'Declined reason');
+            $statusShouldFollowProgress = true;
         } elseif ($normalizedStatus === 'not started' || $normalizedStatus === 'pending') {
-            $currentStatusId = $notStartedId;
+            $currentDescription = removeMetaLine($currentDescription, 'Done');
+            $currentDescription = removeMetaLine($currentDescription, 'Declined reason');
+            $statusShouldFollowProgress = true;
         } else {
             // Backward compatibility: allow service name via status field.
             $serviceLookup = $conn->prepare('SELECT Services_type_Id FROM services_type WHERE Name = :name LIMIT 1');
@@ -325,6 +480,23 @@ try {
             $updTaskService->execute([':sid' => $serviceIdFromStatus, ':id' => $taskId]);
             $currentServiceId = $serviceIdFromStatus;
             $currentServiceName = $statusInput;
+        }
+    } else {
+        $hasDoneTag = preg_match('/^\s*\[Done\]\s*$/mi', $currentDescription) === 1;
+        $hasDeclinedReason = preg_match('/^\s*\[Declined reason\]\s*/mi', $currentDescription) === 1;
+        if (!$hasDoneTag && !$hasDeclinedReason) {
+            $statusShouldFollowProgress = true;
+        }
+    }
+
+    if ($statusShouldFollowProgress) {
+        $progress = extractProgress($currentDescription);
+        if ($progress >= 100) {
+            $currentStatusId = $incompleteId;
+        } elseif ($progress > 0) {
+            $currentStatusId = $inProgressId;
+        } else {
+            $currentStatusId = $notStartedId;
         }
     }
 
@@ -356,6 +528,12 @@ try {
 
     $conn->commit();
 
+    try {
+        monitoring_run_task_deadline_monitor($conn);
+    } catch (Throwable $__) {
+        // Do not block task updates if deadline monitoring fails.
+    }
+
     $updated = fetchTask($conn, $taskId);
     if (!$updated) {
         respond(404, ['success' => false, 'message' => 'Task not found after update']);
@@ -370,6 +548,27 @@ try {
     }
 
     $statusOut = normalizeTaskStatus((string)($updated['status_name'] ?? ''), $descriptionOut);
+    $partnerIdOut = resolveTaskPartnerId($descriptionOut);
+    $partnerNameOut = readMetaLine($descriptionOut, 'PartnerName');
+    $certificateResult = null;
+    if ($statusOut === 'Completed') {
+        try {
+            $certificateResult = monitoring_certificate_issue_for_client_service($conn, $taskId, $sessionUser);
+        } catch (Throwable $__) {
+            $certificateResult = [
+                'attempted' => true,
+                'issued' => false,
+                'status' => 'failed',
+                'message' => 'The service was completed, but certificate generation failed.',
+            ];
+        }
+    }
+    if ($partnerIdOut > 0) {
+        $partnerUserOut = fetchTaskAssignableUser($conn, $partnerIdOut);
+        if ($partnerUserOut !== null) {
+            $partnerNameOut = resolveTaskUserDisplayName($partnerUserOut);
+        }
+    }
 
     respond(200, [
         'success' => true,
@@ -388,7 +587,10 @@ try {
             'client_name' => $updated['client_name'] ?? null,
             'accountant_id' => isset($updated['accountant_id']) ? (int)$updated['accountant_id'] : null,
             'accountant_name' => $updated['accountant_name'] ?? null,
+            'partner_id' => $partnerIdOut > 0 ? $partnerIdOut : null,
+            'partner_name' => $partnerNameOut !== '' ? $partnerNameOut : null,
         ],
+        'certificate' => $certificateResult,
     ]);
 } catch (Throwable $e) {
     if (isset($conn) && $conn instanceof PDO && $conn->inTransaction()) {

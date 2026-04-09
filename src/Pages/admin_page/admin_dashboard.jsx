@@ -252,6 +252,10 @@ export default function AdminDashboard({ user, onLogout }) {
               {(() => {
                 if (currentKey === "client-management") return "";
                 if (currentKey === "documents") return "";
+                if (currentKey === "certificate") return "";
+                if (currentKey === "certificate-menu") return "";
+                if (currentKey === "certificate-view") return "";
+                if (currentKey === "edit-certificate") return "";
                 if (currentKey === "business-status") return "";
                 if (currentKey === "client-list") return "";
                 if (currentKey === "new-client-management") return "";
@@ -259,6 +263,7 @@ export default function AdminDashboard({ user, onLogout }) {
                 if (currentKey === "scheduling") return "";
                 if (currentKey === "tasks") return "";
                 if (currentKey === "work-update") return "";
+                if (currentKey === "reports") return "";
                 return currentKey.charAt(0).toUpperCase() + currentKey.slice(1);
               })()}
             </h1>

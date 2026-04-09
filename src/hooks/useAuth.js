@@ -11,6 +11,7 @@ export function useAuth() {
 
   return {
     user: context.user,
+    isAuthReady: context.isAuthReady,
     role: getUserRole(context.user),
     login: context.login,
     logout: context.logout,

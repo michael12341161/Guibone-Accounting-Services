@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 26, 2026 at 09:44 AM
+-- Generation Time: Apr 04, 2026 at 05:13 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -111,7 +111,46 @@ INSERT INTO `audit_logs` (`audit_logs_ID`, `user_id`, `action`, `ip_address`, `l
 (33, 22, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:54:29'),
 (34, 21, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:10'),
 (35, 21, 'Failed login attempt', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:19'),
-(36, 21, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:29');
+(36, 21, 'Login successful', '202.61.110.247', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-03-26 07:55:29'),
+(37, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:51:22'),
+(38, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:51:40'),
+(39, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:51:47'),
+(40, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:53:06'),
+(41, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:53:50'),
+(42, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:53:58'),
+(43, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:58:29'),
+(44, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 00:58:57'),
+(45, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:00:20'),
+(46, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:01:03'),
+(47, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:01:24'),
+(48, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:06:05'),
+(49, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:14:27'),
+(50, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:15:10'),
+(51, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:15:47'),
+(52, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:20:57'),
+(53, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 01:22:40'),
+(54, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 02:22:58'),
+(55, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 02:23:14'),
+(56, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 02:23:31'),
+(57, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 02:23:57'),
+(58, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:29:27'),
+(59, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:32:46'),
+(60, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:33:30'),
+(61, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:33:38'),
+(62, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:33:43'),
+(63, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:39:46'),
+(64, 1, 'Module permissions updated', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 04:39:53'),
+(65, 22, 'Login successful', '202.61.110.246', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 07:27:42'),
+(66, 1, 'System test email sent to admin@gmail.com', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 08:24:32'),
+(67, 1, 'Login successful', '202.61.110.254', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 11:42:26'),
+(68, 21, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 11:42:42'),
+(69, 24, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 11:47:54'),
+(70, 1, 'Login successful', '202.61.110.254', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-15 12:13:29'),
+(71, 21, 'Failed login attempt', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:13'),
+(72, 21, 'Failed login attempt', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:20'),
+(73, 21, 'Failed login attempt', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:29'),
+(74, 21, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:36'),
+(75, 1, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-04 14:20:07');
 
 -- --------------------------------------------------------
 
@@ -173,6 +212,32 @@ INSERT INTO `business_type` (`Business_type_ID`, `Business_name`) VALUES
 (1, 'Sole Proprietor'),
 (2, 'Partnership'),
 (3, 'Corporation');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `certificates`
+--
+
+CREATE TABLE `certificates` (
+  `certificates_ID` int(11) NOT NULL,
+  `certificate_id` varchar(50) NOT NULL,
+  `Client_ID` int(11) NOT NULL,
+  `Client_services_ID` int(11) DEFAULT NULL,
+  `Services_type_Id` int(11) DEFAULT NULL,
+  `Edit_certificate_ID` int(11) DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `issue_date` date NOT NULL,
+  `issued_by` varchar(150) DEFAULT NULL,
+  `company_name` varchar(150) DEFAULT 'Guibone Accounting Services',
+  `template_snapshot` longtext DEFAULT NULL,
+  `certificate_html` longtext DEFAULT NULL,
+  `recipient_email` varchar(150) DEFAULT NULL,
+  `delivery_status` varchar(50) NOT NULL DEFAULT 'pending',
+  `delivery_message` text DEFAULT NULL,
+  `delivered_at` datetime DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -267,9 +332,8 @@ CREATE TABLE `client_services` (
 --
 
 INSERT INTO `client_services` (`Client_services_ID`, `Client_ID`, `Services_type_Id`, `Name`, `created_by`, `User_ID`, `Steps`, `Date`, `Status_ID`) VALUES
-(8, 11, 3, 'Book Keeping', 1, 22, '[Progress] 100\n[Priority] Medium\n[Deadline] 2026-04-08\nStep 1 (Accountant): kwaon data\nStep 2 (Accountant): lihokon\nStep 3 (Secretary): lihokon\nStep 4 (Owner): dsadsad\n[StepDone] 1,2,3,4\n[Done]', '2026-04-08', 12),
-(9, 11, 3, 'Book Keeping', 1, 22, '[Progress] 0\n[Priority] Low\n[Deadline] 2026-04-09', '2026-04-09', 10),
-(10, 11, 3, 'Book Keeping', 1, 22, '[Progress] 20\n[Priority] Low\nStep 1 (Secretary): Collect bookkeeping documents, receipts, and supporting files from the client.\nStep 2 (Accountant): Record and categorize the transactions for the covered period.\nStep 3 (Accountant): Reconcile the bank records and subsidiary ledgers.\nStep 4 (Accountant): Prepare the bookkeeping summary and draft reports.\nStep 5 (Owner): Review the reports and confirm the bookkeeping output.\n[StepDone] 1\n[StepCompletedAt 1] 2026-03-26T14:26:52+08:00\n[StepRemark 2] brbdsadsad\n[StepRemarkAt 2] 2026-03-26T15:08:51+08:00', '2026-04-09', 10);
+(11, 11, 3, 'Book Keeping', 1, 22, '[Progress] 100\n[Priority] Low\nStep 1 (Secretary): Collect bookkeeping documents, receipts, and supporting files from the client.\nStep 2 (Accountant): Record and categorize the transactions for the covered period.\nStep 3 (Accountant): Reconcile the bank records and subsidiary ledgers.\nStep 4 (Accountant): Prepare the bookkeeping summary and draft reports.\nStep 5 (Owner): Review the reports and confirm the bookkeeping output.\n[Deadline] 2026-04-16\n[CreatedAt] 2026-04-02T01:56:07+02:00\n[StepDone] 1,2,3,4,5\n[StepCompletedAt 1] 2026-04-02T07:56:35+08:00\n[StepCompletedAt 2] 2026-04-02T07:56:41+08:00\n[StepCompletedAt 3] 2026-04-02T07:56:43+08:00\n[StepCompletedAt 4] 2026-04-02T07:56:46+08:00\n[StepCompletedAt 5] 2026-04-02T07:56:55+08:00\n[Done]', '2026-04-16', 12),
+(12, 13, 3, 'Book Keeping', 1, 22, '[Progress] 20\n[Priority] Medium\nStep 1 (Secretary): Collect bookkeeping documents, receipts, and supporting files from the client.\nStep 2 (Accountant): Record and categorize the transactions for the covered period.\nStep 3 (Accountant): Reconcile the bank records and subsidiary ledgers.\nStep 4 (Accountant): Prepare the bookkeeping summary and draft reports.\nStep 5 (Owner): Review the reports and confirm the bookkeeping output.\n[Deadline] 2026-04-16\n[CreatedAt] 2026-04-02T02:22:14+02:00\n[StepDone] 1\n[StepCompletedAt 1] 2026-04-02T09:00:40+08:00', '2026-04-16', 11);
 
 -- --------------------------------------------------------
 
@@ -341,6 +405,32 @@ INSERT INTO `document_type` (`Document_type_ID`, `Document_name`) VALUES
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `edit_certificate`
+--
+
+CREATE TABLE `edit_certificate` (
+  `Edit_certificate_ID` int(11) NOT NULL,
+  `template_id` varchar(80) NOT NULL,
+  `Services_type_Id` int(11) DEFAULT NULL,
+  `service_key` varchar(50) DEFAULT NULL,
+  `template_name` varchar(150) DEFAULT NULL,
+  `page_size` varchar(20) NOT NULL DEFAULT 'A4',
+  `font_family` varchar(50) NOT NULL DEFAULT 'arial',
+  `theme_key` varchar(50) NOT NULL DEFAULT 'none',
+  `logo_src` longtext DEFAULT NULL,
+  `logo_block` longtext DEFAULT NULL,
+  `content_block` longtext DEFAULT NULL,
+  `text_blocks` longtext DEFAULT NULL,
+  `signature_blocks` longtext DEFAULT NULL,
+  `is_selected` tinyint(1) NOT NULL DEFAULT 0,
+  `User_id` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `messages`
 --
 
@@ -381,7 +471,11 @@ INSERT INTO `notifications` (`notifications_ID`, `user_id`, `sender_id`, `type`,
 (12, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-03-26 04:48:40'),
 (13, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-03-26 04:48:40'),
 (14, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-03-26 05:26:01'),
-(15, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-03-26 05:26:01');
+(15, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-03-26 05:26:01'),
+(16, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-04-01 23:56:07'),
+(17, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-04-01 23:56:07'),
+(18, 26, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-04-02 00:22:14'),
+(19, 22, 1, 'task', 'Secretary admin assigned you a task for client Jose P. Castro.', 0, '2026-04-02 00:22:14');
 
 -- --------------------------------------------------------
 
@@ -454,7 +548,14 @@ INSERT INTO `settings` (`Settings_ID`, `setting_key`, `setting_value`) VALUES
 (774, 'smtp_host', 'smtp.gmail.com'),
 (775, 'smtp_port', '587'),
 (776, 'smtp_username', 'nacaya.michael123@gmail.com'),
-(777, 'smtp_password', 'tjqt pfnr xnyj mmmv');
+(777, 'smtp_password', 'tjqt pfnr xnyj mmmv'),
+(1051, 'allow_client_self_signup', '1'),
+(1052, 'allow_client_appointments', '1'),
+(1053, 'allow_client_consultations', '1'),
+(1054, 'support_email', ''),
+(1055, 'system_notice', ''),
+(1130, 'task_reminder_interval_hours', '4'),
+(1131, 'task_reminder_interval_minutes', '0');
 
 -- --------------------------------------------------------
 
@@ -511,7 +612,9 @@ INSERT INTO `status` (`Status_id`, `Status_group`, `Status_name`) VALUES
 (16, 'CONSULTATION', 'Reject'),
 (17, 'BUSINESS', 'Pending'),
 (18, 'BUSINESS', 'Registered'),
-(19, 'BUSINESS', 'Unregistered');
+(19, 'BUSINESS', 'Unregistered'),
+(20, 'TASK', 'Incomplete'),
+(21, 'TASK', 'Overdue');
 
 -- --------------------------------------------------------
 
@@ -548,7 +651,7 @@ CREATE TABLE `user` (
 
 INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `Failed_login_attempts`, `Locked_until`, `Role_id`, `Email`, `first_name`, `middle_name`, `last_name`, `Profile_Image`, `date_of_birth`, `phone_number`, `specialization_type_ID`, `sss_account_number`, `pagibig_account_number`, `philhealth_account_number`, `Created_at`, `updated_at`) VALUES
 (1, 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '2026-02-14 01:18:12', 0, NULL, 1, 'admin@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-02-14 01:18:12', '2026-03-25 10:45:57'),
-(21, 'dong', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:23:17', 0, NULL, 2, 'dong@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2026-03-20', '4234324', 4, '313213', '21212', NULL, '2026-03-20 13:23:17', '2026-03-26 07:55:29'),
+(21, 'dong', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:23:17', 0, NULL, 2, 'dong@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2026-03-20', '4234324', 4, '313213', '21212', NULL, '2026-03-20 13:23:17', '2026-04-02 12:15:36'),
 (22, 'roberth', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 21:23:52', 0, NULL, 3, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2026-03-20', '4234324', 3, '313213', '21212', NULL, '2026-03-20 13:23:52', '2026-03-26 07:54:29'),
 (23, 'nacaya.michael123@gmail.com', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:25:13', 0, NULL, 4, 'nacaya.michael123@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 13:25:13', '2026-03-20 13:25:13'),
 (24, 'michaelnacaya86@gmail.com', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 22:22:53', 0, NULL, 4, 'michaelnacaya86@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 14:22:53', '2026-03-26 05:34:29'),
@@ -606,6 +709,18 @@ ALTER TABLE `business_type`
   ADD PRIMARY KEY (`Business_type_ID`);
 
 --
+-- Indexes for table `certificates`
+--
+ALTER TABLE `certificates`
+  ADD PRIMARY KEY (`certificates_ID`),
+  ADD UNIQUE KEY `certificate_id` (`certificate_id`),
+  ADD UNIQUE KEY `uniq_certificates_client_service` (`Client_services_ID`),
+  ADD KEY `Client_ID` (`Client_ID`),
+  ADD KEY `Services_type_Id` (`Services_type_Id`),
+  ADD KEY `Edit_certificate_ID` (`Edit_certificate_ID`),
+  ADD KEY `Client_services_ID` (`Client_services_ID`);
+
+--
 -- Indexes for table `civil_status_type`
 --
 ALTER TABLE `civil_status_type`
@@ -658,14 +773,24 @@ ALTER TABLE `document_type`
   ADD PRIMARY KEY (`Document_type_ID`);
 
 --
+-- Indexes for table `edit_certificate`
+--
+ALTER TABLE `edit_certificate`
+  ADD PRIMARY KEY (`Edit_certificate_ID`),
+  ADD UNIQUE KEY `template_id` (`template_id`),
+  ADD KEY `Services_type_Id` (`Services_type_Id`),
+  ADD KEY `User_id` (`User_id`),
+  ADD KEY `idx_edit_certificate_service_selected` (`Services_type_Id`,`is_selected`);
+
+--
 -- Indexes for table `messages`
 --
 ALTER TABLE `messages`
   ADD PRIMARY KEY (`Message_ID`),
-  ADD KEY `sender_id` (`sender_id`),
-  ADD KEY `receiver_id` (`receiver_id`),
   ADD KEY `idx_messages_sender_id` (`sender_id`),
-  ADD KEY `idx_messages_receiver_id` (`receiver_id`);
+  ADD KEY `idx_messages_receiver_id` (`receiver_id`),
+  ADD KEY `sender_id` (`sender_id`),
+  ADD KEY `receiver_id` (`receiver_id`);
 
 --
 -- Indexes for table `notifications`
@@ -734,7 +859,7 @@ ALTER TABLE `appointment`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=37;
+  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=76;
 
 --
 -- AUTO_INCREMENT for table `business`
@@ -747,6 +872,12 @@ ALTER TABLE `business`
 --
 ALTER TABLE `business_type`
   MODIFY `Business_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT for table `certificates`
+--
+ALTER TABLE `certificates`
+  MODIFY `certificates_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `civil_status_type`
@@ -764,7 +895,7 @@ ALTER TABLE `client`
 -- AUTO_INCREMENT for table `client_services`
 --
 ALTER TABLE `client_services`
-  MODIFY `Client_services_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `Client_services_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `consultation`
@@ -785,6 +916,12 @@ ALTER TABLE `document_type`
   MODIFY `Document_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
+-- AUTO_INCREMENT for table `edit_certificate`
+--
+ALTER TABLE `edit_certificate`
+  MODIFY `Edit_certificate_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
 -- AUTO_INCREMENT for table `messages`
 --
 ALTER TABLE `messages`
@@ -794,7 +931,7 @@ ALTER TABLE `messages`
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+  MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `role`
@@ -812,7 +949,7 @@ ALTER TABLE `services_type`
 -- AUTO_INCREMENT for table `settings`
 --
 ALTER TABLE `settings`
-  MODIFY `Settings_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1037;
+  MODIFY `Settings_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1543;
 
 --
 -- AUTO_INCREMENT for table `specialization_type`
@@ -860,6 +997,17 @@ ALTER TABLE `business`
   ADD CONSTRAINT `business_ibfk_3` FOREIGN KEY (`Status_id`) REFERENCES `status` (`Status_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
+-- Constraints for table `certificates`
+--
+ALTER TABLE `certificates`
+  ADD CONSTRAINT `certificates_ibfk_1` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `certificates_ibfk_2` FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `certificates_ibfk_3` FOREIGN KEY (`Client_services_ID`) REFERENCES `client_services` (`Client_services_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `certificates_ibfk_4` FOREIGN KEY (`Edit_certificate_ID`) REFERENCES `edit_certificate` (`Edit_certificate_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `certificates_ibfk_client_service` FOREIGN KEY (`Client_services_ID`) REFERENCES `client_services` (`Client_services_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `certificates_ibfk_edit_certificate` FOREIGN KEY (`Edit_certificate_ID`) REFERENCES `edit_certificate` (`Edit_certificate_ID`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
 -- Constraints for table `client`
 --
 ALTER TABLE `client`
@@ -896,13 +1044,19 @@ ALTER TABLE `documents`
   ADD CONSTRAINT `documents_ibfk_3` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
+-- Constraints for table `edit_certificate`
+--
+ALTER TABLE `edit_certificate`
+  ADD CONSTRAINT `edit_certificate_ibfk_1` FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `edit_certificate_ibfk_service` FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `edit_certificate_ibfk_user` FOREIGN KEY (`User_id`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
 -- Constraints for table `messages`
 --
 ALTER TABLE `messages`
-  ADD CONSTRAINT `fk_messages_receiver_user` FOREIGN KEY (`receiver_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_messages_sender_user` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`receiver_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+  ADD CONSTRAINT `messages_receiver_user_fk` FOREIGN KEY (`receiver_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `messages_sender_user_fk` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `notifications`

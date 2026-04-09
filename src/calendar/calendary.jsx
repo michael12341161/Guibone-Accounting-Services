@@ -5,10 +5,20 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { api } from "../services/api";
 import { fetchPhilippinePublicHolidays, getCalendarYearsFromRange } from "../services/publicHolidays";
+import { normalizeTaskStatusLabel } from "../utils/task_deadline";
+import {
+  formatStepDateTime,
+  parseStepCompletionTimestamps,
+  parseStepRemarkTimestamps,
+  parseStepRemarks,
+} from "../utils/task_step_metadata";
 import Swal from "sweetalert2";
 import { showSuccessToast, useErrorToast } from "../utils/feedback";
 
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
+const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
+const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
+const PROGRESS_RE = /^\s*\[Progress\]\s*(\d{1,3})\s*$/i;
 
 // Utility: parse metadata lines embedded in task description
 // Supports lines like: [Priority] Low|Medium|High, [Deadline] DD/MM/YYYY or YYYY-MM-DD
@@ -73,6 +83,176 @@ function readMetaLine(desc, key) {
   return m ? String(m[1] || "").trim() : "";
 }
 
+function normalizeStepAssignee(value, fallback = "accountant") {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "owner" || v === "admin") return "owner";
+  if (v === "secretary") return "secretary";
+  if (v === "accountant") return "accountant";
+  if (fallback === "owner") return "owner";
+  if (fallback === "secretary") return "secretary";
+  return "accountant";
+}
+
+function stepAssigneeBadgeMeta(value) {
+  const normalized = normalizeStepAssignee(value);
+  if (normalized === "owner") {
+    return { label: "Owner", className: "border-sky-200 bg-sky-50 text-sky-700" };
+  }
+  if (normalized === "secretary") {
+    return { label: "Secretary", className: "border-amber-200 bg-amber-50 text-amber-700" };
+  }
+  return { label: "Accountant", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+}
+
+function parseTaskSteps(descriptionRaw) {
+  const lines = String(descriptionRaw || "").split(/\r?\n/);
+  const extracted = [];
+
+  for (const line of lines) {
+    const match = String(line || "").match(STEP_LINE_RE);
+    if (!match) continue;
+
+    const text = String(match[3] || "").trim();
+    if (!text) continue;
+
+    extracted.push({
+      number: Number(match[1]) || extracted.length + 1,
+      assignee: normalizeStepAssignee(match[2], "accountant"),
+      text,
+    });
+  }
+
+  return extracted.map((step, index) => ({
+    number: index + 1,
+    assignee: step.assignee,
+    text: step.text,
+  }));
+}
+
+function parseCompletedStepNumbers(descriptionRaw) {
+  const lines = String(descriptionRaw || "").split(/\r?\n/);
+  const values = new Set();
+
+  for (const line of lines) {
+    const match = String(line || "").match(STEP_DONE_RE);
+    if (!match) continue;
+
+    String(match[1] || "")
+      .split(/[,\s]+/)
+      .map((token) => parseInt(token, 10))
+      .filter((value) => Number.isInteger(value) && value > 0)
+      .forEach((value) => values.add(value));
+  }
+
+  return values;
+}
+
+function extractProgressValue(descriptionRaw) {
+  const lines = String(descriptionRaw || "").split(/\r?\n/);
+
+  for (const line of lines) {
+    const match = String(line || "").match(PROGRESS_RE);
+    if (!match) continue;
+
+    const progress = parseInt(match[1], 10);
+    if (!Number.isFinite(progress)) return 0;
+    return Math.max(0, Math.min(100, progress));
+  }
+
+  return 0;
+}
+
+function cleanTaskDescription(descriptionRaw) {
+  let next = String(descriptionRaw || "");
+  next = next.replace(/^\s*\[(Progress|Priority|Deadline|StepDone|PartnerId|PartnerName|CreatedAt|Archived|SecretaryArchived)\]\s*.*$/gim, "");
+  next = next.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
+  next = next.replace(/^\s*Step\s+\d+(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*.*$/gim, "");
+
+  return next
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function taskStatusMeta(statusRaw) {
+  const label = normalizeTaskStatusLabel(statusRaw);
+  const normalized = label.toLowerCase();
+
+  if (normalized === "completed") {
+    return { label, bg: "#dcfce7", text: "#166534", border: "#86efac" };
+  }
+  if (normalized === "declined") {
+    return { label, bg: "#fee2e2", text: "#991b1b", border: "#fca5a5" };
+  }
+  if (normalized === "overdue") {
+    return { label, bg: "#fee2e2", text: "#be123c", border: "#fda4af" };
+  }
+  if (normalized === "in progress") {
+    return { label, bg: "#dbeafe", text: "#1d4ed8", border: "#93c5fd" };
+  }
+  if (normalized === "incomplete") {
+    return { label, bg: "#fef3c7", text: "#92400e", border: "#fcd34d" };
+  }
+
+  return { label, bg: "#e2e8f0", text: "#334155", border: "#cbd5e1" };
+}
+
+function buildTaskCalendarDetails(task) {
+  const description = String(task?.description || "");
+  const steps = parseTaskSteps(description);
+  const completedStepNumbers = Array.from(parseCompletedStepNumbers(description))
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const completedStepNumberSet = new Set(completedStepNumbers);
+  const stepCompletionTimestamps = parseStepCompletionTimestamps(description);
+  const stepRemarks = parseStepRemarks(description);
+  const stepRemarkTimestamps = parseStepRemarkTimestamps(description);
+  const completedStepCount = steps.reduce(
+    (count, step) => (completedStepNumberSet.has(step.number) ? count + 1 : count),
+    0
+  );
+  const progressFromMeta = extractProgressValue(description);
+  const progress =
+    steps.length > 0
+      ? Math.max(progressFromMeta, Math.round((completedStepCount / steps.length) * 100))
+      : progressFromMeta;
+  const completedSteps = steps
+    .filter((step) => completedStepNumberSet.has(step.number))
+    .map((step) => {
+      const completedAt = String(stepCompletionTimestamps[step.number] || "").trim();
+      const remark = String(stepRemarks[step.number] || "").trim();
+      const remarkAt = String(stepRemarkTimestamps[step.number] || "").trim();
+
+      return {
+        ...step,
+        completedAt,
+        completedAtLabel: formatStepDateTime(completedAt),
+        remark,
+        remarkAt,
+        remarkAtLabel: formatStepDateTime(remarkAt),
+      };
+    });
+
+  return {
+    status: normalizeTaskStatusLabel(task?.status || task?.status_name),
+    serviceName: String(task?.service_name || task?.service || "").trim(),
+    steps,
+    stepCount: steps.length,
+    completedStepNumbers,
+    completedStepNumberSet,
+    completedStepCount,
+    completedSteps,
+    stepCompletionTimestamps,
+    stepRemarks,
+    stepRemarkTimestamps,
+    progress,
+    generalDescription: cleanTaskDescription(description),
+    stepAssignees: Array.from(new Set(steps.map((step) => normalizeStepAssignee(step.assignee, "accountant")))),
+  };
+}
+
 function schedulingStatusMeta(statusRaw) {
   const s = String(statusRaw || "").trim().toLowerCase();
   if (s === "approved" || s === "active" || s === "confirmed") {
@@ -130,7 +310,7 @@ export default function Calendar() {
   const isAccountant = roleId === 3;
   const isSecretary = roleId === 2;
   const canManageCalendar = isAdmin || isSecretary;
-  const accountantId = sessionUser?.id || null;
+  const canViewTaskCalendar = isAdmin || isSecretary || isAccountant;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -476,9 +656,11 @@ export default function Calendar() {
     };
   }, [canManageCalendar]);
 
-  // Accountant: Fetch tasks assigned to this accountant; auto-refresh on interval
+  // Shared task calendar: fetch visible tasks for the signed-in role; auto-refresh on interval
   useEffect(() => {
-    if (!isAccountant) return;
+    if (!canViewTaskCalendar) return;
+
+    let alive = true;
 
     const load = async ({ silent } = { silent: false }) => {
       if (!silent) setLoading(true);
@@ -486,14 +668,13 @@ export default function Calendar() {
       try {
         const res = await api.get("task_list.php");
         const list = Array.isArray(res.data?.tasks) ? res.data.tasks : [];
-        const mine = accountantId
-          ? list.filter((t) => (t.accountant_id || t.user_id || t.User_ID) === accountantId)
-          : list;
-        setTasks(mine);
+        if (!alive) return;
+        setTasks(list);
       } catch (e) {
+        if (!alive) return;
         setError("Failed to load tasks.");
       } finally {
-        if (!silent) setLoading(false);
+        if (!silent && alive) setLoading(false);
       }
     };
 
@@ -501,13 +682,14 @@ export default function Calendar() {
     const intv = setInterval(() => load({ silent: true }), 15000);
 
     return () => {
+      alive = false;
       clearInterval(intv);
     };
-  }, [isAccountant, accountantId]);
+  }, [canViewTaskCalendar]);
 
-  // Build task events (Accountant)
+  // Build task events for secretary, accountant, and admin
   const taskEvents = useMemo(() => {
-    if (!isAccountant) return [];
+    if (!canViewTaskCalendar) return [];
 
     const evts = [];
     for (const t of tasks) {
@@ -518,6 +700,7 @@ export default function Calendar() {
 
       const priorityValue = t.priority || t.task_priority || t.level || meta.priority || "Low";
       const colors = priorityColor(priorityValue);
+      const taskDetails = buildTaskCalendarDetails(t);
 
       const rawTitle = t.title || t.name || "Untitled";
       const clientName = t.client_name || "";
@@ -535,16 +718,19 @@ export default function Calendar() {
           kind: "task",
           task: {
             ...t,
+            ...taskDetails,
             priority: priorityValue,
+            deadline: date,
             due_date: date,
             client_name: clientName,
             title: rawTitle,
+            status: taskDetails.status,
           },
         },
       });
     }
     return evts;
-  }, [isAccountant, tasks]);
+  }, [canViewTaskCalendar, tasks]);
 
   // Build shared announcement events (Admin/Secretary manage; everyone can view)
   const sharedEvents = useMemo(() => {
@@ -687,7 +873,62 @@ export default function Calendar() {
     setModalOpen(true);
   };
 
+  const activeTaskDetails = useMemo(() => {
+    if (activeTask?.kind !== "task") return null;
+    return buildTaskCalendarDetails(activeTask);
+  }, [activeTask]);
+
+  const renderCalendarEventContent = (arg) => {
+    const kind = arg.event.extendedProps?.kind;
+
+    if (kind === "announcement" || kind === "holiday") {
+      const title = arg.event.title || (kind === "holiday" ? "Holiday" : "Announcement");
+      return (
+        <div className="acct-event" title={title}>
+          <div className="acct-event-title">{title}</div>
+          <div className="acct-event-client">{kind === "holiday" ? "Holiday" : "Announcement"}</div>
+        </div>
+      );
+    }
+
+    if (kind === "consultation") {
+      const consultation = arg.event.extendedProps?.consultation;
+      const title = consultation?.service || arg.event.title || "Consultation";
+      const subtitle = [consultation?.clientName || "", consultation?.time ? toTimeLabel(consultation.time) : ""]
+        .filter(Boolean)
+        .join(" | ");
+
+      return (
+        <div className="acct-event" title={subtitle ? `${title} - ${subtitle}` : title}>
+          <div className="acct-event-title">{title}</div>
+          {subtitle ? <div className="acct-event-client">{subtitle}</div> : null}
+        </div>
+      );
+    }
+
+    const taskEvent = arg.event.extendedProps?.task;
+    const title = taskEvent?.title || arg.event.title || "Untitled";
+    const client = taskEvent?.client_name || "";
+    const status = normalizeTaskStatusLabel(taskEvent?.status);
+    const stepCount = Number(taskEvent?.stepCount ?? taskEvent?.step_count ?? 0);
+    const completedStepCount = Number(taskEvent?.completedStepCount ?? taskEvent?.completed_step_count ?? 0);
+    const subtitle = [client, status, stepCount > 0 ? `${completedStepCount}/${stepCount} steps` : ""]
+      .filter(Boolean)
+      .join(" | ");
+
+    return (
+      <div className="acct-event" title={subtitle ? `${title} - ${subtitle}` : title}>
+        <div className="acct-event-title">{title}</div>
+        {subtitle ? <div className="acct-event-client">{subtitle}</div> : null}
+      </div>
+    );
+  };
+
+  const renderEventContent = renderCalendarEventContent;
+/*
   const renderEventContent = (arg) => {
+    return renderCalendarEventContent(arg);
+
     const kind = arg.event.extendedProps?.kind;
 
     if (kind === "announcement" || kind === "holiday") {
@@ -723,6 +964,7 @@ export default function Calendar() {
       </div>
     );
   };
+*/
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
@@ -731,10 +973,10 @@ export default function Calendar() {
       {/* Header */}
       <div className="flex items-start sm:items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-slate-800">{canManageCalendar ? "" : "Task Calendar"}</h2>
+          <h2 className="text-base font-semibold text-slate-800">{canManageCalendar ? "Calendar" : "Task Calendar"}</h2>
           <p className="text-xs text-slate-500">
             {canManageCalendar
-              ? "Create announcements and view client consultations plus live Philippine public holidays. Click an event to view details."
+              ? "Create announcements and view task schedules, client consultations, and live Philippine public holidays. Click an event to view details."
               : "View your assigned tasks, announcements, and live Philippine public holidays by date. Click an event to see full details."}
           </p>
         </div>
@@ -751,7 +993,7 @@ export default function Calendar() {
               </button>
             </>
           ) : (
-            loading && <div className="text-xs text-slate-500">Refreshingâ€¦</div>
+            loading && <div className="text-xs text-slate-500">Refreshing...</div>
           )}
         </div>
       </div>
@@ -794,6 +1036,30 @@ export default function Calendar() {
                   aria-hidden="true"
                 />
                 <span className="font-medium">Consultation Declined</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <span
+                  className="inline-block h-3 w-3 rounded-sm border"
+                  style={{ backgroundColor: priorityColor("High").bg, borderColor: priorityColor("High").border }}
+                  aria-hidden="true"
+                />
+                <span className="font-medium">Task High</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <span
+                  className="inline-block h-3 w-3 rounded-sm border"
+                  style={{ backgroundColor: priorityColor("Medium").bg, borderColor: priorityColor("Medium").border }}
+                  aria-hidden="true"
+                />
+                <span className="font-medium">Task Medium</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <span
+                  className="inline-block h-3 w-3 rounded-sm border"
+                  style={{ backgroundColor: priorityColor("Low").bg, borderColor: priorityColor("Low").border }}
+                  aria-hidden="true"
+                />
+                <span className="font-medium">Task Low</span>
               </div>
             </>
           ) : (
@@ -863,21 +1129,25 @@ export default function Calendar() {
 
       {/* Details modal */}
       {modalOpen && activeTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setModalOpen(false)} />
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-label="Event details"
-            className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
-          >
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={() => setModalOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
+            <div className="mx-auto w-full max-w-lg pointer-events-none">
+              <div
+                ref={dialogRef}
+                role="dialog"
+                aria-label="Event details"
+                className="pointer-events-auto relative z-10 flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:max-h-[calc(100vh-3rem)]"
+              >
+                <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/70 px-5 py-4">
               <div className="min-w-0">
                 <h3 className="text-base font-semibold text-slate-800 truncate">
                   {activeTask.title || activeTask.name || (activeTask.kind === "holiday" ? "Holiday" : "Event")}
                 </h3>
                 {activeTask.kind === "task" ? (
-                  <div className="mt-1 text-xs text-slate-500">Due on {normalizeDueDate(activeTask.due_date) || "-"}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Due on {normalizeDueDate(activeTask.due_date || activeTask.deadline) || "-"}
+                  </div>
                 ) : activeTask.kind === "consultation" ? (
                   <div className="mt-1 text-xs text-slate-500">
                     Consultation
@@ -902,162 +1172,333 @@ export default function Calendar() {
               >
                 x
               </button>
-            </div>
-
-            {activeTask.kind === "task" ? (
-              <div className="mt-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Client</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.client_name || "-"}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Status</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.status || "Not Started"}</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Priority</div>
-                    <div className="mt-1 text-sm text-slate-800">{String(activeTask.priority || "Low").replace(/^\w/, (c) => c.toUpperCase())}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Accountant</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.accountant_name || "-"}</div>
-                  </div>
                 </div>
 
-                {activeTask.description && (
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Description</div>
-                    <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
-                      {String(activeTask.description)
-                        .replace(/^\s*\[(Progress|Priority|Deadline)\]\s*.*$/gim, "")
-                        .trim() || "-"}
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                  {activeTask.kind === "task" ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs font-semibold text-slate-700">Task status</div>
+                        {(() => {
+                          const meta = taskStatusMeta(activeTaskDetails?.status || activeTask.status);
+                          return (
+                            <span
+                              className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold"
+                              style={{ backgroundColor: meta.bg, color: meta.text, borderColor: meta.border }}
+                            >
+                              {meta.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Client</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.client_name || "-"}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Service</div>
+                          <div className="mt-1 text-sm text-slate-800">
+                            {activeTaskDetails?.serviceName || activeTask.service_name || activeTask.service || "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Primary Assignee</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.accountant_name || "-"}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Partner Accountant</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.partner_name || "-"}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Priority</div>
+                          <div className="mt-1 text-sm text-slate-800">
+                            {String(activeTask.priority || "Low").replace(/^\w/, (c) => c.toUpperCase())}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Progress</div>
+                          <div className="mt-1 text-sm text-slate-800">
+                            {activeTaskDetails?.stepCount
+                              ? `${activeTaskDetails.completedStepCount}/${activeTaskDetails.stepCount} steps completed`
+                              : `${activeTaskDetails?.progress || 0}%`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Step Owners</div>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {Array.isArray(activeTaskDetails?.stepAssignees) && activeTaskDetails.stepAssignees.length > 0 ? (
+                            activeTaskDetails.stepAssignees.map((assignee) => {
+                              const meta = stepAssigneeBadgeMeta(assignee);
+                              return (
+                                <span
+                                  key={assignee}
+                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}
+                                >
+                                  {meta.label}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span className="text-sm text-slate-800">-</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Completed Work</div>
+                          <div className="text-xs text-slate-500">
+                            {activeTaskDetails?.completedStepCount
+                              ? `${activeTaskDetails.completedStepCount} step${activeTaskDetails.completedStepCount === 1 ? "" : "s"} done`
+                              : "No completed steps yet"}
+                          </div>
+                        </div>
+
+                        {Array.isArray(activeTaskDetails?.completedSteps) && activeTaskDetails.completedSteps.length > 0 ? (
+                          <div className="mt-3 space-y-2">
+                            {activeTaskDetails.completedSteps.map((step) => {
+                              const assigneeMeta = stepAssigneeBadgeMeta(step.assignee);
+                              return (
+                                <div
+                                  key={`completed-step-${step.number}`}
+                                  className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="inline-flex items-center rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                        Step {step.number}
+                                      </span>
+                                      <span
+                                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${assigneeMeta.className}`}
+                                      >
+                                        {assigneeMeta.label}
+                                      </span>
+                                    </div>
+                                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                      Completed
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{step.text}</div>
+
+                                  {step.completedAtLabel ? (
+                                    <div className="mt-2 text-xs font-medium text-emerald-700">
+                                      Completed on {step.completedAtLabel}
+                                    </div>
+                                  ) : null}
+
+                                  {step.remark ? (
+                                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                      <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                        Emergency remark
+                                      </div>
+                                      {step.remarkAtLabel ? (
+                                        <div className="mt-1 text-[11px] font-medium text-amber-700">
+                                          Updated on {step.remarkAtLabel}
+                                        </div>
+                                      ) : null}
+                                      <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">
+                                        {step.remark}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                            No completed work recorded yet.
+                          </div>
+                        )}
+                      </div>
+
+                      {activeTaskDetails?.stepCount > 0 ? (
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-[11px] uppercase tracking-wide text-slate-500">Task Steps</div>
+                            <div className="text-xs text-slate-500">
+                              {activeTaskDetails.completedStepCount}/{activeTaskDetails.stepCount} completed
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {activeTaskDetails.steps.map((step) => {
+                              const done = activeTaskDetails.completedStepNumberSet.has(step.number);
+                              const assigneeMeta = stepAssigneeBadgeMeta(step.assignee);
+                              return (
+                                <div
+                                  key={step.number}
+                                  className={`rounded-lg border px-3 py-2 ${
+                                    done ? "border-emerald-200 bg-emerald-50/70" : "border-slate-200 bg-slate-50/70"
+                                  }`}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-sm font-semibold text-slate-800">Step {step.number}</div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span
+                                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${assigneeMeta.className}`}
+                                      >
+                                        {assigneeMeta.label}
+                                      </span>
+                                      <span
+                                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                          done
+                                            ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                                            : "border-slate-200 bg-white text-slate-600"
+                                        }`}
+                                      >
+                                        {done ? "Completed" : "Pending"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{step.text}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {activeTaskDetails?.generalDescription ? (
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Description</div>
+                          <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{activeTaskDetails.generalDescription}</div>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                )}
-              </div>
-            ) : activeTask.kind === "consultation" ? (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold text-slate-700">Status</div>
-                  {(() => {
-                    const meta = schedulingStatusMeta(activeTask.status);
-                    return (
-                      <span
-                        className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold"
-                        style={{ backgroundColor: meta.bg, color: meta.text, borderColor: meta.border }}
+                  ) : activeTask.kind === "consultation" ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs font-semibold text-slate-700">Status</div>
+                        {(() => {
+                          const meta = schedulingStatusMeta(activeTask.status);
+                          return (
+                            <span
+                              className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold"
+                              style={{ backgroundColor: meta.bg, color: meta.text, borderColor: meta.border }}
+                            >
+                              {meta.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Client</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.clientName || "-"}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Type</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.appointmentType || "-"}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Date</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.date || "-"}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Time</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.time ? toTimeLabel(activeTask.time) : "-"}</div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Notes</div>
+                        <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{activeTask.notes || "-"}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">Type</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.kind === "holiday" ? "Holiday" : "Announcement"}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-wide text-slate-500">All day</div>
+                          <div className="mt-1 text-sm text-slate-800">{activeTask.allDay ? "Yes" : "No"}</div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                          {activeTask.kind === "holiday" ? "Holiday name" : "Description"}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{activeTask.description || "-"}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+                  {canManageCalendar && activeTask.kind === "announcement" && (
+                    <>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={() => {
+                          setModalOpen(false);
+                          openEdit(activeTask);
+                        }}
                       >
-                        {meta.label}
-                      </span>
-                    );
-                  })()}
-                </div>
+                        Edit
+                      </button>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Client</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.clientName || "-"}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Type</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.appointmentType || "-"}</div>
-                  </div>
-                </div>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100"
+                          onClick={async () => {
+                            const result = await Swal.fire({
+                              title: "Remove this event?",
+                              text: "This will permanently remove the announcement.",
+                              icon: "warning",
+                              showCancelButton: true,
+                              confirmButtonText: "Remove",
+                              cancelButtonText: "Cancel",
+                              confirmButtonColor: "#e11d48", // rose-600
+                            });
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Date</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.date || "-"}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Time</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.time ? toTimeLabel(activeTask.time) : "-"}</div>
-                  </div>
-                </div>
+                            if (!result.isConfirmed) return;
 
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Notes</div>
-                  <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{activeTask.notes || "-"}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Type</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.kind === "holiday" ? "Holiday" : "Announcement"}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">All day</div>
-                    <div className="mt-1 text-sm text-slate-800">{activeTask.allDay ? "Yes" : "No"}</div>
-                  </div>
-                </div>
+                            await deleteCalendarEvent(activeTask);
+                            setModalOpen(false);
 
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                    {activeTask.kind === "holiday" ? "Holiday name" : "Description"}
-                  </div>
-                  <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{activeTask.description || "-"}</div>
-                </div>
-              </div>
-            )}
+                            showSuccessToast({
+                              title: "Removed",
+                              description: "The event has been removed.",
+                              duration: 1400,
+                            });
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </>
+                  )}
 
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              {canManageCalendar && activeTask.kind === "announcement" && (
-                <>
                   <button
                     type="button"
                     className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    onClick={() => {
-                      setModalOpen(false);
-                      openEdit(activeTask);
-                    }}
+                    onClick={() => setModalOpen(false)}
                   >
-                    Edit
+                    Close
                   </button>
-
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100"
-                      onClick={async () => {
-                        const result = await Swal.fire({
-                          title: "Remove this event?",
-                          text: "This will permanently remove the announcement.",
-                          icon: "warning",
-                          showCancelButton: true,
-                          confirmButtonText: "Remove",
-                          cancelButtonText: "Cancel",
-                          confirmButtonColor: "#e11d48", // rose-600
-                        });
-
-                        if (!result.isConfirmed) return;
-
-                        await deleteCalendarEvent(activeTask);
-                        setModalOpen(false);
-
-                        showSuccessToast({
-                          title: "Removed",
-                          description: "The event has been removed.",
-                          duration: 1400,
-                        });
-                      }}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </>
-              )}
-
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={() => setModalOpen(false)}
-              >
-                Close
-              </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
