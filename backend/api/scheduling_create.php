@@ -237,12 +237,14 @@ try {
     if ($resolvedClientId <= 0) {
         respond(404, ['success' => false, 'message' => 'Client not found']);
     }
-    if (!monitoring_client_business_is_registered($conn, $resolvedClientId)) {
+    $serviceAccessState = monitoring_client_service_access_state($conn, $resolvedClientId);
+    if (empty($serviceAccessState['business_registered'])) {
         respond(422, [
             'success' => false,
-            'message' => $roleId === MONITORING_ROLE_CLIENT
-                ? 'Consultation is available only after your business permit is uploaded and your business is registered.'
-                : 'Consultation is available only after the client business permit is uploaded and the business is registered.',
+            'message' => monitoring_client_service_restriction_message(
+                $roleId === MONITORING_ROLE_CLIENT,
+                $serviceAccessState['restriction_reason'] ?? null
+            ),
             'allowed_services' => ['Processing'],
         ]);
     }

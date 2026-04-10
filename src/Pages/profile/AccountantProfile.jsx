@@ -8,7 +8,6 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
-import ForgotPasswordModal from "../auth/forgot_password";
 import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const EMPTY_FORM = Object.freeze({
@@ -86,7 +85,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
   useErrorToast(error);
   useErrorToast(saveError);
   const [successMessage, setSuccessMessage] = useState("");
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -134,7 +132,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
       setIsEditing(false);
       setSaveError("");
       setSuccessMessage("");
-      setChangePasswordOpen(false);
       return;
     }
 
@@ -157,7 +154,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
     setIsEditing(false);
     setSaveError("");
     setSuccessMessage("");
-    setChangePasswordOpen(false);
     onClose?.();
   };
 
@@ -323,13 +319,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
       <Button variant="success" onClick={handleSave} disabled={saving || uploadingImage}>
         {saving ? "Saving..." : "Save Changes"}
       </Button>
-      <Button
-        variant="secondary"
-        onClick={() => setChangePasswordOpen(true)}
-        disabled={saving || uploadingImage || !profile?.email}
-      >
-        Change Password
-      </Button>
       <Button variant="secondary" onClick={handleClose} disabled={saving || uploadingImage}>
         Close
       </Button>
@@ -338,13 +327,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
     <>
       <Button onClick={handleStartEdit} disabled={loading || uploadingImage || !profile}>
         Edit Profile
-      </Button>
-      <Button
-        variant="secondary"
-        onClick={() => setChangePasswordOpen(true)}
-        disabled={loading || uploadingImage || !profile?.email}
-      >
-        Change Password
       </Button>
       <Button variant="secondary" onClick={handleClose} disabled={uploadingImage}>
         Close
@@ -535,11 +517,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
         )}
       </Modal>
 
-      <ForgotPasswordModal
-        open={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
-        defaultEmail={profile?.email || user?.email || ""}
-      />
     </>
   );
 }

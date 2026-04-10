@@ -44,11 +44,17 @@ function normalizeOptionalString($value): ?string {
 }
 
 function publicSecuritySettings(array $settings): array {
-    $publicKeys = ['maxPasswordLength', 'passwordExpiryDays'];
+    $publicKeys = ['maxPasswordLength', 'passwordExpiryDays', 'loginVerificationEnabled'];
+    $booleanKeys = ['loginVerificationEnabled'];
     $publicSettings = [];
 
     foreach ($publicKeys as $key) {
         if (!array_key_exists($key, $settings)) {
+            continue;
+        }
+
+        if (in_array($key, $booleanKeys, true)) {
+            $publicSettings[$key] = !empty($settings[$key]);
             continue;
         }
 

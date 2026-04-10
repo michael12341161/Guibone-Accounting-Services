@@ -362,8 +362,11 @@ CREATE TABLE `documents` (
   `appointment_id` int(11) DEFAULT NULL,
   `Client_ID` int(11) DEFAULT NULL,
   `Document_type_ID` int(11) DEFAULT NULL,
+  `Status_id` int(11) DEFAULT NULL,
   `filename` varchar(255) DEFAULT NULL,
   `filepath` varchar(255) DEFAULT NULL,
+  `duration_days` int(11) DEFAULT NULL,
+  `expiration_date` date DEFAULT NULL,
   `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -542,6 +545,7 @@ INSERT INTO `settings` (`Settings_ID`, `setting_key`, `setting_value`) VALUES
 (3, 'session_timeout_minutes', '30'),
 (4, 'lockout_attempts', '5'),
 (5, 'lockout_duration_minutes', '15'),
+(6, 'login_verification_enabled', '1'),
 (771, 'system_company_name', 'Guibone Accounting Services (GAS)'),
 (772, 'app_base_url', 'http://localhost:3000'),
 (773, 'send_client_status_emails', '1'),
@@ -614,7 +618,9 @@ INSERT INTO `status` (`Status_id`, `Status_group`, `Status_name`) VALUES
 (18, 'BUSINESS', 'Registered'),
 (19, 'BUSINESS', 'Unregistered'),
 (20, 'TASK', 'Incomplete'),
-(21, 'TASK', 'Overdue');
+(21, 'TASK', 'Overdue'),
+(22, 'DOCUMENTS', 'Renewed'),
+(23, 'DOCUMENTS', 'Expired');
 
 -- --------------------------------------------------------
 
@@ -764,7 +770,8 @@ ALTER TABLE `documents`
   ADD PRIMARY KEY (`Documents_ID`),
   ADD KEY `appointment_id` (`appointment_id`),
   ADD KEY `Client_ID` (`Client_ID`),
-  ADD KEY `Document_type_ID` (`Document_type_ID`);
+  ADD KEY `Document_type_ID` (`Document_type_ID`),
+  ADD KEY `Status_id` (`Status_id`);
 
 --
 -- Indexes for table `document_type`
@@ -1041,7 +1048,8 @@ ALTER TABLE `consultation`
 ALTER TABLE `documents`
   ADD CONSTRAINT `documents_ibfk_1` FOREIGN KEY (`appointment_id`) REFERENCES `appointment` (`Appointment_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `documents_ibfk_2` FOREIGN KEY (`Document_type_ID`) REFERENCES `document_type` (`Document_type_ID`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `documents_ibfk_3` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE;
+  ADD CONSTRAINT `documents_ibfk_3` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `documents_ibfk_4` FOREIGN KEY (`Status_id`) REFERENCES `status` (`Status_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `edit_certificate`

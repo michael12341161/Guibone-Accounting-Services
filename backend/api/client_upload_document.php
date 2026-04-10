@@ -108,6 +108,17 @@ try {
     }
     $documentTypeId = (int)$documentTypeIdRaw;
 
+    $durationDaysInput = null;
+    if (isset($_POST['duration_days'])) {
+        $durationDaysRaw = trim((string)$_POST['duration_days']);
+        if ($durationDaysRaw !== '') {
+            if (!ctype_digit($durationDaysRaw) || (int)$durationDaysRaw <= 0) {
+                respond(422, ['success' => false, 'message' => 'duration_days must be a positive integer']);
+            }
+            $durationDaysInput = (int)$durationDaysRaw;
+        }
+    }
+
     if (!isset($_FILES['file'])) {
         respond(400, ['success' => false, 'message' => 'No file uploaded']);
     }
@@ -144,16 +155,30 @@ try {
         respond(500, ['success' => false, 'message' => 'documents table must include Document_type_ID for typed document uploads']);
     }
 
+    $statusColumn = getColumnInfo($conn, 'documents', 'Status_id');
+    $durationDaysColumn = getColumnInfo($conn, 'documents', 'duration_days');
+    $expirationDateColumn = getColumnInfo($conn, 'documents', 'expiration_date');
+
     $appointmentColumn = getColumnInfo($conn, 'documents', 'appointment_id');
     if ($appointmentColumn !== null && !isNullableOrHasDefault($appointmentColumn)) {
         respond(500, ['success' => false, 'message' => 'documents.appointment_id must allow NULL for client document uploads']);
     }
 
+    $ensuredType = null;
     if (tableExists($conn, 'Document_type')) {
         $ensuredType = monitoring_document_ensure_type_exists($conn, $documentTypeId);
         if ($ensuredType === null) {
             respond(404, ['success' => false, 'message' => 'Document type not found']);
         }
+    }
+
+    $documentTypeName = trim((string)($ensuredType['name'] ?? (monitoring_document_known_types()[$documentTypeId] ?? '')));
+    $allowedDurationDays = monitoring_document_allowed_duration_days($documentTypeName);
+    if ($durationDaysInput !== null && !empty($allowedDurationDays) && !in_array($durationDaysInput, $allowedDurationDays, true)) {
+        respond(422, [
+            'success' => false,
+            'message' => 'Invalid duration_days for ' . ($documentTypeName !== '' ? $documentTypeName : 'this document') . '.',
+        ]);
     }
 
     $file = $_FILES['file'];
@@ -193,6 +218,51 @@ try {
     }
 
     $publicRelativePath = 'uploads/client_files/' . $storedName;
+    $existingDocuments = [];
+    $existingSql = 'SELECT Documents_ID AS id, filepath
+                    FROM documents
+                    WHERE Client_ID = :client_id
+                      AND Document_type_ID = :document_type_id';
+    if ($durationDaysColumn !== null) {
+        $existingSql = 'SELECT Documents_ID AS id, filepath, duration_days
+                        FROM documents
+                        WHERE Client_ID = :client_id
+                          AND Document_type_ID = :document_type_id';
+    }
+    if ($appointmentColumn !== null) {
+        $existingSql .= ' AND appointment_id IS NULL';
+    }
+    $existingSql .= ' ORDER BY Documents_ID DESC';
+
+    $conn->beginTransaction();
+
+    $existingStmt = $conn->prepare($existingSql);
+    $existingStmt->execute([
+        ':client_id' => $clientId,
+        ':document_type_id' => $documentTypeId,
+    ]);
+    $existingDocuments = $existingStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $latestExistingDocument = $existingDocuments[0] ?? null;
+    $fallbackDurationDays = null;
+    if (is_array($latestExistingDocument) && array_key_exists('duration_days', $latestExistingDocument)) {
+        $existingDurationDays = (int)($latestExistingDocument['duration_days'] ?? 0);
+        if ($existingDurationDays > 0) {
+            $fallbackDurationDays = $existingDurationDays;
+        }
+    }
+
+    $resolvedDurationDays = $durationDaysColumn !== null || $expirationDateColumn !== null
+        ? monitoring_document_resolve_duration_days($documentTypeName, $durationDaysInput, $fallbackDurationDays)
+        : null;
+    $referenceDate = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->format('Y-m-d');
+    $expirationDate = $expirationDateColumn !== null
+        ? monitoring_document_calculate_expiration_date($referenceDate, $resolvedDurationDays)
+        : null;
+    $resolvedStatusId = $statusColumn !== null && !empty($existingDocuments)
+        ? monitoring_resolve_document_status_id($conn, 'Renewed')
+        : null;
+
     $columns = [];
     $placeholders = [];
     $params = [];
@@ -211,6 +281,12 @@ try {
     $placeholders[] = ':document_type_id';
     $params[':document_type_id'] = $documentTypeId;
 
+    if ($statusColumn !== null) {
+        $columns[] = 'Status_id';
+        $placeholders[] = ':status_id';
+        $params[':status_id'] = $resolvedStatusId;
+    }
+
     $columns[] = 'filename';
     $placeholders[] = ':filename';
     $params[':filename'] = $originalName;
@@ -219,24 +295,17 @@ try {
     $placeholders[] = ':filepath';
     $params[':filepath'] = $publicRelativePath;
 
-    $existingDocuments = [];
-    $existingSql = 'SELECT Documents_ID AS id, filepath
-                    FROM documents
-                    WHERE Client_ID = :client_id
-                      AND Document_type_ID = :document_type_id';
-    if ($appointmentColumn !== null) {
-        $existingSql .= ' AND appointment_id IS NULL';
+    if ($durationDaysColumn !== null) {
+        $columns[] = 'duration_days';
+        $placeholders[] = ':duration_days';
+        $params[':duration_days'] = $resolvedDurationDays;
     }
-    $existingSql .= ' ORDER BY Documents_ID DESC';
 
-    $conn->beginTransaction();
-
-    $existingStmt = $conn->prepare($existingSql);
-    $existingStmt->execute([
-        ':client_id' => $clientId,
-        ':document_type_id' => $documentTypeId,
-    ]);
-    $existingDocuments = $existingStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    if ($expirationDateColumn !== null) {
+        $columns[] = 'expiration_date';
+        $placeholders[] = ':expiration_date';
+        $params[':expiration_date'] = $expirationDate;
+    }
 
     if (!empty($existingDocuments)) {
         $deleteParams = [];
@@ -285,6 +354,10 @@ try {
         'original_name' => $originalName,
         'path' => $publicRelativePath,
         'replaced' => !empty($existingDocuments),
+        'status_id' => $resolvedStatusId,
+        'status' => !empty($existingDocuments) ? 'Renewed' : 'Uploaded',
+        'duration_days' => $resolvedDurationDays,
+        'expiration_date' => $expirationDate,
     ]);
 } catch (Throwable $e) {
     if (isset($conn) && $conn instanceof PDO && $conn->inTransaction()) {

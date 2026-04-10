@@ -115,18 +115,27 @@ try {
     $biz = $qb->fetch(PDO::FETCH_ASSOC) ?: null;
 
     if ($biz !== null) {
-        $hasBusinessPermit = monitoring_document_client_has_business_permit($conn, $clientId);
+        $permitState = monitoring_document_client_business_permit_state($conn, $clientId);
+        $hasBusinessPermit = !empty($permitState['has_business_permit']);
+        $hasActiveBusinessPermit = !empty($permitState['has_active_business_permit']);
+        $hasExpiredBusinessPermit = !empty($permitState['has_expired_business_permit']);
         $statusName = isset($biz['business_status_name']) ? (string)$biz['business_status_name'] : null;
         $statusId = $biz['business_status_id'] ?? null;
         $businessStatus = monitoring_business_status_label($statusName, $statusId, 'Pending');
-        if ($hasBusinessPermit) {
+        if ($hasExpiredBusinessPermit) {
+            $businessStatus = 'Expired';
+        } elseif ($hasActiveBusinessPermit) {
             $businessStatus = 'Registered';
         }
 
         $biz['business_status_name'] = $businessStatus;
         $biz['business_status'] = $businessStatus;
-        $biz['document_status'] = $businessStatus === 'Registered' ? 'Registered' : 'Pending';
+        $biz['document_status'] = $businessStatus === 'Registered'
+            ? 'Registered'
+            : ($businessStatus === 'Expired' ? 'Expired' : 'Pending');
         $biz['has_business_permit'] = $hasBusinessPermit;
+        $biz['has_expired_business_permit'] = $hasExpiredBusinessPermit;
+        $biz['business_permit_expiration_date'] = $permitState['expiration_date'] ?? null;
     }
 
     respond(200, ['success' => true, 'business' => $biz]);

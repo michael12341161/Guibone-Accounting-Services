@@ -2,22 +2,48 @@
 require_once __DIR__ . '/document_helpers.php';
 require_once __DIR__ . '/status_helpers.php';
 
-function monitoring_client_business_is_registered(PDO $conn, int $clientId): bool
+function monitoring_client_service_access_state(PDO $conn, int $clientId): array
 {
+    $defaultState = [
+        'client_id' => $clientId > 0 ? $clientId : null,
+        'business_registered' => false,
+        'business_permit_expired' => false,
+        'restricted_to_processing' => true,
+        'restriction_reason' => 'missing_permit',
+        'allowed_services' => ['Processing'],
+    ];
+
     if ($clientId <= 0) {
-        return false;
+        return $defaultState;
     }
 
-    $hasBusinessPermit = monitoring_document_client_has_business_permit($conn, $clientId);
-    if ($hasBusinessPermit) {
-        return true;
+    $permitState = monitoring_document_client_business_permit_state($conn, $clientId);
+    if (!empty($permitState['has_active_business_permit'])) {
+        return [
+            'client_id' => $clientId,
+            'business_registered' => true,
+            'business_permit_expired' => false,
+            'restricted_to_processing' => false,
+            'restriction_reason' => null,
+            'allowed_services' => [],
+        ];
+    }
+    if (!empty($permitState['has_expired_business_permit'])) {
+        return [
+            'client_id' => $clientId,
+            'business_registered' => false,
+            'business_permit_expired' => true,
+            'restricted_to_processing' => true,
+            'restriction_reason' => 'expired',
+            'allowed_services' => ['Processing'],
+        ];
     }
 
     if (
         !monitoring_document_table_exists($conn, 'business')
         || !monitoring_document_column_exists($conn, 'business', 'Client_ID')
     ) {
-        return $hasBusinessPermit;
+        return $defaultState;
     }
 
     $hasBusinessStatusColumn = monitoring_document_column_exists($conn, 'business', 'Status_id');
@@ -46,32 +72,56 @@ function monitoring_client_business_is_registered(PDO $conn, int $clientId): boo
         $stmt->execute([':client_id' => $clientId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$row) {
-            return $hasBusinessPermit;
+            return $defaultState;
         }
     } catch (Throwable $__) {
-        return $hasBusinessPermit;
+        return $defaultState;
     }
 
     $statusName = isset($row['business_status_name']) ? (string)$row['business_status_name'] : null;
     $statusId = $row['business_status_id'] ?? null;
     $hasExplicitBusinessStatus = trim((string)($statusName ?? '')) !== '' || (int)($statusId ?? 0) > 0;
+    $businessRegistered = false;
 
     if ($hasExplicitBusinessStatus) {
         if (monitoring_business_status_label($statusName, $statusId, 'Pending') === 'Registered') {
-            return true;
-        }
-
-        if (trim((string)($statusName ?? '')) === '' && (int)($statusId ?? 0) > 0 && $hasStatusTable) {
+            $businessRegistered = true;
+        } elseif (trim((string)($statusName ?? '')) === '' && (int)($statusId ?? 0) > 0 && $hasStatusTable) {
             $registeredStatusId = monitoring_resolve_business_status_id($conn, 'Registered');
             if ($registeredStatusId !== null && (int)$statusId === (int)$registeredStatusId) {
-                return true;
+                $businessRegistered = true;
             }
         }
-
-        return false;
     }
 
-    return false;
+    return [
+        'client_id' => $clientId,
+        'business_registered' => $businessRegistered,
+        'business_permit_expired' => false,
+        'restricted_to_processing' => !$businessRegistered,
+        'restriction_reason' => $businessRegistered ? null : 'missing_permit',
+        'allowed_services' => $businessRegistered ? [] : ['Processing'],
+    ];
+}
+
+function monitoring_client_business_is_registered(PDO $conn, int $clientId): bool
+{
+    $state = monitoring_client_service_access_state($conn, $clientId);
+    return !empty($state['business_registered']);
+}
+
+function monitoring_client_service_restriction_message(bool $isClient, ?string $reason = null): string
+{
+    $normalizedReason = strtolower(trim((string)$reason));
+    if ($normalizedReason === 'expired') {
+        return $isClient
+            ? 'Your Business Permit has expired. Tax Filing, Auditing, Bookkeeping, and Consultation are disabled until your permit is renewed. Only Processing is available for renewal.'
+            : 'The client\'s Business Permit has expired. Tax Filing, Auditing, Bookkeeping, and Consultation are disabled until the permit is renewed. Only Processing is available for renewal.';
+    }
+
+    return $isClient
+        ? 'Only Processing is available until your business permit is uploaded and your business is registered.'
+        : 'Only Processing is available until the client business permit is uploaded and the business is registered.';
 }
 
 function monitoring_service_name_is_processing(?string $serviceName): bool

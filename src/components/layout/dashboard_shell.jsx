@@ -6,9 +6,39 @@ import { LayoutFooter } from "./layout_footer";
 import { RouteLoadingPanel } from "./route_loading_panel";
 import { RouteLoadingContext } from "./route_loading_context";
 import { normalizePath } from "./layout_utils";
+import { useAuth } from "../../hooks/useAuth";
+import { LOGIN_SESSION_STORAGE_KEY } from "../../context/AuthContext";
+import { showAlertDialog } from "../../utils/feedback";
 
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
+}
+
+const PASSWORD_EXPIRY_DASHBOARD_WARNING_STORAGE_KEY = "monitoring:password-expiry-dashboard-warning";
+
+function getManilaDateKey() {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parts.find((part) => part.type === "year")?.value || "0000";
+    const month = parts.find((part) => part.type === "month")?.value || "00";
+    const day = parts.find((part) => part.type === "day")?.value || "00";
+    return `${year}-${month}-${day}`;
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+function buildPasswordExpiryWarningMessage(remainingDays) {
+  const normalizedDays = Math.max(1, Math.trunc(remainingDays));
+  return `\u26A0\uFE0F Your password will expire in ${normalizedDays} day${
+    normalizedDays === 1 ? "" : "s"
+  }. Please update it to maintain access to your account.`;
 }
 
 export function DashboardShell({
@@ -30,8 +60,10 @@ export function DashboardShell({
     desktopSidebarCollapsible ? desktopSidebarDefaultOpen : true
   );
   const [routeLoading, setRouteLoading] = useState(false);
+  const [manilaDateKey, setManilaDateKey] = useState(() => getManilaDateKey());
   const loadingToRef = useRef(null);
   const location = useLocation();
+  const { user } = useAuth();
   const homePath = useMemo(() => normalizePath(navItems?.[0]?.to || "/"), [navItems]);
   const showCollapsedDesktopSidebar = desktopSidebarCollapsible && !desktopSidebarOpen && desktopSidebarCollapseMode === "icons";
   const desktopSidebarVisible = !desktopSidebarCollapsible || desktopSidebarOpen || showCollapsedDesktopSidebar;
@@ -68,6 +100,73 @@ export function DashboardShell({
   }, [location.key, routeLoading]);
 
   useEffect(() => () => window.clearTimeout(loadingToRef.current), []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const updateDateKey = () => {
+      setManilaDateKey((previousValue) => {
+        const nextValue = getManilaDateKey();
+        return previousValue === nextValue ? previousValue : nextValue;
+      });
+    };
+
+    updateDateKey();
+    const intervalId = window.setInterval(updateDateKey, 60 * 1000);
+    window.addEventListener("focus", updateDateKey);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", updateDateKey);
+    };
+  }, []);
+
+  useEffect(() => {
+    const currentPath = normalizePath(location.pathname);
+    if (currentPath !== homePath) {
+      return;
+    }
+
+    const remainingDays = Number(user?.password_days_until_expiry);
+    const normalizedRemainingDays = Math.trunc(remainingDays);
+    if (
+      !Number.isFinite(remainingDays) ||
+      normalizedRemainingDays <= 0 ||
+      normalizedRemainingDays > 15
+    ) {
+      return;
+    }
+
+    try {
+      const userId = String(user?.id ?? user?.user_id ?? user?.User_ID ?? "").trim();
+      const passwordChangedAt = String(user?.password_changed_at || "").trim();
+      const loginSessionKey =
+        String(sessionStorage.getItem(LOGIN_SESSION_STORAGE_KEY) || "").trim() || "restored";
+      if (!userId) {
+        return;
+      }
+
+      const shownKey = `${userId}:${passwordChangedAt}:${manilaDateKey}:${loginSessionKey}`;
+      const previousShownKey = String(
+        localStorage.getItem(PASSWORD_EXPIRY_DASHBOARD_WARNING_STORAGE_KEY) || ""
+      ).trim();
+      if (previousShownKey === shownKey) {
+        return;
+      }
+
+      localStorage.setItem(PASSWORD_EXPIRY_DASHBOARD_WARNING_STORAGE_KEY, shownKey);
+      void showAlertDialog({
+        icon: "warning",
+        title: "Password Expiry Notice",
+        html: `<div style="padding:8px 0;line-height:1.65;color:inherit;">${buildPasswordExpiryWarningMessage(
+          normalizedRemainingDays
+        )}</div>`,
+        confirmButtonText: "OK",
+      });
+    } catch (_) {}
+  }, [homePath, location.pathname, manilaDateKey, user]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

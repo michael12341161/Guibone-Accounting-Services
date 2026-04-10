@@ -479,10 +479,14 @@ try {
         $serviceName = (string)$row['Name'];
     }
 
-    if (!monitoring_client_business_is_registered($conn, $clientId) && !monitoring_service_name_is_processing($serviceName)) {
+    $serviceAccessState = monitoring_client_service_access_state($conn, $clientId);
+    if (empty($serviceAccessState['business_registered']) && !monitoring_service_name_is_processing($serviceName)) {
         respond(422, [
             'success' => false,
-            'message' => 'Only Processing is available until the client business permit is uploaded and the business is registered.',
+            'message' => monitoring_client_service_restriction_message(
+                false,
+                $serviceAccessState['restriction_reason'] ?? null
+            ),
             'allowed_services' => ['Processing'],
         ]);
     }

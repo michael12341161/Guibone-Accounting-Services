@@ -1,32 +1,6 @@
 <?php
-$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-$allowedOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost',
-  'http://127.0.0.1',
-];
-if ($origin && in_array($origin, $allowedOrigins, true)) {
-  header('Access-Control-Allow-Origin: ' . $origin);
-  header('Access-Control-Allow-Credentials: true');
-} else {
-  // Non-browser clients / same-origin requests
-  header('Access-Control-Allow-Origin: *');
-}
-header('Access-Control-Allow-Headers: Content-Type');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Content-Type: application/json');
-
-if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_start();
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-  http_response_code(200);
-  exit;
-}
+require_once __DIR__ . '/auth.php';
+monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
@@ -54,22 +28,29 @@ if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
   respond(400, ['success' => false, 'message' => 'Valid email is required.']);
 }
 
+$codeExpiresInSeconds = 5 * 60;
+$codeExpiresInMinutes = (int)max(1, ceil($codeExpiresInSeconds / 60));
+
 // Check user exists
 try {
   $stmt = $conn->prepare('SELECT User_id, Email FROM user WHERE Email = :e LIMIT 1');
   $stmt->execute([':e' => $email]);
   $u = $stmt->fetch(PDO::FETCH_ASSOC);
   if (!$u) {
-    // Do not reveal whether email exists
-    respond(200, ['success' => true, 'message' => 'If the email is registered, a code has been sent.']);
+    // Do not reveal whether email exists.
+    respond(200, [
+      'success' => true,
+      'message' => 'If the email is registered, a code has been sent.',
+      'code_expires_in_minutes' => $codeExpiresInMinutes,
+    ]);
   }
 } catch (Throwable $e) {
   respond(500, ['success' => false, 'message' => 'Server error.']);
 }
 
-// Generate 6-digit code
+// Generate a short-lived 6-digit code for the verification step.
 $code = (string)random_int(100000, 999999);
-$expiresAt = time() + (5 * 60);
+$expiresAt = time() + $codeExpiresInSeconds;
 
 // Store verification details in PHP session (no DB)
 $_SESSION['pw_reset'] = [
@@ -139,7 +120,7 @@ try {
     . '                <p style="margin:0 0 12px;">Your verification code is:</p>'
     . '                <p style="margin:0 0 20px;text-align:center;font-size:34px;line-height:1.1;font-weight:700;letter-spacing:6px;"><strong>' . $safeCode . '</strong></p>'
     . '                <p style="margin:0 0 16px;">Enter this code on the password reset page to continue.</p>'
-    . '                <p style="margin:0 0 16px;">For security reasons, this code will expire in <strong>5 minutes</strong>.</p>'
+    . '                <p style="margin:0 0 16px;">For security reasons, this code will expire in <strong>' . $codeExpiresInMinutes . ' minutes</strong>.</p>'
     . '                <p style="margin:0 0 16px;">If you did not request a password reset, please ignore this email.</p>'
     . '                <p style="margin:0;">Thank you,<br />' . $safeCompanyName . '</p>'
     . '              </div>'
@@ -156,7 +137,7 @@ try {
     . "Your verification code is:\n\n"
     . "{$code}\n\n"
     . "Enter this code on the password reset page to continue.\n\n"
-    . "For security reasons, this code will expire in 5 minutes.\n\n"
+    . "For security reasons, this code will expire in {$codeExpiresInMinutes} minutes.\n\n"
     . "If you did not request a password reset, please ignore this email.\n\n"
     . "Thank you,\n"
     . $companyName;
@@ -167,4 +148,8 @@ try {
   respond(500, ['success' => false, 'message' => 'Failed to send email.']);
 }
 
-respond(200, ['success' => true, 'message' => 'If the email is registered, a code has been sent.']);
+respond(200, [
+  'success' => true,
+  'message' => 'If the email is registered, a code has been sent.',
+  'code_expires_in_minutes' => $codeExpiresInMinutes,
+]);

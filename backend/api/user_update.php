@@ -512,7 +512,9 @@ try {
             ]);
         }
 
-        monitoring_update_session_timeout((int)($result['settings']['sessionTimeoutMinutes'] ?? 30));
+        monitoring_store_session_user(array_merge($sessionUser, [
+            'security_settings' => $result['settings'],
+        ]));
         monitoring_write_audit_log($conn, (int)($sessionUser['id'] ?? 0), 'Security settings updated');
 
         respond(200, [

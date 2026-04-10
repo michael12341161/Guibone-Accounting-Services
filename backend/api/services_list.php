@@ -22,7 +22,10 @@ try {
     $serviceAccess = [
         'client_id' => null,
         'business_registered' => null,
+        'business_permit_expired' => false,
         'restricted_to_processing' => false,
+        'restriction_reason' => null,
+        'allowed_services' => [],
     ];
 
     // Pull service names from services_type exactly as configured in monitoring.sql.
@@ -50,11 +53,17 @@ try {
     }
 
     if ($effectiveClientId > 0) {
-        $businessRegistered = monitoring_client_business_is_registered($conn, $effectiveClientId);
+        $accessState = monitoring_client_service_access_state($conn, $effectiveClientId);
+        $businessRegistered = !empty($accessState['business_registered']);
         $serviceAccess = [
             'client_id' => $effectiveClientId,
             'business_registered' => $businessRegistered,
-            'restricted_to_processing' => !$businessRegistered,
+            'business_permit_expired' => !empty($accessState['business_permit_expired']),
+            'restricted_to_processing' => !empty($accessState['restricted_to_processing']),
+            'restriction_reason' => isset($accessState['restriction_reason']) ? (string)$accessState['restriction_reason'] : null,
+            'allowed_services' => isset($accessState['allowed_services']) && is_array($accessState['allowed_services'])
+                ? array_values($accessState['allowed_services'])
+                : [],
         ];
 
         if (!$businessRegistered) {

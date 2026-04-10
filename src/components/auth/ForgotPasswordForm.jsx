@@ -18,6 +18,14 @@ function SpinnerIcon() {
   );
 }
 
+function formatMinutesLabel(minutes) {
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function formatDaysLabel(days) {
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 export default function ForgotPasswordForm({
   step,
   email,
@@ -25,6 +33,9 @@ export default function ForgotPasswordForm({
   newPassword,
   confirmPassword,
   maxPasswordLength,
+  passwordExpiryDays,
+  codeExpiryMinutes,
+  resetWindowMinutes,
   loading,
   message,
   error,
@@ -110,6 +121,12 @@ export default function ForgotPasswordForm({
             required
           />
 
+          {codeExpiryMinutes > 0 ? (
+            <p className="text-xs text-slate-500">
+              This verification code expires in {formatMinutesLabel(codeExpiryMinutes)}.
+            </p>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3">
             <Button type="button" variant="secondary" onClick={onSendCode} disabled={loading}>
               Resend
@@ -131,6 +148,19 @@ export default function ForgotPasswordForm({
 
       {step === "reset" ? (
         <>
+          <div className="space-y-1 text-xs text-slate-500">
+            {resetWindowMinutes > 0 ? (
+              <p>
+                Complete the password change within {formatMinutesLabel(resetWindowMinutes)} after verification.
+              </p>
+            ) : null}
+            {passwordExpiryDays > 0 ? (
+              <p>Your new password will expire again in {formatDaysLabel(passwordExpiryDays)}.</p>
+            ) : (
+              <p>Password expiry is currently disabled.</p>
+            )}
+          </div>
+
           <InputField
             id="forgot-password-new"
             type="password"

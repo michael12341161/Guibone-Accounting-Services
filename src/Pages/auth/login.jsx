@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { appLogo } from "../../assets/branding";
-import { api } from "../../services/api";
+import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
 import { getHomePathForRole } from "../../context/AuthContext";
 import { useAuth } from "../../hooks/useAuth";
 import ForgotPasswordModal from "./forgot_password";
@@ -18,6 +18,15 @@ function createCaptcha() {
   };
 }
 
+function isExpiredPasswordResponse(responseData) {
+  if (responseData?.password_expired) {
+    return true;
+  }
+
+  const message = String(responseData?.message || "").trim().toLowerCase();
+  return message.includes("password has expired");
+}
+
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -29,7 +38,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotDefaultEmail, setForgotDefaultEmail] = useState("");
+  const [forgotPasswordExpiryDaysOverride, setForgotPasswordExpiryDaysOverride] = useState(null);
   const [flash, setFlash] = useState({ message: "", type: "success" });
+  const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
 
   const clearErrorTimerRef = useRef(null);
   const clearFlashTimerRef = useRef(null);
@@ -39,9 +50,33 @@ export default function LoginPage() {
   const { user, role, login } = useAuth();
   const { isDarkMode } = useTheme();
   const isAuthenticated = !!(user && (user.username || user.id));
+  const isLoginVerificationEnabled = !!securitySettings.loginVerificationEnabled;
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    const loadSecuritySettings = async () => {
+      try {
+        const response = await fetchSecuritySettings({ signal: controller.signal });
+        if (!active) return;
+        setSecuritySettings(response?.data?.settings || DEFAULT_SECURITY_SETTINGS);
+      } catch (_) {
+        if (!active) return;
+        setSecuritySettings(DEFAULT_SECURITY_SETTINGS);
+      }
+    };
+
+    void loadSecuritySettings();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -69,6 +104,15 @@ export default function LoginPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoginVerificationEnabled) {
+      return;
+    }
+
+    setCaptchaError("");
+    setSum("");
+  }, [isLoginVerificationEnabled]);
 
   useEffect(() => {
     const flashMessage = String(location.state?.flashMessage || "").trim();
@@ -139,10 +183,18 @@ export default function LoginPage() {
     }
   };
 
+  const openForgotPasswordModal = (responseData = {}) => {
+    setForgotDefaultEmail(String(responseData?.email || username || "").trim());
+    setForgotPasswordExpiryDaysOverride(
+      responseData?.password_expiry_days ?? securitySettings?.passwordExpiryDays ?? null
+    );
+    setForgotOpen(true);
+  };
+
   const onSubmit = async (event) => {
     event.preventDefault();
 
-    if (parseInt(sum, 10) !== captcha.a + captcha.b) {
+    if (isLoginVerificationEnabled && parseInt(sum, 10) !== captcha.a + captcha.b) {
       setCaptchaError("Incorrect answer to the math question.");
       setPassword("");
       setCaptcha(createCaptcha());
@@ -170,26 +222,28 @@ export default function LoginPage() {
         const responseData = res.data || {};
         setLoginError(responseData?.message || "Incorrect email or password");
 
-        if (responseData?.password_expired) {
-          setForgotDefaultEmail(String(responseData?.email || "").trim());
-          setForgotOpen(true);
+        if (isExpiredPasswordResponse(responseData)) {
+          openForgotPasswordModal(responseData);
         }
 
         setPassword("");
-        regenerateCaptcha();
+        if (isLoginVerificationEnabled) {
+          regenerateCaptcha();
+        }
         clearLoginErrorSoon();
       }
     } catch (err) {
       const responseData = err?.response?.data || {};
       setLoginError(responseData?.message || "Login failed");
 
-      if (responseData?.password_expired) {
-        setForgotDefaultEmail(String(responseData?.email || "").trim());
-        setForgotOpen(true);
+      if (isExpiredPasswordResponse(responseData)) {
+        openForgotPasswordModal(responseData);
       }
 
       setPassword("");
-      regenerateCaptcha();
+      if (isLoginVerificationEnabled) {
+        regenerateCaptcha();
+      }
       clearLoginErrorSoon();
     } finally {
       setLoading(false);
@@ -243,6 +297,7 @@ export default function LoginPage() {
               showPassword={showPassword}
               sum={sum}
               captcha={captcha}
+              showVerification={isLoginVerificationEnabled}
               loginError={loginError}
               captchaError={captchaError}
               loading={loading}
@@ -255,6 +310,7 @@ export default function LoginPage() {
               onRefreshCaptcha={regenerateCaptcha}
               onOpenForgotPassword={() => {
                 setForgotDefaultEmail(String(username || "").trim());
+                setForgotPasswordExpiryDaysOverride(securitySettings?.passwordExpiryDays ?? null);
                 setForgotOpen(true);
               }}
               createAccountHref="/sign-up"
@@ -262,8 +318,13 @@ export default function LoginPage() {
 
             <ForgotPasswordModal
               open={forgotOpen}
-              onClose={() => setForgotOpen(false)}
+              onClose={() => {
+                setForgotOpen(false);
+                setForgotPasswordExpiryDaysOverride(null);
+              }}
               defaultEmail={forgotDefaultEmail}
+              passwordExpiryDaysOverride={forgotPasswordExpiryDaysOverride}
+              securitySettingsOverride={securitySettings}
             />
 
             <p className="mt-6 text-center text-xs text-slate-500">

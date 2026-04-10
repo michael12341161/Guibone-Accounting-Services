@@ -500,16 +500,22 @@ try {
         }
     }
 
+    $serviceAccessState = $currentClientId > 0
+        ? monitoring_client_service_access_state($conn, $currentClientId)
+        : ['business_registered' => true, 'restriction_reason' => null];
     if (
         $currentClientId > 0
         && $currentServiceName !== ''
-        && !monitoring_client_business_is_registered($conn, $currentClientId)
+        && empty($serviceAccessState['business_registered'])
         && !monitoring_service_name_is_processing($currentServiceName)
     ) {
         $conn->rollBack();
         respond(422, [
             'success' => false,
-            'message' => 'Only Processing is available until the client business permit is uploaded and the business is registered.',
+            'message' => monitoring_client_service_restriction_message(
+                false,
+                $serviceAccessState['restriction_reason'] ?? null
+            ),
             'allowed_services' => ['Processing'],
         ]);
     }

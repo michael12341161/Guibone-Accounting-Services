@@ -8,7 +8,6 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
-import ForgotPasswordModal from "../auth/forgot_password";
 import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const EMPTY_FORM = Object.freeze({
@@ -88,7 +87,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
   useErrorToast(error);
   useErrorToast(saveError);
   const [successMessage, setSuccessMessage] = useState("");
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -133,7 +131,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
       setIsEditing(false);
       setSaveError("");
       setSuccessMessage("");
-      setChangePasswordOpen(false);
       return;
     }
 
@@ -143,7 +140,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
   useEffect(() => {
     if (!readOnly) return;
     setIsEditing(false);
-    setChangePasswordOpen(false);
   }, [readOnly]);
 
   const displayName = useMemo(() => buildFullName(profile || user), [profile, user]);
@@ -159,7 +155,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
     setIsEditing(false);
     setSaveError("");
     setSuccessMessage("");
-    setChangePasswordOpen(false);
     onClose?.();
   };
 
@@ -344,13 +339,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
       <Button variant="success" onClick={handleSave} disabled={saving || uploadingImage}>
         {saving ? "Saving..." : "Save Changes"}
       </Button>
-      <Button
-        variant="secondary"
-        onClick={() => setChangePasswordOpen(true)}
-        disabled={saving || uploadingImage || !profile?.email}
-      >
-        Change Password
-      </Button>
       <Button variant="secondary" onClick={handleClose} disabled={saving || uploadingImage}>
         Close
       </Button>
@@ -359,13 +347,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
     <>
       <Button onClick={handleStartEdit} disabled={loading || uploadingImage || !profile}>
         Edit Profile
-      </Button>
-      <Button
-        variant="secondary"
-        onClick={() => setChangePasswordOpen(true)}
-        disabled={loading || uploadingImage || !profile?.email}
-      >
-        Change Password
       </Button>
       <Button variant="secondary" onClick={handleClose} disabled={uploadingImage}>
         Close
@@ -553,11 +534,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
         )}
       </Modal>
 
-      <ForgotPasswordModal
-        open={changePasswordOpen && !readOnly}
-        onClose={() => setChangePasswordOpen(false)}
-        defaultEmail={profile?.email || user?.email || ""}
-      />
     </>
   );
 }

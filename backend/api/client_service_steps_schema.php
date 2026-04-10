@@ -8,20 +8,20 @@ function monitoring_ensure_client_service_steps_column_supports_long_text(PDO $c
     }
     $checked = true;
 
-    try {
-        $stmt = $conn->query("SHOW COLUMNS FROM `client_services` LIKE 'Steps'");
-        $column = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-        if (!$column) {
-            return;
-        }
+    monitoring_require_schema_columns(
+        $conn,
+        'client_services',
+        ['Steps'],
+        'task service steps'
+    );
 
-        $type = strtolower(trim((string)($column['Type'] ?? '')));
-        if ($type !== '' && preg_match('/\b(?:text|mediumtext|longtext)\b/', $type)) {
-            return;
-        }
-
-        $conn->exec('ALTER TABLE `client_services` MODIFY `Steps` TEXT NULL');
-    } catch (Throwable $__) {
-        // Leave the existing schema untouched if the migration check fails.
+    $type = monitoring_schema_column_type($conn, 'client_services', 'Steps');
+    if ($type !== null && preg_match('/\b(?:text|mediumtext|longtext)\b/', $type)) {
+        return;
     }
+
+    throw new RuntimeException(
+        'Database schema is incompatible for task service steps. Column `Steps` on `client_services` must be a TEXT-like type. '
+        . 'Import monitoring/monitoring.sql or apply the required migration before using this endpoint.'
+    );
 }

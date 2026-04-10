@@ -22,7 +22,7 @@ import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
 import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
-import { getUserFirstName } from "../components/layout/layout_utils";
+import { getUserDisplayName } from "../components/layout/layout_utils";
 import { adminBreadcrumbConfig } from "../config/adminBreadcrumbConfig";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { resolveBackendAssetUrl } from "../services/api";
@@ -197,7 +197,7 @@ export const adminNavItems = [
 export default function AdminLayout({ user, onLogout, children }) {
   const navigate = useNavigate();
   const { permissions } = useModulePermissions();
-  const firstName = useMemo(() => getUserFirstName(user), [user]);
+  const displayName = useMemo(() => getUserDisplayName(user), [user]);
   const adminEmail = useMemo(() => user?.email || user?.username || "", [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
   const visibleNavItems = filterNavItemsByAccess(user, adminNavItems, permissions);
@@ -209,7 +209,8 @@ export default function AdminLayout({ user, onLogout, children }) {
         logoSrc: appLogo,
         logoAlt: "Guibone Accounting Services",
         title: "Guibone Accounting Services",
-        userName: firstName,
+        userName: displayName,
+        profileDisplayName: displayName,
         avatarSrc,
         rightContent: <LayoutHeaderActions />,
         profileItems: [
@@ -221,10 +222,11 @@ export default function AdminLayout({ user, onLogout, children }) {
           },
           {
             key: "logout",
-            label: "Logout",
+            label: "Log Out",
             tone: "danger",
             onClick: onLogout,
             icon: <LogOut {...menuIconProps} />,
+            separatorBefore: true,
           },
         ],
       }}

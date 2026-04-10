@@ -1,34 +1,9 @@
 <?php
-$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-$allowedOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost',
-  'http://127.0.0.1',
-];
-if ($origin && in_array($origin, $allowedOrigins, true)) {
-  header('Access-Control-Allow-Origin: ' . $origin);
-  header('Access-Control-Allow-Credentials: true');
-} else {
-  header('Access-Control-Allow-Origin: *');
-}
-header('Access-Control-Allow-Headers: Content-Type');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Content-Type: application/json');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-  http_response_code(200);
-  exit;
-}
+require_once __DIR__ . '/auth.php';
+monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
-
-if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_start();
-}
 
 function respond($code, $payload) {
   http_response_code($code);
@@ -96,6 +71,22 @@ try {
 
   // Clear session token
   unset($_SESSION['pw_reset']);
+
+  $sessionUser = monitoring_read_session_user(false);
+  $sessionEmail = trim((string)($sessionUser['email'] ?? ''));
+  if ($sessionEmail !== '' && strcasecmp($sessionEmail, $email) === 0) {
+    $passwordExpiryInfo = monitoring_resolve_password_expiry_info(
+      $securitySettings,
+      date('Y-m-d H:i:s'),
+      null
+    );
+
+    monitoring_store_session_user(array_merge($sessionUser, [
+      'password_changed_at' => $passwordExpiryInfo['password_changed_at'],
+      'password_expires_at' => $passwordExpiryInfo['password_expires_at'],
+      'password_days_until_expiry' => $passwordExpiryInfo['password_days_until_expiry'],
+    ]));
+  }
 
   respond(200, ['success' => true, 'message' => 'Password updated successfully.']);
 } catch (Throwable $e) {

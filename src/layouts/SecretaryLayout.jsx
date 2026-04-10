@@ -8,11 +8,13 @@ import {
   ClipboardList,
   FilePenLine,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   MessageCircleMore,
   UserCog,
   UserPlus,
+  UserRound,
   Users,
 } from "lucide-react";
 import { appLogo } from "../assets/branding";
@@ -20,9 +22,10 @@ import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
 import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
 import { secretaryBreadcrumbConfig } from "../config/secretaryBreadcrumbConfig";
-import { getUserFirstName } from "../components/layout/layout_utils";
+import { getProfileMenuExpiryLabel, getUserDisplayName } from "../components/layout/layout_utils";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
+import ForgotPasswordModal from "../Pages/auth/forgot_password";
 import SecretaryProfile from "../Pages/profile/SecretaryProfile";
 import { resolveBackendAssetUrl } from "../services/api";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
@@ -181,32 +184,42 @@ export const secretaryNavItems = [
 export default function SecretaryLayout({ user, onLogout, children }) {
   const { login } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { permissions } = useModulePermissions();
-  const firstName = useMemo(() => getUserFirstName(user), [user]);
+  const displayName = useMemo(() => getUserDisplayName(user), [user]);
+  const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
   const visibleNavItems = filterNavItemsByAccess(user, secretaryNavItems, permissions);
   const profileItems = useMemo(() => {
     const items = [
       {
+        key: "change-password",
+        label: "Change Password",
+        onClick: () => setChangePasswordOpen(true),
+        icon: <KeyRound {...menuIconProps} />,
+        badgeLabel: passwordExpiryLabel || undefined,
+      },
+      {
         key: "profile",
         label: "Profile",
         onClick: () => setProfileOpen(true),
-        icon: <UserCog {...menuIconProps} />,
+        icon: <UserRound {...menuIconProps} />,
       },
     ];
 
     if (onLogout) {
       items.push({
         key: "logout",
-        label: "Logout",
+        label: "Log Out",
         tone: "danger",
         onClick: onLogout,
         icon: <LogOut {...menuIconProps} />,
+        separatorBefore: true,
       });
     }
 
     return items;
-  }, [onLogout]);
+  }, [onLogout, passwordExpiryLabel]);
 
   const handleProfileUpdated = (nextProfile) => {
     if (!nextProfile || typeof nextProfile !== "object") return;
@@ -237,7 +250,8 @@ export default function SecretaryLayout({ user, onLogout, children }) {
         logoSrc: appLogo,
         logoAlt: "Guibone Accounting Services",
         title: "Guibone Accounting Services",
-        userName: firstName,
+        userName: displayName,
+        profileDisplayName: displayName,
         avatarSrc,
         rightContent: <LayoutHeaderActions />,
         onLogout,
@@ -265,6 +279,13 @@ export default function SecretaryLayout({ user, onLogout, children }) {
         onClose={() => setProfileOpen(false)}
         user={user}
         onProfileUpdated={handleProfileUpdated}
+      />
+      <ForgotPasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+        defaultEmail={user?.email || ""}
+        passwordExpiryDaysOverride={user?.security_settings?.passwordExpiryDays ?? null}
+        securitySettingsOverride={user?.security_settings ?? null}
       />
     </DashboardShell>
   );

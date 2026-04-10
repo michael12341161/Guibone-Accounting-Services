@@ -228,172 +228,54 @@ if (!function_exists('monitoring_ensure_certificate_storage')) {
         }
         $checked = true;
 
-        if (!monitoring_table_exists($conn, 'certificates')) {
-            monitoring_certificate_safe_exec(
-                $conn,
-                'CREATE TABLE IF NOT EXISTS `certificates` (
-                    `certificates_ID` int(11) NOT NULL AUTO_INCREMENT,
-                    `certificate_id` varchar(50) NOT NULL,
-                    `Client_ID` int(11) NOT NULL,
-                    `Client_services_ID` int(11) DEFAULT NULL,
-                    `Services_type_Id` int(11) DEFAULT NULL,
-                    `Edit_certificate_ID` int(11) DEFAULT NULL,
-                    `end_date` date DEFAULT NULL,
-                    `issue_date` date NOT NULL,
-                    `issued_by` varchar(150) DEFAULT NULL,
-                    `company_name` varchar(150) DEFAULT \'Guibone Accounting Services\',
-                    `template_snapshot` longtext DEFAULT NULL,
-                    `certificate_html` longtext DEFAULT NULL,
-                    `recipient_email` varchar(150) DEFAULT NULL,
-                    `delivery_status` varchar(50) NOT NULL DEFAULT \'pending\',
-                    `delivery_message` text DEFAULT NULL,
-                    `delivered_at` datetime DEFAULT NULL,
-                    `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-                    PRIMARY KEY (`certificates_ID`),
-                    UNIQUE KEY `certificate_id` (`certificate_id`),
-                    UNIQUE KEY `uniq_certificates_client_service` (`Client_services_ID`),
-                    KEY `Client_ID` (`Client_ID`),
-                    KEY `Services_type_Id` (`Services_type_Id`),
-                    KEY `Edit_certificate_ID` (`Edit_certificate_ID`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
-            );
-        }
-
-        if (!monitoring_table_exists($conn, 'edit_certificate')) {
-            monitoring_certificate_safe_exec(
-                $conn,
-                'CREATE TABLE IF NOT EXISTS `edit_certificate` (
-                    `Edit_certificate_ID` int(11) NOT NULL AUTO_INCREMENT,
-                    `template_id` varchar(80) NOT NULL,
-                    `Services_type_Id` int(11) DEFAULT NULL,
-                    `service_key` varchar(50) DEFAULT NULL,
-                    `template_name` varchar(150) DEFAULT NULL,
-                    `logo_src` longtext DEFAULT NULL,
-                    `page_size` varchar(20) NOT NULL DEFAULT \'A4\',
-                    `font_family` varchar(50) NOT NULL DEFAULT \'arial\',
-                    `theme_key` varchar(50) NOT NULL DEFAULT \'none\',
-                    `logo_block` longtext DEFAULT NULL,
-                    `content_block` longtext DEFAULT NULL,
-                    `text_blocks` longtext DEFAULT NULL,
-                    `signature_blocks` longtext DEFAULT NULL,
-                    `is_selected` tinyint(1) NOT NULL DEFAULT 0,
-                    `User_id` int(11) DEFAULT NULL,
-                    `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-                    `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-                    PRIMARY KEY (`Edit_certificate_ID`),
-                    UNIQUE KEY `template_id` (`template_id`),
-                    KEY `Services_type_Id` (`Services_type_Id`),
-                    KEY `User_id` (`User_id`),
-                    KEY `idx_edit_certificate_service_selected` (`Services_type_Id`,`is_selected`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
-            );
-        }
-
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'Services_type_Id')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `Services_type_Id` int(11) DEFAULT NULL AFTER `template_id`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'service_key')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `service_key` varchar(50) DEFAULT NULL AFTER `Services_type_Id`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'template_name')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `template_name` varchar(150) DEFAULT NULL AFTER `service_key`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'page_size')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `page_size` varchar(20) NOT NULL DEFAULT \'A4\' AFTER `logo_src`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'font_family')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `font_family` varchar(50) NOT NULL DEFAULT \'arial\' AFTER `page_size`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'theme_key')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `theme_key` varchar(50) NOT NULL DEFAULT \'none\' AFTER `font_family`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'is_selected')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `is_selected` tinyint(1) NOT NULL DEFAULT 0 AFTER `signature_blocks`');
-        }
-        if (!monitoring_column_exists($conn, 'edit_certificate', 'User_id')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD COLUMN `User_id` int(11) DEFAULT NULL AFTER `is_selected`');
-        }
-
-        if (!monitoring_column_exists($conn, 'certificates', 'Client_services_ID')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `Client_services_ID` int(11) DEFAULT NULL AFTER `Client_ID`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'Edit_certificate_ID')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `Edit_certificate_ID` int(11) DEFAULT NULL AFTER `Services_type_Id`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'template_snapshot')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `template_snapshot` longtext DEFAULT NULL AFTER `company_name`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'certificate_html')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `certificate_html` longtext DEFAULT NULL AFTER `template_snapshot`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'recipient_email')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `recipient_email` varchar(150) DEFAULT NULL AFTER `certificate_html`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'delivery_status')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `delivery_status` varchar(50) NOT NULL DEFAULT \'pending\' AFTER `recipient_email`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'delivery_message')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `delivery_message` text DEFAULT NULL AFTER `delivery_status`');
-        }
-        if (!monitoring_column_exists($conn, 'certificates', 'delivered_at')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD COLUMN `delivered_at` datetime DEFAULT NULL AFTER `delivery_message`');
-        }
-
-        if (!monitoring_certificate_index_exists($conn, 'edit_certificate', 'idx_edit_certificate_service_selected')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD KEY `idx_edit_certificate_service_selected` (`Services_type_Id`, `is_selected`)');
-        }
-        if (!monitoring_certificate_index_exists($conn, 'edit_certificate', 'Services_type_Id')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD KEY `Services_type_Id` (`Services_type_Id`)');
-        }
-        if (!monitoring_certificate_index_exists($conn, 'edit_certificate', 'User_id')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `edit_certificate` ADD KEY `User_id` (`User_id`)');
-        }
-        if (!monitoring_certificate_index_exists($conn, 'certificates', 'uniq_certificates_client_service')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD UNIQUE KEY `uniq_certificates_client_service` (`Client_services_ID`)');
-        }
-        if (!monitoring_certificate_index_exists($conn, 'certificates', 'Edit_certificate_ID')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD KEY `Edit_certificate_ID` (`Edit_certificate_ID`)');
-        }
-        if (!monitoring_certificate_index_exists($conn, 'certificates', 'Client_services_ID')) {
-            monitoring_certificate_safe_exec($conn, 'ALTER TABLE `certificates` ADD KEY `Client_services_ID` (`Client_services_ID`)');
-        }
-
-        if (!monitoring_certificate_foreign_key_exists($conn, 'edit_certificate', 'edit_certificate_ibfk_service')) {
-            monitoring_certificate_safe_exec(
-                $conn,
-                'ALTER TABLE `edit_certificate`
-                 ADD CONSTRAINT `edit_certificate_ibfk_service`
-                 FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`)
-                 ON DELETE SET NULL ON UPDATE CASCADE'
-            );
-        }
-        if (!monitoring_certificate_foreign_key_exists($conn, 'edit_certificate', 'edit_certificate_ibfk_user')) {
-            monitoring_certificate_safe_exec(
-                $conn,
-                'ALTER TABLE `edit_certificate`
-                 ADD CONSTRAINT `edit_certificate_ibfk_user`
-                 FOREIGN KEY (`User_id`) REFERENCES `user` (`User_id`)
-                 ON DELETE SET NULL ON UPDATE CASCADE'
-            );
-        }
-        if (!monitoring_certificate_foreign_key_exists($conn, 'certificates', 'certificates_ibfk_client_service')) {
-            monitoring_certificate_safe_exec(
-                $conn,
-                'ALTER TABLE `certificates`
-                 ADD CONSTRAINT `certificates_ibfk_client_service`
-                 FOREIGN KEY (`Client_services_ID`) REFERENCES `client_services` (`Client_services_ID`)
-                 ON DELETE SET NULL ON UPDATE CASCADE'
-            );
-        }
-        if (!monitoring_certificate_foreign_key_exists($conn, 'certificates', 'certificates_ibfk_edit_certificate')) {
-            monitoring_certificate_safe_exec(
-                $conn,
-                'ALTER TABLE `certificates`
-                 ADD CONSTRAINT `certificates_ibfk_edit_certificate`
-                 FOREIGN KEY (`Edit_certificate_ID`) REFERENCES `edit_certificate` (`Edit_certificate_ID`)
-                 ON DELETE SET NULL ON UPDATE CASCADE'
-            );
-        }
+        monitoring_require_schema_columns(
+            $conn,
+            'certificates',
+            [
+                'certificates_ID',
+                'certificate_id',
+                'Client_ID',
+                'Client_services_ID',
+                'Services_type_Id',
+                'Edit_certificate_ID',
+                'end_date',
+                'issue_date',
+                'issued_by',
+                'company_name',
+                'template_snapshot',
+                'certificate_html',
+                'recipient_email',
+                'delivery_status',
+                'delivery_message',
+                'delivered_at',
+                'created_at',
+            ],
+            'certificate storage'
+        );
+        monitoring_require_schema_columns(
+            $conn,
+            'edit_certificate',
+            [
+                'Edit_certificate_ID',
+                'template_id',
+                'Services_type_Id',
+                'service_key',
+                'template_name',
+                'logo_src',
+                'page_size',
+                'font_family',
+                'theme_key',
+                'logo_block',
+                'content_block',
+                'text_blocks',
+                'signature_blocks',
+                'is_selected',
+                'User_id',
+                'created_at',
+                'updated_at',
+            ],
+            'certificate templates'
+        );
     }
 }
 

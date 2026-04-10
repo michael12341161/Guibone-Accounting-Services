@@ -31,9 +31,10 @@ function formatRegisteredDate(value) {
 }
 
 function getBusinessStatus(client) {
-  return String(client?.document_status || "").trim().toLowerCase() === "registered"
-    ? "Registered"
-    : "Unregistered";
+  const status = String(client?.document_status || "").trim().toLowerCase();
+  if (status === "expired") return "Expired";
+  if (status === "registered") return "Registered";
+  return "Unregistered";
 }
 
 const PAGE_SIZE = 10;
@@ -192,7 +193,7 @@ export default function ClientBusinessStatusPage() {
         render: (value) => (
           <span
             className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getDocumentStatusBadgeClass(
-              value === "Registered" ? "Registered" : "Pending"
+              value === "Registered" ? "Registered" : value === "Expired" ? "Expired" : "Pending"
             )}`}
           >
             {value}
@@ -276,7 +277,7 @@ export default function ClientBusinessStatusPage() {
               <div className="text-xs font-semibold uppercase tracking-wide">Unregistered</div>
             </div>
             <div className="text-2xl font-semibold">{summary.unregistered}</div>
-            <CardDescription>Businesses still waiting for a Business Permit upload.</CardDescription>
+            <CardDescription>Businesses still waiting for a permit upload or renewal.</CardDescription>
           </CardContent>
         </Card>
       </div>

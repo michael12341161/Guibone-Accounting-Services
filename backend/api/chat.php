@@ -166,51 +166,12 @@ function getChatPresenceMap(): array
 
 function ensureMessagesSchema(PDO $conn): void
 {
-    $conn->exec(
-        "CREATE TABLE IF NOT EXISTS `messages` (
-            `Message_ID` INT NOT NULL AUTO_INCREMENT,
-            `sender_id` INT NOT NULL,
-            `receiver_id` INT NOT NULL,
-            `message_text` TEXT NOT NULL,
-            `is_read` TINYINT(1) NOT NULL DEFAULT 0,
-            `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (`Message_ID`),
-            KEY `sender_id` (`sender_id`),
-            KEY `receiver_id` (`receiver_id`),
-            CONSTRAINT `fk_messages_sender_user` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT `fk_messages_receiver_user` FOREIGN KEY (`receiver_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    monitoring_require_schema_columns(
+        $conn,
+        'messages',
+        ['Message_ID', 'sender_id', 'receiver_id', 'message_text', 'is_read', 'created_at'],
+        'chat'
     );
-
-    if (!columnExists($conn, 'messages', 'is_read')) {
-        $conn->exec('ALTER TABLE `messages` ADD COLUMN `is_read` TINYINT(1) NOT NULL DEFAULT 0 AFTER `message_text`');
-    }
-
-    if (!columnExists($conn, 'messages', 'created_at')) {
-        $conn->exec('ALTER TABLE `messages` ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `is_read`');
-    }
-
-    if (!indexExists($conn, 'messages', 'sender_id')) {
-        $conn->exec('ALTER TABLE `messages` ADD KEY `sender_id` (`sender_id`)');
-    }
-
-    if (!indexExists($conn, 'messages', 'receiver_id')) {
-        $conn->exec('ALTER TABLE `messages` ADD KEY `receiver_id` (`receiver_id`)');
-    }
-
-    if (
-        !constraintExists($conn, 'messages', 'fk_messages_sender_user') &&
-        !foreignKeyExists($conn, 'messages', 'sender_id', 'user', 'User_id')
-    ) {
-        $conn->exec('ALTER TABLE `messages` ADD CONSTRAINT `fk_messages_sender_user` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE');
-    }
-
-    if (
-        !constraintExists($conn, 'messages', 'fk_messages_receiver_user') &&
-        !foreignKeyExists($conn, 'messages', 'receiver_id', 'user', 'User_id')
-    ) {
-        $conn->exec('ALTER TABLE `messages` ADD CONSTRAINT `fk_messages_receiver_user` FOREIGN KEY (`receiver_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE');
-    }
 }
 
 function userExists(PDO $conn, int $userId): bool

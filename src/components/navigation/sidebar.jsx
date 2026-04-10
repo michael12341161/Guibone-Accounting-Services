@@ -23,6 +23,18 @@ function getMatchingGroupKeys(items, pathname) {
   return matchedGroups;
 }
 
+function getExpandableGroupKeys(items) {
+  const groupKeys = new Set();
+
+  (items || []).forEach((item) => {
+    if (item?.key && Array.isArray(item?.children) && item.children.length > 0) {
+      groupKeys.add(item.key);
+    }
+  });
+
+  return groupKeys;
+}
+
 const activeNavItemClasses =
   "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm dark:border-transparent dark:bg-white dark:text-slate-950 dark:ring-white/80";
 
@@ -52,24 +64,31 @@ export function Sidebar({
   onExpandFromCollapsed,
 }) {
   const location = useLocation();
-  const [expandedGroups, setExpandedGroups] = useState(() =>
-    getMatchingGroupKeys(items, location.pathname)
-  );
+  const expandableGroupKeys = useMemo(() => getExpandableGroupKeys(items), [items]);
+  const [expandedGroupKey, setExpandedGroupKey] = useState(() => {
+    const matchingGroup = Array.from(getMatchingGroupKeys(items, location.pathname))[0];
+    return matchingGroup || null;
+  });
 
   useEffect(() => {
-    const nextOpenGroups = getMatchingGroupKeys(items, location.pathname);
+    const nextOpenGroupKey = Array.from(getMatchingGroupKeys(items, location.pathname))[0] || null;
 
-    setExpandedGroups((current) => {
-      if (
-        current.size === nextOpenGroups.size &&
-        Array.from(current).every((key) => nextOpenGroups.has(key))
-      ) {
+    setExpandedGroupKey((current) => {
+      if (nextOpenGroupKey) {
+        if (current === nextOpenGroupKey) {
+          return current;
+        }
+
+        return nextOpenGroupKey;
+      }
+
+      if (current && expandableGroupKeys.has(current)) {
         return current;
       }
 
-      return nextOpenGroups;
+      return null;
     });
-  }, [items, location.pathname]);
+  }, [expandableGroupKeys, items, location.pathname]);
 
   const profileInitials = useMemo(() => {
     const seed = [profileName, profileMeta, headerTitle].find((value) => String(value || "").trim()) || "User";
@@ -130,29 +149,19 @@ export function Sidebar({
       return;
     }
 
-    setExpandedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
+    setExpandedGroupKey((current) => (current === groupKey ? null : groupKey));
   };
   const ensureGroupExpanded = (groupKey) => {
     if (!groupKey) {
       return;
     }
 
-    setExpandedGroups((current) => {
-      if (current.has(groupKey)) {
+    setExpandedGroupKey((current) => {
+      if (current === groupKey) {
         return current;
       }
 
-      const next = new Set(current);
-      next.add(groupKey);
-      return next;
+      return groupKey;
     });
   };
 
@@ -331,7 +340,7 @@ export function Sidebar({
                   <button
                     type="button"
                     onClick={() => toggleGroup(item.key)}
-                    aria-expanded={expandedGroups.has(item.key)}
+                    aria-expanded={expandedGroupKey === item.key}
                     aria-controls={`sidebar-group-${item.key}`}
                     className={classNames(
                       "flex h-11 w-full items-center justify-between rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
@@ -352,14 +361,14 @@ export function Sidebar({
                     <ChevronDown
                       className={classNames(
                         "h-4 w-4 shrink-0 transition-transform duration-200",
-                        expandedGroups.has(item.key) ? "rotate-180 text-current" : "text-slate-400"
+                        expandedGroupKey === item.key ? "rotate-180 text-current" : "text-slate-400"
                       )}
                       strokeWidth={1.5}
                       aria-hidden="true"
                     />
                   </button>
 
-                  {expandedGroups.has(item.key) ? (
+                  {expandedGroupKey === item.key ? (
                     <div id={`sidebar-group-${item.key}`} className="space-y-1 pl-8">
                       {item.children.map((child) => (
                         <NavLink

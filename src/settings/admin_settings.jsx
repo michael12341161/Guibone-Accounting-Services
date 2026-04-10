@@ -122,6 +122,10 @@ function buildSecurityPayload(values) {
     lockoutAttempts: parseSecurityNumber(values.lockoutAttempts) ?? DEFAULT_SECURITY_SETTINGS.lockoutAttempts,
     lockoutDurationMinutes:
       parseSecurityNumber(values.lockoutDurationMinutes) ?? DEFAULT_SECURITY_SETTINGS.lockoutDurationMinutes,
+    loginVerificationEnabled:
+      typeof values.loginVerificationEnabled === "boolean"
+        ? values.loginVerificationEnabled
+        : DEFAULT_SECURITY_SETTINGS.loginVerificationEnabled,
   };
 }
 
@@ -640,6 +644,16 @@ export default function AdminSettings() {
       delete nextErrors[key];
       return nextErrors;
     });
+    setSecurityStatus((current) => (current.type ? { type: "", text: "" } : current));
+  };
+
+  const updateLoginVerificationToggle = (event) => {
+    const shouldDisableVerification = !!event.target.checked;
+
+    setSecurity((current) => ({
+      ...current,
+      loginVerificationEnabled: !shouldDisableVerification,
+    }));
     setSecurityStatus((current) => (current.type ? { type: "", text: "" } : current));
   };
 
@@ -1248,7 +1262,7 @@ export default function AdminSettings() {
                 <div>
                   <h3 className="text-sm font-semibold text-slate-800">Security Settings</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Save the password, expiry, timeout, and lockout rules used by the system.
+                    Save the password, expiry, timeout, lockout, and login verification rules used by the system.
                   </p>
                 </div>
                 <button
@@ -1302,6 +1316,22 @@ export default function AdminSettings() {
                         </div>
                       </div>
                     ))}
+
+                    <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/60 px-4 py-4">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">Disable Login Verification</div>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Turns off the math verification challenge on the public login page. Leave unchecked to keep
+                          verification required.
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={!security.loginVerificationEnabled}
+                        onChange={updateLoginVerificationToggle}
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                      />
+                    </label>
                   </div>
                 )}
               </div>

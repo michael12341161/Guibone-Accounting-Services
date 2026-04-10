@@ -8,6 +8,8 @@ const TOAST_STYLE = {
   color: "#0f172a",
 };
 
+let alertDialogQueue = Promise.resolve();
+
 function normalizeToastInput(input, fallbackTitle) {
   if (typeof input === "string") {
     return { title: input };
@@ -88,10 +90,25 @@ export function useErrorToast(message, options = {}) {
 }
 
 export function showAlertDialog(options = {}) {
-  return Swal.fire({
+  const dialogOptions = {
     confirmButtonColor: "#2563eb",
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    showCloseButton: false,
     ...options,
-  });
+  };
+
+  const queuedDialog = alertDialogQueue.then(
+    () => Swal.fire(dialogOptions),
+    () => Swal.fire(dialogOptions)
+  );
+
+  alertDialogQueue = queuedDialog.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return queuedDialog;
 }
 
 export function showConfirmDialog(options = {}) {

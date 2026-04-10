@@ -1,16 +1,17 @@
 import React, { useMemo, useState } from "react";
-import { Award, Building2, CalendarCheck, FileText, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
+import { Award, Building2, CalendarCheck, FileText, KeyRound, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { appLogo } from "../assets/branding";
 import { Button } from "../components/UI/buttons";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
-import { getUserFirstName } from "../components/layout/layout_utils";
+import { getProfileMenuExpiryLabel, getUserDisplayName } from "../components/layout/layout_utils";
 import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
 import { clientBreadcrumbConfig } from "../config/clientBreadcrumbConfig";
 import { getHomePathForRole } from "../context/AuthContext";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
+import ForgotPasswordModal from "../Pages/auth/forgot_password";
 import ClientProfile from "../Pages/profile/clientProfile";
 import { resolveBackendAssetUrl, restoreOriginalAccount } from "../services/api";
 import { showErrorToast } from "../utils/feedback";
@@ -94,8 +95,10 @@ export default function ClientLayout({ user, onLogout, children }) {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { permissions } = useModulePermissions();
-  const firstName = useMemo(() => getUserFirstName(user), [user]);
+  const displayName = useMemo(() => getUserDisplayName(user), [user]);
+  const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
   const visibleNavItems = filterNavItemsByAccess(user, clientNavItems, permissions);
   const impersonationRoleId = Number(user?.impersonation?.original_user?.role_id ?? 0);
@@ -118,6 +121,17 @@ export default function ClientLayout({ user, onLogout, children }) {
   };
 
   const profileItems = [
+    ...(!isImpersonatingStaff
+      ? [
+          {
+            key: "change-password",
+            label: "Change Password",
+            onClick: () => setChangePasswordOpen(true),
+            icon: <KeyRound {...menuIconProps} />,
+            badgeLabel: passwordExpiryLabel || undefined,
+          },
+        ]
+      : []),
     {
       key: "profile",
       label: "Profile",
@@ -139,10 +153,11 @@ export default function ClientLayout({ user, onLogout, children }) {
       ? [
           {
             key: "logout",
-            label: "Logout",
+            label: "Log Out",
             tone: "danger",
             onClick: onLogout,
             icon: <LogOut {...menuIconProps} />,
+            separatorBefore: true,
           },
         ]
       : []),
@@ -170,7 +185,8 @@ export default function ClientLayout({ user, onLogout, children }) {
         logoSrc: appLogo,
         logoAlt: "Guibone Accounting Services",
         title: "Guibone Accounting Services",
-        userName: firstName,
+        userName: displayName,
+        profileDisplayName: displayName,
         avatarSrc,
         rightContent: (
           <>
@@ -225,6 +241,13 @@ export default function ClientLayout({ user, onLogout, children }) {
         user={user}
         readOnly={isImpersonatingStaff}
         onProfileUpdated={handleProfileUpdated}
+      />
+      <ForgotPasswordModal
+        open={changePasswordOpen && !isImpersonatingStaff}
+        onClose={() => setChangePasswordOpen(false)}
+        defaultEmail={user?.email || ""}
+        passwordExpiryDaysOverride={user?.security_settings?.passwordExpiryDays ?? null}
+        securitySettingsOverride={user?.security_settings ?? null}
       />
     </DashboardShell>
   );

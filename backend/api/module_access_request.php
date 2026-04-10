@@ -14,19 +14,11 @@ function respond(int $code, array $payload): void
 
 function ensureNotificationsTable(PDO $conn): void
 {
-    $conn->exec(
-        'CREATE TABLE IF NOT EXISTS notifications (
-            notifications_ID INT NOT NULL AUTO_INCREMENT,
-            user_id INT NOT NULL,
-            sender_id INT DEFAULT NULL,
-            type VARCHAR(50) NOT NULL,
-            message TEXT NOT NULL,
-            is_read TINYINT(1) NOT NULL DEFAULT 0,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (notifications_ID),
-            KEY user_id (user_id),
-            KEY sender_id (sender_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    monitoring_require_schema_columns(
+        $conn,
+        'notifications',
+        ['notifications_ID', 'user_id', 'sender_id', 'type', 'message', 'is_read', 'created_at'],
+        'module access requests'
     );
 }
 

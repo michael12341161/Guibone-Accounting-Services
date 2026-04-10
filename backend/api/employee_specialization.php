@@ -37,6 +37,7 @@ if (!function_exists('monitoring_security_setting_definitions')) {
             'maxPasswordLength' => [
                 'db_key' => 'max_password_length',
                 'default' => 64,
+                'type' => 'int',
                 'validator' => static function (int $value): ?string {
                     return ($value >= 6 && $value <= 256)
                         ? null
@@ -46,6 +47,7 @@ if (!function_exists('monitoring_security_setting_definitions')) {
             'passwordExpiryDays' => [
                 'db_key' => 'password_expiry_days',
                 'default' => 90,
+                'type' => 'int',
                 'validator' => static function (int $value): ?string {
                     return $value >= 0
                         ? null
@@ -55,6 +57,7 @@ if (!function_exists('monitoring_security_setting_definitions')) {
             'sessionTimeoutMinutes' => [
                 'db_key' => 'session_timeout_minutes',
                 'default' => 30,
+                'type' => 'int',
                 'validator' => static function (int $value): ?string {
                     return $value > 0
                         ? null
@@ -64,6 +67,7 @@ if (!function_exists('monitoring_security_setting_definitions')) {
             'lockoutAttempts' => [
                 'db_key' => 'lockout_attempts',
                 'default' => 5,
+                'type' => 'int',
                 'validator' => static function (int $value): ?string {
                     return $value > 0
                         ? null
@@ -73,10 +77,19 @@ if (!function_exists('monitoring_security_setting_definitions')) {
             'lockoutDurationMinutes' => [
                 'db_key' => 'lockout_duration_minutes',
                 'default' => 15,
+                'type' => 'int',
                 'validator' => static function (int $value): ?string {
                     return $value > 0
                         ? null
                         : 'Lockout Duration must be greater than 0.';
+                },
+            ],
+            'loginVerificationEnabled' => [
+                'db_key' => 'login_verification_enabled',
+                'default' => true,
+                'type' => 'bool',
+                'validator' => static function (bool $value): ?string {
+                    return null;
                 },
             ],
         ];
@@ -87,7 +100,7 @@ if (!function_exists('monitoring_default_security_settings')) {
     function monitoring_default_security_settings(): array {
         $defaults = [];
         foreach (monitoring_security_setting_definitions() as $frontendKey => $definition) {
-            $defaults[$frontendKey] = (int)$definition['default'];
+            $defaults[$frontendKey] = $definition['default'];
         }
         return $defaults;
     }
@@ -183,10 +196,15 @@ if (!function_exists('monitoring_validate_security_settings')) {
             $candidate = array_key_exists($frontendKey, $payload)
                 ? $payload[$frontendKey]
                 : ($payload[$dbKey] ?? $definition['default']);
-            $value = monitoring_parse_int_setting($candidate);
+            $type = strtolower((string)($definition['type'] ?? 'int'));
+            $value = $type === 'bool'
+                ? monitoring_parse_bool_setting($candidate)
+                : monitoring_parse_int_setting($candidate);
 
             if ($value === null) {
-                $errors[$frontendKey] = 'A whole number is required.';
+                $errors[$frontendKey] = $type === 'bool'
+                    ? 'A valid enabled or disabled value is required.'
+                    : 'A whole number is required.';
                 continue;
             }
 
@@ -209,41 +227,23 @@ if (!function_exists('monitoring_validate_security_settings')) {
 
 if (!function_exists('monitoring_ensure_settings_table')) {
     function monitoring_ensure_settings_table(PDO $conn): void {
-        $conn->exec(
-            'CREATE TABLE IF NOT EXISTS settings (
-                Settings_ID INT PRIMARY KEY AUTO_INCREMENT,
-                setting_key VARCHAR(100) UNIQUE,
-                setting_value TEXT
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+        monitoring_require_schema_columns(
+            $conn,
+            'settings',
+            ['Settings_ID', 'setting_key', 'setting_value'],
+            'system settings'
         );
     }
 }
 
 if (!function_exists('monitoring_ensure_user_security_columns')) {
     function monitoring_ensure_user_security_columns(PDO $conn): void {
-        if (!monitoring_column_exists($conn, 'user', 'Password_changed_at')) {
-            $conn->exec(
-                'ALTER TABLE user
-                 ADD COLUMN Password_changed_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP
-                 AFTER Password'
-            );
-        }
-
-        if (!monitoring_column_exists($conn, 'user', 'Failed_login_attempts')) {
-            $conn->exec(
-                'ALTER TABLE user
-                 ADD COLUMN Failed_login_attempts INT NOT NULL DEFAULT 0
-                 AFTER Password_changed_at'
-            );
-        }
-
-        if (!monitoring_column_exists($conn, 'user', 'Locked_until')) {
-            $conn->exec(
-                'ALTER TABLE user
-                 ADD COLUMN Locked_until DATETIME NULL DEFAULT NULL
-                 AFTER Failed_login_attempts'
-            );
-        }
+        monitoring_require_schema_columns(
+            $conn,
+            'user',
+            ['Password_changed_at', 'Failed_login_attempts', 'Locked_until'],
+            'authentication security'
+        );
 
         try {
             $conn->exec(
@@ -279,7 +279,7 @@ if (!function_exists('monitoring_upsert_security_settings')) {
 
             $statement->execute([
                 ':setting_key' => $definitions[$frontendKey]['db_key'],
-                ':setting_value' => (string)$value,
+                ':setting_value' => is_bool($value) ? ($value ? '1' : '0') : (string)$value,
             ]);
         }
 
@@ -320,7 +320,10 @@ if (!function_exists('monitoring_get_security_settings')) {
                         continue;
                     }
 
-                    $value = monitoring_parse_int_setting($row['setting_value'] ?? null);
+                    $type = strtolower((string)($definition['type'] ?? 'int'));
+                    $value = $type === 'bool'
+                        ? monitoring_parse_bool_setting($row['setting_value'] ?? null)
+                        : monitoring_parse_int_setting($row['setting_value'] ?? null);
                     if ($value === null) {
                         continue;
                     }
@@ -336,6 +339,62 @@ if (!function_exists('monitoring_get_security_settings')) {
 
         monitoring_upsert_security_settings($conn, $settings);
         return $settings;
+    }
+}
+
+if (!function_exists('monitoring_resolve_password_expiry_info')) {
+    function monitoring_resolve_password_expiry_info(
+        array $securitySettings,
+        $passwordChangedAtRaw = null,
+        $createdAtRaw = null,
+        ?int $nowTimestamp = null
+    ): array {
+        $result = [
+            'password_changed_at' => null,
+            'password_expires_at' => null,
+            'password_days_until_expiry' => null,
+            'password_expired' => false,
+        ];
+
+        $effectiveChangedAt = trim((string)($passwordChangedAtRaw ?? ''));
+        if ($effectiveChangedAt === '') {
+            $effectiveChangedAt = trim((string)($createdAtRaw ?? ''));
+        }
+
+        if ($effectiveChangedAt === '') {
+            return $result;
+        }
+
+        $changedAtTimestamp = strtotime($effectiveChangedAt);
+        if ($changedAtTimestamp === false) {
+            return $result;
+        }
+
+        $result['password_changed_at'] = date('Y-m-d H:i:s', $changedAtTimestamp);
+
+        $passwordExpiryDays = max(0, (int)($securitySettings['passwordExpiryDays'] ?? 0));
+        if ($passwordExpiryDays <= 0) {
+            return $result;
+        }
+
+        $expiresAtTimestamp = strtotime('+' . $passwordExpiryDays . ' days', $changedAtTimestamp);
+        if ($expiresAtTimestamp === false) {
+            return $result;
+        }
+
+        $currentTimestamp = $nowTimestamp ?? time();
+        $result['password_expires_at'] = date('Y-m-d H:i:s', $expiresAtTimestamp);
+
+        if ($expiresAtTimestamp <= $currentTimestamp) {
+            $result['password_days_until_expiry'] = 0;
+            $result['password_expired'] = true;
+            return $result;
+        }
+
+        $remainingSeconds = $expiresAtTimestamp - $currentTimestamp;
+        $result['password_days_until_expiry'] = (int)ceil($remainingSeconds / 86400);
+
+        return $result;
     }
 }
 
@@ -986,49 +1045,18 @@ function employeeSpecializationPayloadId(array $employeeDetails): ?int {
 }
 
 function ensureEmployeeSpecializationSchema(PDO $conn): void {
-    $conn->exec(
-        'CREATE TABLE IF NOT EXISTS specialization_type (
-            specialization_type_ID INT(11) NOT NULL AUTO_INCREMENT,
-            Name VARCHAR(150) NOT NULL,
-            PRIMARY KEY (specialization_type_ID)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    monitoring_require_schema_columns(
+        $conn,
+        'specialization_type',
+        ['specialization_type_ID', 'Name'],
+        'employee specialization'
     );
-
-    $conn->exec(
-        "INSERT INTO specialization_type (specialization_type_ID, Name)
-         VALUES
-            (1, 'Tax Filing'),
-            (2, 'Auditing'),
-            (3, 'Book Keeping'),
-            (4, 'Accounting Operations')
-         ON DUPLICATE KEY UPDATE Name = Name"
+    monitoring_require_schema_columns(
+        $conn,
+        'user',
+        ['specialization_type_ID'],
+        'employee specialization'
     );
-
-    if (!employeeSpecializationTableExists($conn, 'user')) {
-        return;
-    }
-
-    if (!employeeSpecializationColumnExists($conn, 'user', 'specialization_type_ID')) {
-        return;
-    }
-
-    if (!employeeSpecializationIndexExists($conn, 'user', 'specialization_type_ID')) {
-        $conn->exec(
-            'ALTER TABLE user
-             ADD INDEX specialization_type_ID (specialization_type_ID)'
-        );
-    }
-
-    if (!employeeSpecializationForeignKeyExists($conn, 'user', 'specialization_type_ID', 'specialization_type')) {
-        $conn->exec(
-            'ALTER TABLE user
-             ADD CONSTRAINT fk_user_specialization_type
-             FOREIGN KEY (specialization_type_ID)
-             REFERENCES specialization_type(specialization_type_ID)
-             ON DELETE SET NULL
-             ON UPDATE CASCADE'
-        );
-    }
 }
 
 function loadSpecializationTypes(PDO $conn): array {

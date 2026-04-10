@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/client_service_access.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -210,6 +211,17 @@ try {
     $resolvedClientId = resolveClientId($conn, $clientId, $clientUsername);
     if ($resolvedClientId <= 0) {
         respond(404, ['success' => false, 'message' => 'Client not found']);
+    }
+    $serviceAccessState = monitoring_client_service_access_state($conn, $resolvedClientId);
+    if (empty($serviceAccessState['business_registered'])) {
+        respond(422, [
+            'success' => false,
+            'message' => monitoring_client_service_restriction_message(
+                $roleId === MONITORING_ROLE_CLIENT,
+                $serviceAccessState['restriction_reason'] ?? null
+            ),
+            'allowed_services' => ['Processing'],
+        ]);
     }
 
     $currentStmt = $conn->prepare(

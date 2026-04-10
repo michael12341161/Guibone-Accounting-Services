@@ -6,11 +6,34 @@ import {
 } from "../../utils/task_deadline";
 import { Modal } from "../UI/modal";
 
+const BUSINESS_PERMIT_NOTIFICATION_PREFIX = "business_permit_expired:";
+
 function isReadNotification(notification) {
   const raw = notification?.is_read ?? notification?.isRead ?? notification?.read;
   if (raw === true || raw === 1 || raw === "1" || raw === "true") return true;
   if (raw === false || raw === 0 || raw === "0" || raw === "false") return false;
   return false;
+}
+
+function isBusinessPermitExpiryNotification(notification) {
+  const type = String(notification?.type ?? notification?.kind ?? "").trim().toLowerCase();
+  return type.startsWith(BUSINESS_PERMIT_NOTIFICATION_PREFIX);
+}
+
+function resolveNotificationIds(notification) {
+  if (Array.isArray(notification?.notificationIds)) {
+    return Array.from(
+      new Set(
+        notification.notificationIds
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  const raw = notification?.notifications_ID ?? notification?.id ?? null;
+  if (raw === null || raw === undefined || raw === "") return [];
+  return [String(raw).trim()];
 }
 
 export default function NotificationItem({ notification, onMarkRead }) {
@@ -24,15 +47,22 @@ export default function NotificationItem({ notification, onMarkRead }) {
   const createdAtValue = notification.createdAt ?? notification.created_at ?? notification.created;
   const createdAt = createdAtValue ? formatDateTime(createdAtValue) : "";
   const isRead = isReadNotification(notification);
-  const notificationId = notification?.notifications_ID ?? notification?.id ?? null;
-  const canMarkRead = Boolean(notificationId) && !isRead;
+  const notificationIds = resolveNotificationIds(notification);
+  const notificationId = notificationIds[0] ?? null;
+  const canMarkRead = notificationIds.length > 0 && !isRead;
   const deadlineKind = getTaskDeadlineNotificationKind(notification?.type ?? notification?.kind);
+  const isBusinessPermitNotification = isBusinessPermitExpiryNotification(notification);
   const tone =
     deadlineKind === "overdue"
       ? {
           iconWrap: isRead ? "bg-rose-100 text-rose-500" : "bg-rose-100 text-rose-700",
           cardWrap: isRead ? "border-rose-200 bg-rose-50/70" : "border-rose-200 bg-white",
         }
+      : isBusinessPermitNotification
+        ? {
+            iconWrap: isRead ? "bg-amber-100 text-amber-500" : "bg-amber-100 text-amber-700",
+            cardWrap: isRead ? "border-amber-200 bg-amber-50/70" : "border-amber-200 bg-white",
+          }
       : deadlineKind === "today" || deadlineKind === "soon"
         ? {
             iconWrap: isRead ? "bg-amber-100 text-amber-500" : "bg-amber-100 text-amber-700",
@@ -67,7 +97,7 @@ export default function NotificationItem({ notification, onMarkRead }) {
             type="button"
             onClick={() => {
               if (!canMarkRead) return;
-              onMarkRead?.(notificationId);
+              onMarkRead?.(notificationIds.length > 1 ? notificationIds : notificationId);
             }}
             disabled={!canMarkRead}
             className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold shadow-sm transition ${

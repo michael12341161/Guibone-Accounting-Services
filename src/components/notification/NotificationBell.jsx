@@ -27,6 +27,27 @@ export default function NotificationBell({
     return totalCount + (getTaskDeadlineNotificationKind(notification?.type ?? notification?.kind) === "overdue" ? 1 : 0);
   }, 0);
 
+  async function handleMarkRead(value) {
+    if (typeof markNotificationRead !== "function") return;
+
+    const ids = Array.from(
+      new Set(
+        (Array.isArray(value) ? value : [value])
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+      )
+    );
+    if (!ids.length) return;
+
+    for (const id of ids) {
+      await markNotificationRead(id);
+    }
+
+    if (ids.length > 1 && typeof refreshNotifications === "function") {
+      await refreshNotifications();
+    }
+  }
+
   useEffect(() => {
     function handleDocClick(event) {
       if (!open) return;
@@ -99,7 +120,7 @@ export default function NotificationBell({
             </div>
           ) : null}
           <div className="max-h-80 overflow-auto">
-            <NotificationList notifications={notifications} onMarkRead={markNotificationRead} />
+            <NotificationList notifications={notifications} onMarkRead={handleMarkRead} />
           </div>
         </div>
       ) : null}

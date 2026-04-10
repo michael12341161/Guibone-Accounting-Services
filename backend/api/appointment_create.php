@@ -199,7 +199,8 @@ try {
         respond(404, ['success' => false, 'message' => 'Client not found']);
     }
 
-    $businessRegistered = monitoring_client_business_is_registered($conn, $resolvedClientId);
+    $serviceAccessState = monitoring_client_service_access_state($conn, $resolvedClientId);
+    $businessRegistered = !empty($serviceAccessState['business_registered']);
     [$serviceId, $serviceName] = resolveService($conn, $serviceInput);
     if ($serviceId <= 0) {
         respond(500, ['success' => false, 'message' => 'No services configured']);
@@ -207,9 +208,10 @@ try {
     if (!$businessRegistered && !monitoring_service_name_is_processing($serviceName)) {
         respond(422, [
             'success' => false,
-            'message' => $roleId === MONITORING_ROLE_CLIENT
-                ? 'Only Processing is available until your business permit is uploaded and your business is registered.'
-                : 'Only Processing is available until the client business permit is uploaded and the business is registered.',
+            'message' => monitoring_client_service_restriction_message(
+                $roleId === MONITORING_ROLE_CLIENT,
+                $serviceAccessState['restriction_reason'] ?? null
+            ),
             'allowed_services' => ['Processing'],
         ]);
     }

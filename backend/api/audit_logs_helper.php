@@ -5,18 +5,11 @@ require_once __DIR__ . '/auth.php';
 if (!function_exists('monitoring_ensure_audit_logs_table')) {
     function monitoring_ensure_audit_logs_table(PDO $conn): void
     {
-        $conn->exec(
-            'CREATE TABLE IF NOT EXISTS audit_logs (
-                audit_logs_ID INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT DEFAULT NULL,
-                action VARCHAR(255) DEFAULT NULL,
-                ip_address VARCHAR(45) DEFAULT NULL,
-                location VARCHAR(255) DEFAULT NULL,
-                device VARCHAR(100) DEFAULT NULL,
-                browser VARCHAR(100) DEFAULT NULL,
-                os VARCHAR(100) DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+        monitoring_require_schema_columns(
+            $conn,
+            'audit_logs',
+            ['audit_logs_ID', 'user_id', 'action', 'ip_address', 'location', 'device', 'browser', 'os', 'created_at'],
+            'audit logging'
         );
     }
 }

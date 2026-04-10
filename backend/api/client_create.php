@@ -82,16 +82,14 @@ function clientHasRejectionReasonColumn(PDO $conn, bool $refresh = false): bool 
 }
 
 function ensureClientRejectionReasonColumn(PDO $conn): bool {
-    if (clientHasRejectionReasonColumn($conn)) {
-        return true;
-    }
-
-    $conn->exec(
-        'ALTER TABLE `client`
-         ADD COLUMN `Rejection_reason` TEXT NULL AFTER `Status_id`'
+    monitoring_require_schema_columns(
+        $conn,
+        'client',
+        ['Rejection_reason'],
+        'client approval handling'
     );
 
-    return clientHasRejectionReasonColumn($conn, true);
+    return true;
 }
 
 function clientHasActionByColumn(PDO $conn, bool $refresh = false): bool {
@@ -105,16 +103,14 @@ function clientHasActionByColumn(PDO $conn, bool $refresh = false): bool {
 }
 
 function ensureClientActionByColumn(PDO $conn): bool {
-    if (clientHasActionByColumn($conn)) {
-        return true;
-    }
-
-    $conn->exec(
-        'ALTER TABLE `client`
-         ADD COLUMN `action_by` INT(11) NULL AFTER `Status_id`'
+    monitoring_require_schema_columns(
+        $conn,
+        'client',
+        ['action_by'],
+        'client approval handling'
     );
 
-    return clientHasActionByColumn($conn, true);
+    return true;
 }
 
 function userDisplayNameSql(string $alias): string {
@@ -953,7 +949,7 @@ function resolveBusinessStatusIdFromDetails(PDO $conn, int $clientId, array $bus
         }
     }
 
-    if (monitoring_document_client_has_business_permit($conn, $clientId)) {
+    if (monitoring_document_client_has_active_business_permit($conn, $clientId)) {
         return monitoring_resolve_business_status_id($conn, 'Registered');
     }
 
@@ -1200,17 +1196,26 @@ function fetchLatestBusiness(PDO $conn, int $clientId): ?array {
         return null;
     }
 
-    $hasBusinessPermit = monitoring_document_client_has_business_permit($conn, $clientId);
+    $permitState = monitoring_document_client_business_permit_state($conn, $clientId);
+    $hasBusinessPermit = !empty($permitState['has_business_permit']);
+    $hasActiveBusinessPermit = !empty($permitState['has_active_business_permit']);
+    $hasExpiredBusinessPermit = !empty($permitState['has_expired_business_permit']);
     $statusName = isset($row['business_status_name']) ? (string)$row['business_status_name'] : null;
     $statusId = $row['business_status_id'] ?? null;
     $businessStatus = monitoring_business_status_label($statusName, $statusId, 'Pending');
-    if ($hasBusinessPermit) {
+    if ($hasExpiredBusinessPermit) {
+        $businessStatus = 'Expired';
+    } elseif ($hasActiveBusinessPermit) {
         $businessStatus = 'Registered';
     }
 
     $row['business_status'] = $businessStatus;
-    $row['document_status'] = $businessStatus === 'Registered' ? 'Registered' : 'Pending';
+    $row['document_status'] = $businessStatus === 'Registered'
+        ? 'Registered'
+        : ($businessStatus === 'Expired' ? 'Expired' : 'Pending');
     $row['has_business_permit'] = $hasBusinessPermit;
+    $row['has_expired_business_permit'] = $hasExpiredBusinessPermit;
+    $row['business_permit_expiration_date'] = $permitState['expiration_date'] ?? null;
 
     return $row;
 }

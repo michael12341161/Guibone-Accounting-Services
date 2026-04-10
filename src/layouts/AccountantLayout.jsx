@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { CalendarDays, LayoutDashboard, ListTodo, LogOut, MessageCircleMore, Settings, UserRound } from "lucide-react";
+import { CalendarDays, KeyRound, LayoutDashboard, ListTodo, LogOut, MessageCircleMore, Settings, UserRound } from "lucide-react";
 import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
-import { getUserFirstName } from "../components/layout/layout_utils";
+import { getProfileMenuExpiryLabel, getUserDisplayName } from "../components/layout/layout_utils";
 import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
 import { accountantBreadcrumbConfig } from "../config/accountantBreadcrumbConfig";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
+import ForgotPasswordModal from "../Pages/auth/forgot_password";
 import AccountantProfile from "../Pages/profile/AccountantProfile";
 import { resolveBackendAssetUrl } from "../services/api";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
@@ -66,12 +67,21 @@ export const accountantNavItems = [
 export default function AccountantLayout({ user, onLogout, children }) {
   const { login } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { permissions } = useModulePermissions();
-  const firstName = useMemo(() => getUserFirstName(user), [user]);
+  const displayName = useMemo(() => getUserDisplayName(user), [user]);
+  const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
   const visibleNavItems = filterNavItemsByAccess(user, accountantNavItems, permissions);
   const profileItems = useMemo(() => {
     const items = [
+      {
+        key: "change-password",
+        label: "Change Password",
+        onClick: () => setChangePasswordOpen(true),
+        icon: <KeyRound {...menuIconProps} />,
+        badgeLabel: passwordExpiryLabel || undefined,
+      },
       {
         key: "profile",
         label: "Profile",
@@ -83,15 +93,16 @@ export default function AccountantLayout({ user, onLogout, children }) {
     if (onLogout) {
       items.push({
         key: "logout",
-        label: "Logout",
+        label: "Log Out",
         tone: "danger",
         onClick: onLogout,
         icon: <LogOut {...menuIconProps} />,
+        separatorBefore: true,
       });
     }
 
     return items;
-  }, [onLogout]);
+  }, [onLogout, passwordExpiryLabel]);
 
   const handleProfileUpdated = (nextProfile) => {
     if (!nextProfile || typeof nextProfile !== "object") return;
@@ -121,7 +132,8 @@ export default function AccountantLayout({ user, onLogout, children }) {
         logoSrc: appLogo,
         logoAlt: "Guibone Accounting Services",
         title: "Guibone Accounting Services",
-        userName: firstName,
+        userName: displayName,
+        profileDisplayName: displayName,
         avatarSrc,
         rightContent: <LayoutHeaderActions />,
         onLogout,
@@ -149,6 +161,13 @@ export default function AccountantLayout({ user, onLogout, children }) {
         onClose={() => setProfileOpen(false)}
         user={user}
         onProfileUpdated={handleProfileUpdated}
+      />
+      <ForgotPasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+        defaultEmail={user?.email || ""}
+        passwordExpiryDaysOverride={user?.security_settings?.passwordExpiryDays ?? null}
+        securitySettingsOverride={user?.security_settings ?? null}
       />
     </DashboardShell>
   );

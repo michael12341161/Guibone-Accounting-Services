@@ -182,28 +182,22 @@ try {
         }
     }
 
-    if ($passwordExpiryDays > 0) {
-        $passwordChangedAtRaw = trim((string)($user['Password_changed_at'] ?? ''));
-        if ($passwordChangedAtRaw === '') {
-            $passwordChangedAtRaw = trim((string)($user['Created_at'] ?? ''));
-        }
+    $passwordExpiryInfo = monitoring_resolve_password_expiry_info(
+        $securitySettings,
+        $user['Password_changed_at'] ?? null,
+        $user['Created_at'] ?? null
+    );
 
-        if ($passwordChangedAtRaw !== '') {
-            $passwordChangedAtTimestamp = strtotime($passwordChangedAtRaw);
-            if ($passwordChangedAtTimestamp !== false) {
-                $expiresAtTimestamp = strtotime('+' . $passwordExpiryDays . ' days', $passwordChangedAtTimestamp);
-                if ($expiresAtTimestamp !== false && $expiresAtTimestamp <= time()) {
-                    monitoring_write_audit_log($conn, $userId, 'Blocked login due to expired password', $auditContext);
-                    echo json_encode([
-                        'success' => false,
-                        'message' => 'Your password has expired. Reset it to continue.',
-                        'password_expired' => true,
-                        'email' => $user['Email'] ?? null,
-                    ]);
-                    exit;
-                }
-            }
-        }
+    if ($passwordExpiryDays > 0 && !empty($passwordExpiryInfo['password_expired'])) {
+        monitoring_write_audit_log($conn, $userId, 'Blocked login due to expired password', $auditContext);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Your password has expired. Reset it to continue.',
+            'password_expired' => true,
+            'password_expiry_days' => $passwordExpiryDays,
+            'email' => $user['Email'] ?? null,
+        ]);
+        exit;
     }
 
     $sessionUser = [
@@ -216,6 +210,9 @@ try {
         'middle_name' => $user['Middle_name'] ?? null,
         'last_name' => $user['Last_name'] ?? null,
         'profile_image' => $user['Profile_Image'] ?? null,
+        'password_changed_at' => $passwordExpiryInfo['password_changed_at'],
+        'password_expires_at' => $passwordExpiryInfo['password_expires_at'],
+        'password_days_until_expiry' => $passwordExpiryInfo['password_days_until_expiry'],
         'registration_source' => null,
         'approval_status' => $approvalStatus,
         'security_settings' => $securitySettings,

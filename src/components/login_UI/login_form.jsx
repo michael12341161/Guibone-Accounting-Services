@@ -57,6 +57,7 @@ export default function LoginForm({
   showPassword,
   sum,
   captcha,
+  showVerification = true,
   loginError,
   captchaError,
   loading,
@@ -123,14 +124,16 @@ export default function LoginForm({
           </button>
         </div>
 
-        <LoginCaptcha
-          a={captcha.a}
-          b={captcha.b}
-          sum={sum}
-          error={captchaError}
-          onChange={onSumChange}
-          onRefresh={onRefreshCaptcha}
-        />
+        {showVerification ? (
+          <LoginCaptcha
+            a={captcha.a}
+            b={captcha.b}
+            sum={sum}
+            error={captchaError}
+            onChange={onSumChange}
+            onRefresh={onRefreshCaptcha}
+          />
+        ) : null}
 
         {loginError ? (
           <div

@@ -33,6 +33,11 @@ monitoring_auth_respond(200, [
         'middle_name' => $user['middle_name'] ?? null,
         'last_name' => $user['last_name'] ?? null,
         'profile_image' => $user['profile_image'] ?? null,
+        'password_changed_at' => $user['password_changed_at'] ?? null,
+        'password_expires_at' => $user['password_expires_at'] ?? null,
+        'password_days_until_expiry' => array_key_exists('password_days_until_expiry', $user)
+            ? ($user['password_days_until_expiry'] !== null ? (int)$user['password_days_until_expiry'] : null)
+            : null,
         'registration_source' => $user['registration_source'] ?? null,
         'approval_status' => $user['approval_status'] ?? null,
         'security_settings' => is_array($user['security_settings'] ?? null) ? $user['security_settings'] : [],

@@ -60,7 +60,12 @@ async function fetchClientBusiness(clientId) {
 
   return {
     business: businessResponse?.data?.business ?? null,
-    status: rawStatus === "registered" ? "Registered" : "Unregistered",
+    status:
+      rawStatus === "expired"
+        ? "Expired"
+        : rawStatus === "registered"
+          ? "Registered"
+          : "Unregistered",
   };
 }
 
@@ -135,7 +140,11 @@ export default function BusinessPage() {
   const businessName = formatDisplayValue(business?.business_trade_name || business?.business_brand, "No business profile yet");
   const businessType = formatDisplayValue(business?.business_type, "Type of business not available");
   const businessStatusBadgeClass = getDocumentStatusBadgeClass(
-    businessStatus === "Registered" ? "Registered" : "Pending"
+    businessStatus === "Registered"
+      ? "Registered"
+      : businessStatus === "Expired"
+        ? "Expired"
+        : "Pending"
   );
   const businessAddress = buildBusinessAddress(business);
   const businessAddressDetails = buildBusinessAddressDetails(business);
@@ -155,7 +164,12 @@ export default function BusinessPage() {
       label: "Business Status",
       value: businessStatus,
       icon: ShieldCheck,
-      valueClassName: businessStatus === "Registered" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300",
+      valueClassName:
+        businessStatus === "Registered"
+          ? "text-emerald-700 dark:text-emerald-300"
+          : businessStatus === "Expired"
+            ? "text-rose-700 dark:text-rose-300"
+            : "text-amber-700 dark:text-amber-300",
     },
     {
       label: "Business Email",

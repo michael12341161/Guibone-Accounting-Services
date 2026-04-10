@@ -24,6 +24,8 @@ function account_switch_build_client_session_user(PDO $conn, int $clientId): arr
                 u.Username AS username,
                 u.Email AS user_email,
                 u.Role_id AS role_id,
+                u.Password_changed_at AS password_changed_at,
+                u.Created_at AS created_at,
                 c.Client_ID AS client_id,
                 c.Email AS client_email,
                 c.First_name AS first_name,
@@ -47,6 +49,11 @@ function account_switch_build_client_session_user(PDO $conn, int $clientId): arr
     }
 
     $securitySettings = monitoring_get_security_settings($conn);
+    $passwordExpiryInfo = monitoring_resolve_password_expiry_info(
+        $securitySettings,
+        $row['password_changed_at'] ?? null,
+        $row['created_at'] ?? null
+    );
 
     return [
         'id' => (int)$row['user_id'],
@@ -58,6 +65,9 @@ function account_switch_build_client_session_user(PDO $conn, int $clientId): arr
         'middle_name' => $row['middle_name'] ?? null,
         'last_name' => $row['last_name'] ?? null,
         'profile_image' => $row['profile_image'] ?? null,
+        'password_changed_at' => $passwordExpiryInfo['password_changed_at'],
+        'password_expires_at' => $passwordExpiryInfo['password_expires_at'],
+        'password_days_until_expiry' => $passwordExpiryInfo['password_days_until_expiry'],
         'registration_source' => null,
         'approval_status' => null,
         'security_settings' => $securitySettings,

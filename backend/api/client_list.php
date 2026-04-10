@@ -54,8 +54,11 @@ function resolveApprovalStatus($statusId, ?string $statusName = null, string $fa
     return monitoring_client_approval_status($statusName, $statusId, $fallback);
 }
 
-function resolveBusinessStatus(?string $statusName, $statusId, bool $hasBusinessPermit, bool $hasBusinessRecord): string {
-    if ($hasBusinessPermit) {
+function resolveBusinessStatus(?string $statusName, $statusId, bool $hasActiveBusinessPermit, bool $hasExpiredBusinessPermit, bool $hasBusinessRecord): string {
+    if ($hasExpiredBusinessPermit) {
+        return 'Expired';
+    }
+    if ($hasActiveBusinessPermit) {
         return 'Registered';
     }
     $hasExplicitBusinessStatus = trim((string)($statusName ?? '')) !== '' || (int)($statusId ?? 0) > 0;
@@ -269,12 +272,14 @@ try {
         }
     }
 
+    $businessPermitStatesByClientId = [];
     if (!empty($clientIds) && tableExists($conn, 'documents') && columnExists($conn, 'documents', 'Client_ID')) {
         $hasDocumentTypeColumn = columnExists($conn, 'documents', 'Document_type_ID');
         $hasAppointmentColumn = columnExists($conn, 'documents', 'appointment_id');
         $businessPermitTypeIds = $hasDocumentTypeColumn ? monitoring_document_business_permit_type_ids($conn) : [];
 
         $clientIdValues = array_values(array_map('intval', array_keys($clientIds)));
+        $businessPermitStatesByClientId = monitoring_document_client_business_permit_states($conn, $clientIdValues);
         $clientPlaceholders = [];
         $documentParams = [];
         foreach ($clientIdValues as $index => $clientIdValue) {
@@ -318,6 +323,7 @@ try {
                 $documentMetaByClientId[$clientId] = [
                     'document_count' => isset($documentRow['document_count']) ? (int)$documentRow['document_count'] : 0,
                     'has_business_permit' => !empty($documentRow['has_business_permit']),
+                    'permit_state' => $businessPermitStatesByClientId[$clientId] ?? null,
                 ];
             }
         } catch (Throwable $__) {
@@ -333,19 +339,31 @@ try {
         );
         $clientId = isset($row['id']) ? (int)$row['id'] : 0;
         $documentMeta = $documentMetaByClientId[$clientId] ?? null;
-        $hasBusinessPermit = !empty($documentMeta['has_business_permit']);
+        $permitState = is_array($documentMeta) && is_array($documentMeta['permit_state'] ?? null)
+            ? $documentMeta['permit_state']
+            : ($businessPermitStatesByClientId[$clientId] ?? monitoring_document_client_business_permit_state($conn, $clientId));
+        $hasBusinessPermit = !empty($permitState['has_active_business_permit']);
+        $hasExpiredBusinessPermit = !empty($permitState['has_expired_business_permit']);
+        $hasAnyBusinessPermit = !empty($permitState['has_business_permit']);
         $hasBusinessRecord = isset($row['business_id']) && (int)$row['business_id'] > 0;
         $businessStatus = resolveBusinessStatus(
             isset($row['business_status_name']) ? (string)$row['business_status_name'] : null,
             $row['business_status_id'] ?? null,
             $hasBusinessPermit,
+            $hasExpiredBusinessPermit,
             $hasBusinessRecord
         );
-        $row['document_count'] = isset($documentMeta['document_count']) ? (int)$documentMeta['document_count'] : 0;
-        $row['has_business_permit'] = $hasBusinessPermit;
+        $row['document_count'] = is_array($documentMeta) && isset($documentMeta['document_count'])
+            ? (int)$documentMeta['document_count']
+            : 0;
+        $row['has_business_permit'] = $hasAnyBusinessPermit;
+        $row['has_expired_business_permit'] = $hasExpiredBusinessPermit;
+        $row['business_permit_expiration_date'] = $permitState['expiration_date'] ?? null;
         $row['business_status_name'] = $businessStatus;
         $row['business_status'] = $businessStatus;
-        $row['document_status'] = $businessStatus === 'Registered' ? 'Registered' : 'Pending';
+        $row['document_status'] = $businessStatus === 'Registered'
+            ? 'Registered'
+            : ($businessStatus === 'Expired' ? 'Expired' : 'Pending');
     }
     unset($row);
 

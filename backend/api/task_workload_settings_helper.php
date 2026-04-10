@@ -8,12 +8,11 @@ const MONITORING_TASK_WORKLOAD_MAX_LIMIT = 999;
 if (!function_exists('monitoring_task_workload_ensure_settings_table')) {
     function monitoring_task_workload_ensure_settings_table(PDO $conn): void
     {
-        $conn->exec(
-            'CREATE TABLE IF NOT EXISTS settings (
-                Settings_ID INT PRIMARY KEY AUTO_INCREMENT,
-                setting_key VARCHAR(100) UNIQUE,
-                setting_value TEXT
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+        monitoring_require_schema_columns(
+            $conn,
+            'settings',
+            ['Settings_ID', 'setting_key', 'setting_value'],
+            'task workload settings'
         );
     }
 }

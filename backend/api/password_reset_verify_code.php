@@ -1,33 +1,8 @@
 <?php
-$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-$allowedOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost',
-  'http://127.0.0.1',
-];
-if ($origin && in_array($origin, $allowedOrigins, true)) {
-  header('Access-Control-Allow-Origin: ' . $origin);
-  header('Access-Control-Allow-Credentials: true');
-} else {
-  header('Access-Control-Allow-Origin: *');
-}
-header('Access-Control-Allow-Headers: Content-Type');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Content-Type: application/json');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-  http_response_code(200);
-  exit;
-}
+require_once __DIR__ . '/auth.php';
+monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
 require_once __DIR__ . '/connection-pdo.php';
-
-if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_start();
-}
 
 function respond($code, $payload) {
   http_response_code($code);
@@ -65,13 +40,19 @@ try {
     respond(400, ['success' => false, 'message' => 'Invalid or expired code.']);
   }
 
-  // Create a short-lived reset token (returned to client) to authorize password change
+  // Create a short-lived reset token (returned to client) to authorize password change.
   $token = bin2hex(random_bytes(16));
+  $resetTokenExpiresInSeconds = 15 * 60;
+  $resetTokenExpiresInMinutes = (int)max(1, ceil($resetTokenExpiresInSeconds / 60));
   $_SESSION['pw_reset']['verified'] = true;
   $_SESSION['pw_reset']['reset_token_hash'] = hash('sha256', $token);
-  $_SESSION['pw_reset']['reset_token_expires_at'] = time() + (15 * 60);
+  $_SESSION['pw_reset']['reset_token_expires_at'] = time() + $resetTokenExpiresInSeconds;
 
-  respond(200, ['success' => true, 'reset_token' => $token]);
+  respond(200, [
+    'success' => true,
+    'reset_token' => $token,
+    'reset_token_expires_in_minutes' => $resetTokenExpiresInMinutes,
+  ]);
 } catch (Throwable $e) {
   respond(500, ['success' => false, 'message' => 'Server error.']);
 }

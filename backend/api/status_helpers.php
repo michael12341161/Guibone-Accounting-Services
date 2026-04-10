@@ -169,3 +169,41 @@ function monitoring_resolve_business_status_id(PDO $conn, string $label): ?int
 
     return null;
 }
+
+function monitoring_document_status_label(?string $statusName, string $fallback = 'Uploaded'): string
+{
+    if (monitoring_status_matches($statusName, ['Expired'])) {
+        return 'Expired';
+    }
+    if (monitoring_status_matches($statusName, ['Renewed'])) {
+        return 'Renewed';
+    }
+
+    return $fallback;
+}
+
+function monitoring_resolve_document_status_id(PDO $conn, string $label): ?int
+{
+    $normalized = monitoring_normalize_status_key($label);
+    if ($normalized === '') {
+        return null;
+    }
+
+    $groups = ['DOCUMENTS', 'DOCUMENT'];
+    $candidates = [$label];
+
+    if ($normalized === 'expired') {
+        $candidates = ['Expired'];
+    } elseif ($normalized === 'renewed') {
+        $candidates = ['Renewed'];
+    }
+
+    foreach ($groups as $group) {
+        $resolved = monitoring_resolve_status_id($conn, $group, $candidates);
+        if ($resolved !== null) {
+            return $resolved;
+        }
+    }
+
+    return null;
+}

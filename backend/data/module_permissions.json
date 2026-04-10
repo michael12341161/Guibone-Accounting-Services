@@ -8,25 +8,25 @@
     "user-management": {
         "admin": true,
         "secretary": false,
-        "accountant": false,
+        "accountant": true,
         "client": false,
         "actions": {
             "view": {
                 "admin": true,
                 "secretary": false,
-                "accountant": false,
+                "accountant": true,
                 "client": false
             },
             "edit": {
                 "admin": true,
                 "secretary": false,
-                "accountant": false,
+                "accountant": true,
                 "client": false
             },
             "add-user": {
                 "admin": true,
                 "secretary": false,
-                "accountant": false,
+                "accountant": true,
                 "client": false
             }
         }
@@ -89,19 +89,19 @@
     },
     "documents": {
         "admin": true,
-        "secretary": false,
+        "secretary": true,
         "accountant": false,
         "client": false,
         "actions": {
             "upload": {
                 "admin": true,
-                "secretary": false,
+                "secretary": true,
                 "accountant": false,
                 "client": false
             },
             "view-only": {
                 "admin": true,
-                "secretary": false,
+                "secretary": true,
                 "accountant": false,
                 "client": false
             }

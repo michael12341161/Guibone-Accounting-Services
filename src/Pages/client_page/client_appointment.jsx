@@ -19,7 +19,9 @@ import {
 
 const DEFAULT_SERVICE_ACCESS = {
   businessRegistered: null,
+  businessPermitExpired: false,
   restrictedToProcessing: false,
+  restrictionReason: null,
 };
 
 const ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp";
@@ -68,6 +70,16 @@ function filterServicesForPortal(names, portalConfig) {
   return (Array.isArray(names) ? names : []).filter((name) =>
     isConsultationService(name) ? allowConsultations : allowAppointments
   );
+}
+
+function getServiceRestrictionMessage(access = DEFAULT_SERVICE_ACCESS) {
+  if (access?.businessPermitExpired || access?.restrictionReason === "expired") {
+    return "Your Business Permit has expired. Tax Filing, Auditing, Bookkeeping, and Consultation are disabled until your permit is renewed. Only Processing is available for renewal.";
+  }
+  if (access?.restrictedToProcessing) {
+    return "Processing is the only available service until your business is registered.";
+  }
+  return "";
 }
 
 function normalizeAppointmentStatus(value) {
@@ -404,6 +416,7 @@ export default function ClientAppointment() {
     appointmentsEnabled || consultationsEnabled
       ? ""
       : `Appointment and consultation requests are currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`;
+  const serviceRestrictionMessage = getServiceRestrictionMessage(serviceAccess);
   const selectedServiceDuration = useMemo(
     () => getEstimatedServiceDuration(form.service),
     [form.service]
@@ -450,7 +463,9 @@ export default function ClientAppointment() {
           : nextAccess?.businessRegistered === false
             ? false
             : null,
+      businessPermitExpired: Boolean(nextAccess?.businessPermitExpired),
       restrictedToProcessing: Boolean(nextAccess?.restrictedToProcessing),
+      restrictionReason: String(nextAccess?.restrictionReason || "").trim() || null,
     };
     const baseNames = Array.isArray(names) ? names.filter(Boolean) : [];
     const fallbackNames = normalizedAccess.restrictedToProcessing
@@ -522,7 +537,9 @@ export default function ClientAppointment() {
             : accessMeta?.business_registered === false
               ? false
               : null,
+        businessPermitExpired: Boolean(accessMeta?.business_permit_expired),
         restrictedToProcessing: Boolean(accessMeta?.restricted_to_processing),
+        restrictionReason: String(accessMeta?.restriction_reason || "").trim() || null,
       });
     } catch (requestError) {
       if (!silent) {
@@ -972,6 +989,14 @@ export default function ClientAppointment() {
       return;
     }
 
+    if (
+      serviceAccess.businessPermitExpired &&
+      !isProcessingService(form.service)
+    ) {
+      setError(serviceRestrictionMessage);
+      return;
+    }
+
     if (services.length === 0) {
       setError("No services are available right now. Please try again.");
       return;
@@ -1133,6 +1158,11 @@ export default function ClientAppointment() {
       return;
     }
 
+    if (serviceAccess.businessPermitExpired) {
+      setError(serviceRestrictionMessage);
+      return;
+    }
+
     if (!rescheduleTarget?.schedulingId) {
       setError("Cannot reschedule: missing consultation id.");
       return;
@@ -1219,6 +1249,11 @@ export default function ClientAppointment() {
             {bookingPausedMessage}
           </div>
         ) : null}
+        {!bookingPausedMessage && serviceAccess.businessPermitExpired ? (
+          <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            {serviceRestrictionMessage}
+          </div>
+        ) : null}
         {!bookingPausedMessage && (!appointmentsEnabled || !consultationsEnabled) ? (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             {!appointmentsEnabled
@@ -1264,7 +1299,7 @@ export default function ClientAppointment() {
           ) : null}
           {serviceAccess.restrictedToProcessing ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Only Processing is available until your Business Permit is uploaded and your business is registered.
+              {serviceRestrictionMessage}
             </div>
           ) : null}
           {portalNotice ? (
@@ -1318,7 +1353,7 @@ export default function ClientAppointment() {
                 {loadingServices
                   ? "Please wait while the available services are being loaded."
                   : serviceAccess.restrictedToProcessing
-                  ? "Processing is the only available service until your business is registered."
+                  ? serviceRestrictionMessage
                   : services.length === 0
                     ? "No services are available right now. Please try again in a moment."
                     : "Choose the service you want to book."}
@@ -1718,11 +1753,14 @@ export default function ClientAppointment() {
                     isConsultationService(service);
                   const canRescheduleRow =
                     consultationsEnabled &&
+                    !serviceAccess.businessPermitExpired &&
                     isConsultationRow &&
                     schedulingId &&
                     canRescheduleConsultation(status);
                   const actionAvailabilityLabel =
-                    isConsultationRow && !consultationsEnabled
+                    isConsultationRow && serviceAccess.businessPermitExpired
+                      ? "Permit expired"
+                      : isConsultationRow && !consultationsEnabled
                       ? "Consultations paused"
                       : getActionAvailabilityLabel(status);
                   const meetingType =

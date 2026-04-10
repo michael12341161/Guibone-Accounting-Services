@@ -10,6 +10,7 @@ import {
   buildDocumentSlots,
   getDocumentStatusBadgeClass,
   getRegistrationStatusFromSlots,
+  getDocumentValiditySummary,
   normalizeDocumentKey,
   resolveDocumentUrl,
 } from "../../utils/document_management";
@@ -32,6 +33,35 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function formatDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Not set";
+
+  const date = new Date(raw.includes("T") ? raw : `${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function getCurrentDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getRegistrationCardVariant(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "registered") return "success";
+  if (normalized === "expired") return "danger";
+  return "warning";
+}
+
 export default function ClientDocumentsPage() {
   const { user } = useAuth();
   const clientId = Number(user?.client_id || user?.Client_ID || 0);
@@ -39,6 +69,7 @@ export default function ClientDocumentsPage() {
   const [documents, setDocuments] = useState([]);
   const [clientRecord, setClientRecord] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [todayKey, setTodayKey] = useState(() => getCurrentDateKey());
   const [error, setError] = useState("");
   useErrorToast(error);
   const [viewerSlot, setViewerSlot] = useState(null);
@@ -93,7 +124,24 @@ export default function ClientDocumentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  const documentSlots = useMemo(() => buildDocumentSlots(documentTypes, documents), [documentTypes, documents]);
+  useEffect(() => {
+    // Keep countdown values fresh if the page stays open across midnight.
+    const interval = window.setInterval(() => {
+      setTodayKey((current) => {
+        const next = getCurrentDateKey();
+        return current === next ? current : next;
+      });
+    }, 60000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const documentSlots = useMemo(
+    () => buildDocumentSlots(documentTypes, documents, todayKey),
+    [documentTypes, documents, todayKey]
+  );
   const businessPermitSlot = useMemo(() => {
     return documentSlots.find((slot) => slot.isBusinessPermit) || null;
   }, [documentSlots]);
@@ -112,9 +160,9 @@ export default function ClientDocumentsPage() {
     () => supportDocumentSlots.filter((slot) => slot.isUploaded).length,
     [supportDocumentSlots]
   );
-  const registrationStatus =
-    clientRecord?.document_status ||
-    getRegistrationStatusFromSlots(businessPermitSlot ? [businessPermitSlot] : []);
+  const registrationStatus = businessPermitSlot
+    ? getRegistrationStatusFromSlots([businessPermitSlot])
+    : clientRecord?.document_status || "Pending";
   const viewerDocumentUrl = resolveDocumentUrl(viewerSlot?.filepath);
 
   useEffect(() => {
@@ -136,13 +184,17 @@ export default function ClientDocumentsPage() {
           ) : null}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card compact variant={registrationStatus === "Registered" ? "success" : "warning"}>
+            <Card compact variant={getRegistrationCardVariant(registrationStatus)}>
               <CardContent className="space-y-1">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Registration Status</div>
                 <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getDocumentStatusBadgeClass(registrationStatus)}`}>
                   {registrationStatus}
                 </span>
-                <CardDescription>Business Permit controls whether the account is marked as registered.</CardDescription>
+                <CardDescription>
+                  {registrationStatus === "Expired"
+                    ? "The Business Permit on file is already past its expiration date."
+                    : "Business Permit controls whether the account is marked as registered."}
+                </CardDescription>
               </CardContent>
             </Card>
 
@@ -156,15 +208,21 @@ export default function ClientDocumentsPage() {
               </CardContent>
             </Card>
 
-            <Card compact variant={businessPermitSlot?.isUploaded ? "success" : "warning"}>
+            <Card compact variant={getRegistrationCardVariant(registrationStatus)}>
               <CardContent className="space-y-1">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Business Permit</div>
                 <div className="text-sm font-semibold text-slate-900">
                   {businessPermitSlot?.isUploaded ? businessPermitSlot.filename || "Uploaded" : "Awaiting upload"}
                 </div>
                 <CardDescription>
-                  {businessPermitSlot?.isUploaded ? "Your Business Permit is available to view." : "The admin has not uploaded your Business Permit yet."}
+                  {businessPermitSlot?.isUploaded
+                    ? `Uploaded ${formatDateTime(businessPermitSlot?.uploadedAt)}`
+                    : "Upload date not available yet."}
                 </CardDescription>
+                <CardDescription>
+                  Expires: {businessPermitSlot?.expirationDate ? formatDate(businessPermitSlot.expirationDate) : "Not set"}
+                </CardDescription>
+                <CardDescription>Remaining: {businessPermitSlot?.remainingDurationLabel || "Not set"}</CardDescription>
               </CardContent>
             </Card>
 
@@ -199,16 +257,14 @@ export default function ClientDocumentsPage() {
             ) : (
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {managedDocumentSlots.map((slot) => {
-                  const badgeClass = slot.isBusinessPermit
-                    ? getDocumentStatusBadgeClass(slot.status)
-                    : slot.isUploaded
-                      ? "border-sky-200 bg-sky-50 text-sky-700"
-                      : "border-slate-200 bg-slate-50 text-slate-700";
-                  const badgeLabel = slot.isBusinessPermit ? slot.status : slot.isUploaded ? "Uploaded" : "Pending";
+                  const badgeClass = getDocumentStatusBadgeClass(slot.status);
+                  const badgeLabel = slot.status;
                   const helperText = slot.isBusinessPermit
                     ? "This file is managed only by the admin. Once the Business Permit is uploaded, your business status changes to registered."
                     : "This file is managed only by the admin and is kept as a supporting business record.";
                   const viewerLabel = slot.label || "Document";
+                  const showExpirationDetails =
+                    Boolean(slot.validityRule) || Boolean(slot.expirationDate) || slot.remainingDays !== null;
                   const openLabel = slot.isBusinessPermit ? "Open Business Permit" : `Open ${viewerLabel}`;
                   const previewLabel = slot.isBusinessPermit ? "Preview Business Permit" : `Preview ${viewerLabel}`;
 
@@ -234,6 +290,23 @@ export default function ClientDocumentsPage() {
                         <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
                           {helperText}
                         </div>
+
+                        {showExpirationDetails ? (
+                          <div className="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="font-semibold text-slate-700">Validity</div>
+                              <div>{getDocumentValiditySummary(slot)}</div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="font-semibold text-slate-700">Days Remaining</div>
+                              <div>{slot.remainingDurationLabel || "Not set"}</div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-2">
+                              <div className="font-semibold text-slate-700">Expiration Date</div>
+                              <div>{slot.expirationDate ? formatDate(slot.expirationDate) : "Not set"}</div>
+                            </div>
+                          </div>
+                        ) : null}
 
                         {slot.isUploaded && slot.filepath ? (
                           <div className="flex flex-wrap items-center gap-3">
@@ -286,15 +359,17 @@ export default function ClientDocumentsPage() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span
-                className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${
-                  viewerSlot.isBusinessPermit
-                    ? getDocumentStatusBadgeClass(viewerSlot.status)
-                    : "border-sky-200 bg-sky-50 text-sky-700"
-                }`}
+                className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${getDocumentStatusBadgeClass(viewerSlot.status)}`}
               >
-                {viewerSlot.isBusinessPermit ? viewerSlot.status : "Uploaded"}
+                {viewerSlot.status}
               </span>
               <span>{viewerSlot.filename || viewerSlot.label || "Document"}</span>
+              {viewerSlot?.validityRule || viewerSlot?.expirationDate || viewerSlot?.remainingDays !== null ? (
+                <>
+                  <span>{viewerSlot.expirationDate ? `Expires ${formatDate(viewerSlot.expirationDate)}` : "No expiration date set"}</span>
+                  <span>{viewerSlot.remainingDurationLabel || "Not set"}</span>
+                </>
+              ) : null}
             </div>
             <iframe
               key={viewerDocumentUrl}

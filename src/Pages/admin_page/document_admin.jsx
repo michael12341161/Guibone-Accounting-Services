@@ -10,13 +10,15 @@ import { api } from "../../services/api";
 import { joinPersonName } from "../../utils/person_name";
 import {
   buildDocumentSlots,
+  getDocumentDurationOptions,
   getDocumentStatusBadgeClass,
   getRegistrationStatusFromSlots,
+  getDocumentValiditySummary,
   normalizeDocumentKey,
   resolveDocumentUrl,
 } from "../../utils/document_management";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
-import { useErrorToast } from "../../utils/feedback";
+import { showConfirmDialog, useErrorToast } from "../../utils/feedback";
 
 const MANAGED_DOCUMENT_KEYS = new Set(["business_permit", "dti", "sec", "lgu"]);
 
@@ -54,6 +56,35 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function formatDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Not set";
+
+  const date = new Date(raw.includes("T") ? raw : `${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function getCurrentDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getRegistrationCardVariant(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "registered") return "success";
+  if (normalized === "expired") return "danger";
+  return "warning";
+}
+
 export default function DocumentAdminPage() {
   const { user } = useAuth();
   const { permissions } = useModulePermissions();
@@ -64,11 +95,13 @@ export default function DocumentAdminPage() {
   const [documents, setDocuments] = useState([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [todayKey, setTodayKey] = useState(() => getCurrentDateKey());
   const [error, setError] = useState("");
   useErrorToast(error);
   const [success, setSuccess] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [pendingFiles, setPendingFiles] = useState({});
+  const [pendingDurationDays, setPendingDurationDays] = useState({});
   const [uploadingDocumentId, setUploadingDocumentId] = useState(null);
   const [viewerSlot, setViewerSlot] = useState(null);
   const canUploadDocuments = hasFeatureActionAccess(user, "documents", "upload", permissions);
@@ -143,6 +176,20 @@ export default function DocumentAdminPage() {
   }, []);
 
   useEffect(() => {
+    // Keep countdown values fresh if the page stays open across midnight.
+    const interval = window.setInterval(() => {
+      setTodayKey((current) => {
+        const next = getCurrentDateKey();
+        return current === next ? current : next;
+      });
+    }, 60000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!clients.length) {
       setSelectedClientId(null);
       return;
@@ -176,7 +223,10 @@ export default function DocumentAdminPage() {
     [clients, selectedClientId]
   );
 
-  const documentSlots = useMemo(() => buildDocumentSlots(documentTypes, documents), [documentTypes, documents]);
+  const documentSlots = useMemo(
+    () => buildDocumentSlots(documentTypes, documents, todayKey),
+    [documentTypes, documents, todayKey]
+  );
   const businessPermitSlot = useMemo(() => {
     return documentSlots.find((slot) => slot.isBusinessPermit) || null;
   }, [documentSlots]);
@@ -197,9 +247,9 @@ export default function DocumentAdminPage() {
   );
 
   const viewerDocumentUrl = resolveDocumentUrl(viewerSlot?.filepath);
-  const registrationStatus =
-    selectedClient?.document_status ||
-    getRegistrationStatusFromSlots(businessPermitSlot ? [businessPermitSlot] : []);
+  const registrationStatus = businessPermitSlot
+    ? getRegistrationStatusFromSlots([businessPermitSlot])
+    : selectedClient?.document_status || "Pending";
 
   useEffect(() => {
     if (!viewerDocumentUrl) {
@@ -221,6 +271,8 @@ export default function DocumentAdminPage() {
   const handleClientSelect = (clientId) => {
     const nextClientId = String(clientId || "").trim();
     setSelectedClientId(nextClientId || null);
+    setPendingFiles({});
+    setPendingDurationDays({});
     setSuccess("");
     setError("");
     setSearchParams(nextClientId ? { client_id: nextClientId } : {}, { replace: true });
@@ -230,6 +282,13 @@ export default function DocumentAdminPage() {
     setPendingFiles((current) => ({
       ...current,
       [documentTypeId]: file || null,
+    }));
+  };
+
+  const handleDurationChange = (documentTypeId, durationDays) => {
+    setPendingDurationDays((current) => ({
+      ...current,
+      [documentTypeId]: durationDays,
     }));
   };
 
@@ -247,6 +306,16 @@ export default function DocumentAdminPage() {
       return;
     }
 
+    const confirmation = await showConfirmDialog({
+      title: `${slot.isUploaded ? "Replace" : "Upload"} ${documentLabel}?`,
+      text: `This will ${slot.isUploaded ? "replace" : "upload"} ${file.name} for ${fullName(selectedClient)}.`,
+      confirmButtonText: slot.isUploaded ? "Replace" : "Upload",
+    });
+
+    if (!confirmation?.isConfirmed) {
+      return;
+    }
+
     try {
       setError("");
       setSuccess("");
@@ -257,6 +326,13 @@ export default function DocumentAdminPage() {
       formData.append("document_type_id", String(slot.id));
       formData.append("file", file);
 
+      const selectedDurationDays = String(
+        pendingDurationDays[slot.id] || slot.durationDays || slot.validityRule?.defaultDurationDays || ""
+      ).trim();
+      if (selectedDurationDays) {
+        formData.append("duration_days", selectedDurationDays);
+      }
+
       const response = await api.post("client_upload_document.php", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -266,6 +342,11 @@ export default function DocumentAdminPage() {
       }
 
       setPendingFiles((current) => {
+        const next = { ...current };
+        delete next[slot.id];
+        return next;
+      });
+      setPendingDurationDays((current) => {
         const next = { ...current };
         delete next[slot.id];
         return next;
@@ -369,13 +450,17 @@ export default function DocumentAdminPage() {
 
               {selectedClient ? (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <Card compact variant={registrationStatus === "Registered" ? "success" : "warning"}>
+                  <Card compact variant={getRegistrationCardVariant(registrationStatus)}>
                     <CardContent className="space-y-1">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Registration Status</div>
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getDocumentStatusBadgeClass(registrationStatus)}`}>
                         {registrationStatus}
                       </span>
-                      <CardDescription>Business Permit upload is the trigger for registration.</CardDescription>
+                      <CardDescription>
+                        {registrationStatus === "Expired"
+                          ? "The Business Permit is past its expiration date."
+                          : "Business Permit upload is the trigger for registration."}
+                      </CardDescription>
                     </CardContent>
                   </Card>
 
@@ -385,7 +470,15 @@ export default function DocumentAdminPage() {
                       <div className="text-sm font-semibold text-slate-900">
                         {businessPermitSlot?.isUploaded ? businessPermitSlot.filename || "Uploaded" : "Awaiting upload"}
                       </div>
-                      <CardDescription>{formatDateTime(businessPermitSlot?.uploadedAt)}</CardDescription>
+                      <CardDescription>
+                        {businessPermitSlot?.isUploaded
+                          ? `Uploaded ${formatDateTime(businessPermitSlot?.uploadedAt)}`
+                          : "Upload date not available yet."}
+                      </CardDescription>
+                      <CardDescription>
+                        Expires: {businessPermitSlot?.expirationDate ? formatDate(businessPermitSlot.expirationDate) : "Not set"}
+                      </CardDescription>
+                      <CardDescription>Remaining: {businessPermitSlot?.remainingDurationLabel || "Not set"}</CardDescription>
                     </CardContent>
                   </Card>
 
@@ -438,17 +531,20 @@ export default function DocumentAdminPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               {managedDocumentSlots.map((slot) => {
-                const badgeClass = slot.isBusinessPermit
-                  ? getDocumentStatusBadgeClass(slot.status)
-                  : slot.isUploaded
-                    ? "border-sky-200 bg-sky-50 text-sky-700"
-                    : "border-slate-200 bg-slate-50 text-slate-700";
-                const badgeLabel = slot.isBusinessPermit ? slot.status : slot.isUploaded ? "Uploaded" : "Pending";
+                const badgeClass = getDocumentStatusBadgeClass(slot.status);
+                const badgeLabel = slot.status;
                 const viewerLabel = slot.label || "Document";
                 const actionLabel = slot.isUploaded ? `Replace ${viewerLabel}` : `Upload ${viewerLabel}`;
+                const showExpirationDetails =
+                  Boolean(slot.validityRule) || Boolean(slot.expirationDate) || slot.remainingDays !== null;
                 const helperText = slot.isBusinessPermit
                   ? "Only this document changes the client's registration status."
                   : "This is stored as a supporting business document only.";
+                const durationOptions = getDocumentDurationOptions(slot);
+                const selectedDurationValue = String(
+                  pendingDurationDays[slot.id] || slot.durationDays || slot.validityRule?.defaultDurationDays || ""
+                );
+                const hasCustomDurationPicker = durationOptions.length > 1;
 
                 return (
                   <div key={slot.key} className="rounded-xl border border-slate-200 bg-white px-4 py-4">
@@ -467,6 +563,22 @@ export default function DocumentAdminPage() {
                         <div className="mt-2 text-sm text-slate-600">
                           {slot.isUploaded ? slot.filename || `Uploaded ${viewerLabel}` : `No ${viewerLabel} uploaded yet.`}
                         </div>
+                        {showExpirationDetails ? (
+                          <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="font-semibold text-slate-700">Validity</div>
+                              <div>{getDocumentValiditySummary(slot)}</div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <div className="font-semibold text-slate-700">Days Remaining</div>
+                              <div>{slot.remainingDurationLabel || "Not set"}</div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-2">
+                              <div className="font-semibold text-slate-700">Expiration Date</div>
+                              <div>{slot.expirationDate ? formatDate(slot.expirationDate) : "Not set"}</div>
+                            </div>
+                          </div>
+                        ) : null}
                         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                           {helperText}
                         </div>
@@ -485,6 +597,27 @@ export default function DocumentAdminPage() {
 
                       {canUploadDocuments ? (
                         <div className="w-full max-w-full space-y-3 2xl:max-w-md">
+                          {hasCustomDurationPicker ? (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                DTI Validity Period
+                              </label>
+                              <select
+                                value={selectedDurationValue}
+                                onChange={(event) => handleDurationChange(slot.id, event.target.value)}
+                                className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                              >
+                                {durationOptions.map((option) => (
+                                  <option key={option.days} value={String(option.days)}>
+                                    {`${option.label} (${option.days} days)`}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="mt-2 text-xs text-slate-500">
+                                Choose the DTI term so the system can calculate the correct expiration date.
+                              </div>
+                            </div>
+                          ) : null}
                           <input
                             type="file"
                             accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
@@ -555,17 +688,17 @@ export default function DocumentAdminPage() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span
-                className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${
-                  viewerSlot.isBusinessPermit
-                    ? getDocumentStatusBadgeClass(viewerSlot.status)
-                    : viewerSlot.isUploaded
-                      ? "border-sky-200 bg-sky-50 text-sky-700"
-                      : "border-slate-200 bg-slate-50 text-slate-700"
-                }`}
+                className={`inline-flex rounded-full border px-2.5 py-1 font-semibold ${getDocumentStatusBadgeClass(viewerSlot.status)}`}
               >
-                {viewerSlot.isBusinessPermit ? viewerSlot.status : "Uploaded"}
+                {viewerSlot.status}
               </span>
               <span>{viewerSlot.filename || viewerSlot.label || "Document"}</span>
+              {viewerSlot?.validityRule || viewerSlot?.expirationDate || viewerSlot?.remainingDays !== null ? (
+                <>
+                  <span>{viewerSlot.expirationDate ? `Expires ${formatDate(viewerSlot.expirationDate)}` : "No expiration date set"}</span>
+                  <span>{viewerSlot.remainingDurationLabel || "Not set"}</span>
+                </>
+              ) : null}
             </div>
             <iframe
               key={viewerDocumentUrl}

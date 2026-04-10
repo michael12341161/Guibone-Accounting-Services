@@ -112,8 +112,9 @@ export const apiSession = axios.create({
   withCredentials: true,
 });
 
+api.interceptors.request.use(attachJwtAuthorization);
+
 [api, apiSession].forEach((client) => {
-  client.interceptors.request.use(attachJwtAuthorization);
   client.interceptors.response.use(
     (response) => syncTokenFromResponse(response),
     (error) => {
@@ -169,6 +170,7 @@ export const DEFAULT_SECURITY_SETTINGS = Object.freeze({
   sessionTimeoutMinutes: 30,
   lockoutAttempts: 5,
   lockoutDurationMinutes: 15,
+  loginVerificationEnabled: true,
 });
 
 export const DEFAULT_SYSTEM_CONFIGURATION = Object.freeze({
@@ -241,6 +243,10 @@ export function normalizeSecuritySettings(input) {
     lockoutDurationMinutes: parseIntegerSetting(
       source.lockoutDurationMinutes,
       DEFAULT_SECURITY_SETTINGS.lockoutDurationMinutes
+    ),
+    loginVerificationEnabled: parseBooleanSetting(
+      source.loginVerificationEnabled,
+      DEFAULT_SECURITY_SETTINGS.loginVerificationEnabled
     ),
   };
 }
