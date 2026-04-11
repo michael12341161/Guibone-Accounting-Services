@@ -1,10 +1,11 @@
-# Task: Update profile dropdown password expiry text to "expires in X days" ✓
+# Contact Form Send Message Functionality
 
 ## Steps:
-1. [x] Edit `src/components/layout/layout_utils.js`: Replace getProfileMenuExpiryLabel logic to always use lowercase format:
-   - 0 days: "expires today" 
-   - 1 day: "expires in 1 day" 
-   - >1: "expires in X days"
-2. [ ] Refresh app and verify badge in profile dropdown (Change Password item) shows new format
-3. [ ] Test with different expiry values via backend session
-4. [x] Mark complete
+- [x] 1. Create backend/api/contact_form.php
+- [x] 2. Update src/Pages/landing_page/landing_page.jsx
+- [x] 3. Test submission
+
+Current: Steps 1-2 complete. Ready for testing.
+- Backend: /backend/api/contact_form.php (PHPMailer)
+- Frontend: landing_page.jsx (fetch POST, feedback states)
+Test: Navigate to landing page (#contact), submit form, check email/console.

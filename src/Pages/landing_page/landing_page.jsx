@@ -14,6 +14,8 @@ import Footer from "../../components/footer/footer";
 import { getHomePathForRole, readStoredLoginState } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
+import { api } from "../../services/api";
+import { showErrorToast, showSuccessToast } from "../../utils/feedback";
 import { DEFAULT_MAP_ZOOM, geocodeBusinessAddress } from "../../utils/business_location";
 import { getUserRole } from "../../utils/helpers";
 
@@ -533,6 +535,7 @@ export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState(sectionIds[0]);
   const [contactForm, setContactForm] = useState(initialContactForm);
+  const [submitting, setSubmitting] = useState(false);
   const { user } = useAuth();
   const { isDarkMode } = useTheme();
   const storedLoginState = useMemo(() => readStoredLoginState(), []);
@@ -592,17 +595,48 @@ export default function LandingPage() {
     }));
   };
 
-  const handleContactSubmit = (event) => {
+  const handleContactSubmit = async (event) => {
     event.preventDefault();
 
-    const subject = encodeURIComponent(`Website inquiry from ${contactForm.name.trim() || "Website visitor"}`);
-    const body = encodeURIComponent(
-      [`Name: ${contactForm.name.trim()}`, `Email: ${contactForm.email.trim()}`, "", contactForm.message.trim()].join(
-        "\n"
-      )
-    );
+    const payload = {
+      name: contactForm.name.trim(),
+      email: contactForm.email.trim(),
+      message: contactForm.message.trim(),
+    };
 
-    window.location.href = `mailto:support@guiboneaccounting.com?subject=${subject}&body=${body}`;
+    if (!payload.name || !payload.email || !payload.message) {
+      showErrorToast({
+        title: "Incomplete form",
+        description: "Please complete your name, email, and message before sending.",
+        id: "landing-contact-submit",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await api.post("contact_form.php", payload);
+
+      setContactForm(initialContactForm);
+      showSuccessToast({
+        title: "Message sent",
+        description: "Your message has been delivered to our team.",
+        id: "landing-contact-submit",
+      });
+    } catch (error) {
+      const errorMessage =
+        String(error?.response?.data?.message ?? "").trim() ||
+        "Unable to send your message right now. Please try again in a moment.";
+
+      showErrorToast({
+        title: "Send failed",
+        description: errorMessage,
+        id: "landing-contact-submit",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if ((user || storedLoginState.isLoggedIn) && redirectRoleId) {
@@ -1080,10 +1114,9 @@ export default function LandingPage() {
                     We will direct your concern properly.
                   </p>
                   <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
-                    This form opens your email client with the message pre-filled so you can send it quickly.
+                    This form sends your message directly to our team for support, follow-up, and account assistance.
                   </p>
                 </div>
-
                 <form onSubmit={handleContactSubmit} className="mt-6 space-y-5">
                   <ContactInput
                     label="Name"
@@ -1115,12 +1148,25 @@ export default function LandingPage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       type="submit"
-                      className="inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all duration-300 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/40 sm:w-auto"
+                      disabled={submitting}
+                      className={cx(
+                        "inline-flex w-full items-center justify-center rounded-full px-8 py-3.5 text-sm font-semibold shadow-lg transition-all duration-300 sm:w-auto",
+                        submitting
+                          ? "cursor-not-allowed bg-emerald-500 text-white/70 shadow-emerald-500/20"
+                          : "bg-emerald-600 text-white shadow-emerald-600/20 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/40"
+                      )}
                     >
-                      Send Message
+                      {submitting ? (
+                        <>
+                          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Send Message'
+                      )}
                     </button>
                     <p className={cx("text-xs", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                      No data is stored here; it opens your mail app.
+                      Messages sent securely via our server.
                     </p>
                   </div>
                 </form>

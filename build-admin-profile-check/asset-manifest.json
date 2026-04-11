@@ -1,0 +1,14 @@
+{
+  "files": {
+    "main.css": "/static/css/main.adb9b7a8.css",
+    "main.js": "/static/js/main.37cd708c.js",
+    "static/media/android-chrome-512x512.png": "/static/media/android-chrome-512x512.7ed07dac42a127990de4.png",
+    "index.html": "/index.html",
+    "main.adb9b7a8.css.map": "/static/css/main.adb9b7a8.css.map",
+    "main.37cd708c.js.map": "/static/js/main.37cd708c.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.adb9b7a8.css",
+    "static/js/main.37cd708c.js"
+  ]
+}

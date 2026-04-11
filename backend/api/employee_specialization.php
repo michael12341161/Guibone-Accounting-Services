@@ -383,6 +383,9 @@ if (!function_exists('monitoring_resolve_password_expiry_info')) {
         }
 
         $currentTimestamp = $nowTimestamp ?? time();
+        if ($currentTimestamp < $changedAtTimestamp) {
+            $currentTimestamp = $changedAtTimestamp;
+        }
         $result['password_expires_at'] = date('Y-m-d H:i:s', $expiresAtTimestamp);
 
         if ($expiresAtTimestamp <= $currentTimestamp) {
@@ -392,7 +395,10 @@ if (!function_exists('monitoring_resolve_password_expiry_info')) {
         }
 
         $remainingSeconds = $expiresAtTimestamp - $currentTimestamp;
-        $result['password_days_until_expiry'] = (int)ceil($remainingSeconds / 86400);
+        $result['password_days_until_expiry'] = min(
+            $passwordExpiryDays,
+            (int)ceil($remainingSeconds / 86400)
+        );
 
         return $result;
     }

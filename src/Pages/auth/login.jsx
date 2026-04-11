@@ -10,6 +10,7 @@ import { loginAnimStyles } from "../../components/login_UI/login_styles";
 import LoginVisualPanel from "../../components/login_UI/login_visual_panel";
 import { useTheme } from "../../context/ThemeContext";
 import { captureAuditContext } from "../../utils/audit";
+import { showInfoToast, showSuccessToast } from "../../utils/feedback";
 
 function createCaptcha() {
   return {
@@ -39,11 +40,9 @@ export default function LoginPage() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotDefaultEmail, setForgotDefaultEmail] = useState("");
   const [forgotPasswordExpiryDaysOverride, setForgotPasswordExpiryDaysOverride] = useState(null);
-  const [flash, setFlash] = useState({ message: "", type: "success" });
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
 
   const clearErrorTimerRef = useRef(null);
-  const clearFlashTimerRef = useRef(null);
   const usernameRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -99,9 +98,6 @@ export default function LoginPage() {
       if (clearErrorTimerRef.current) {
         clearTimeout(clearErrorTimerRef.current);
       }
-      if (clearFlashTimerRef.current) {
-        clearTimeout(clearFlashTimerRef.current);
-      }
     };
   }, []);
 
@@ -121,16 +117,21 @@ export default function LoginPage() {
     }
 
     const flashType = location.state?.flashType || "success";
-    setFlash({ message: flashMessage, type: flashType });
-
-    if (clearFlashTimerRef.current) {
-      clearTimeout(clearFlashTimerRef.current);
+    if (flashType === "warning") {
+      showInfoToast({
+        title: "Notice",
+        description: flashMessage,
+        id: "login-flash-message",
+        duration: 3200,
+      });
+    } else {
+      showSuccessToast({
+        title: "Ready to sign in",
+        description: flashMessage,
+        id: "login-flash-message",
+        duration: 3200,
+      });
     }
-
-    clearFlashTimerRef.current = setTimeout(() => {
-      setFlash({ message: "", type: "success" });
-      clearFlashTimerRef.current = null;
-    }, 3000);
 
     navigate(
       {
@@ -216,8 +217,15 @@ export default function LoginPage() {
 
       if (res.data?.success) {
         const nextUser = res.data.user;
+        showSuccessToast({
+          title: "Login successful",
+          description: "Redirecting to your dashboard...",
+          id: "login-submit-status",
+          duration: 2000,
+        });
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
         login(nextUser);
-        navigate(getHomePathForRole(nextUser?.role_id));
+        navigate(getHomePathForRole(nextUser?.role_id), { replace: true });
       } else {
         const responseData = res.data || {};
         setLoginError(responseData?.message || "Incorrect email or password");
@@ -278,18 +286,6 @@ export default function LoginPage() {
               <img src={appLogo} alt="Guibone Accounting Services" className="h-12 w-12 rounded-xl object-contain" />
               <div className="text-base font-semibold text-slate-800">Guibone Accounting Services</div>
             </div>
-
-            {flash.message ? (
-              <div
-                className={`mb-5 rounded-2xl border px-4 py-3 text-sm ${
-                  flash.type === "warning"
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                }`}
-              >
-                {flash.message}
-              </div>
-            ) : null}
 
             <LoginForm
               username={username}

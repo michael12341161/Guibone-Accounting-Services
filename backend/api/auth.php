@@ -14,6 +14,7 @@ const MONITORING_JWT_ALGORITHM = 'HS256';
 const MONITORING_JWT_LEEWAY_SECONDS = 5;
 
 require_once __DIR__ . '/auth_jwt.php';
+require_once __DIR__ . '/employee_specialization.php';
 function monitoring_is_https(): bool
 {
     $https = strtolower((string)($_SERVER['HTTPS'] ?? ''));
@@ -157,6 +158,32 @@ function monitoring_normalize_session_timeout_minutes($value): int
 
 function monitoring_prepare_session_user(array $user): array
 {
+    $securitySettings = is_array($user['security_settings'] ?? null) ? $user['security_settings'] : [];
+    $passwordChangedAt = isset($user['password_changed_at']) && $user['password_changed_at'] !== ''
+        ? (string)$user['password_changed_at']
+        : null;
+    $passwordExpiresAt = isset($user['password_expires_at']) && $user['password_expires_at'] !== ''
+        ? (string)$user['password_expires_at']
+        : null;
+    $passwordDaysUntilExpiry = isset($user['password_days_until_expiry']) && $user['password_days_until_expiry'] !== null
+        ? (int)$user['password_days_until_expiry']
+        : null;
+
+    if (
+        $passwordChangedAt !== null
+        && array_key_exists('passwordExpiryDays', $securitySettings)
+        && function_exists('monitoring_resolve_password_expiry_info')
+    ) {
+        $passwordExpiryInfo = monitoring_resolve_password_expiry_info(
+            $securitySettings,
+            $passwordChangedAt,
+            null
+        );
+        $passwordChangedAt = $passwordExpiryInfo['password_changed_at'];
+        $passwordExpiresAt = $passwordExpiryInfo['password_expires_at'];
+        $passwordDaysUntilExpiry = $passwordExpiryInfo['password_days_until_expiry'];
+    }
+
     return [
         'id' => isset($user['id']) ? (int)$user['id'] : 0,
         'username' => isset($user['username']) ? (string)$user['username'] : '',
@@ -167,18 +194,12 @@ function monitoring_prepare_session_user(array $user): array
         'middle_name' => isset($user['middle_name']) && $user['middle_name'] !== '' ? (string)$user['middle_name'] : null,
         'last_name' => isset($user['last_name']) && $user['last_name'] !== '' ? (string)$user['last_name'] : null,
         'profile_image' => isset($user['profile_image']) && $user['profile_image'] !== '' ? (string)$user['profile_image'] : null,
-        'password_changed_at' => isset($user['password_changed_at']) && $user['password_changed_at'] !== ''
-            ? (string)$user['password_changed_at']
-            : null,
-        'password_expires_at' => isset($user['password_expires_at']) && $user['password_expires_at'] !== ''
-            ? (string)$user['password_expires_at']
-            : null,
-        'password_days_until_expiry' => isset($user['password_days_until_expiry']) && $user['password_days_until_expiry'] !== null
-            ? (int)$user['password_days_until_expiry']
-            : null,
+        'password_changed_at' => $passwordChangedAt,
+        'password_expires_at' => $passwordExpiresAt,
+        'password_days_until_expiry' => $passwordDaysUntilExpiry,
         'registration_source' => isset($user['registration_source']) && $user['registration_source'] !== '' ? (string)$user['registration_source'] : null,
         'approval_status' => isset($user['approval_status']) && $user['approval_status'] !== '' ? (string)$user['approval_status'] : null,
-        'security_settings' => is_array($user['security_settings'] ?? null) ? $user['security_settings'] : [],
+        'security_settings' => $securitySettings,
     ];
 }
 
