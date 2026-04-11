@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { appLogo } from "../../assets/branding";
 import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
-import { getHomePathForRole } from "../../context/AuthContext";
+import { consumeAuthNotice, getHomePathForRole } from "../../context/AuthContext";
 import { useAuth } from "../../hooks/useAuth";
 import ForgotPasswordModal from "./forgot_password";
 import LoginForm from "../../components/login_UI/login_form";
@@ -111,12 +111,13 @@ export default function LoginPage() {
   }, [isLoginVerificationEnabled]);
 
   useEffect(() => {
-    const flashMessage = String(location.state?.flashMessage || "").trim();
+    const pendingAuthNotice = consumeAuthNotice();
+    const flashMessage = String(location.state?.flashMessage || pendingAuthNotice?.message || "").trim();
     if (!flashMessage) {
       return undefined;
     }
 
-    const flashType = location.state?.flashType || "success";
+    const flashType = location.state?.flashType || pendingAuthNotice?.type || "success";
     if (flashType === "warning") {
       showInfoToast({
         title: "Notice",

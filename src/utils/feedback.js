@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { toast } from "react-hot-toast";
+import {
+  MONITORING_AUTH_REQUIRED_MESSAGE,
+  MONITORING_SESSION_EXPIRED_MESSAGE,
+} from "../services/api";
 
 const TOAST_STYLE = {
   border: "1px solid #e2e8f0",
@@ -9,6 +13,18 @@ const TOAST_STYLE = {
 };
 
 let alertDialogQueue = Promise.resolve();
+
+function isSuppressedAuthToastMessage(message) {
+  const normalizedMessage = String(message || "").trim().toLowerCase();
+  if (!normalizedMessage) {
+    return false;
+  }
+
+  return [
+    MONITORING_AUTH_REQUIRED_MESSAGE,
+    MONITORING_SESSION_EXPIRED_MESSAGE,
+  ].some((candidate) => normalizedMessage === String(candidate).trim().toLowerCase());
+}
 
 function normalizeToastInput(input, fallbackTitle) {
   if (typeof input === "string") {
@@ -56,6 +72,9 @@ export function showSuccessToast(input) {
 
 export function showErrorToast(input) {
   const { message, duration, id } = buildToastMessage(input, "Something went wrong");
+  if (isSuppressedAuthToastMessage(message)) {
+    return undefined;
+  }
   return toast.error(message, buildToastOptions(duration ?? 2600, id));
 }
 

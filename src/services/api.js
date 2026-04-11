@@ -10,6 +10,8 @@ const AUTH_TOKEN_KEY = "auth:jwt";
 const JWT_REFRESH_HEADER = "x-monitoring-jwt";
 export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
 export const MONITORING_SYSTEM_CONFIG_UPDATED_EVENT = "monitoring:system-config-updated";
+export const MONITORING_AUTH_REQUIRED_MESSAGE = "Authentication is required.";
+export const MONITORING_SESSION_EXPIRED_MESSAGE = "Session expired. Please log in again.";
 
 function dispatchAuthInvalidEvent() {
   if (typeof window === "undefined") {
@@ -17,6 +19,41 @@ function dispatchAuthInvalidEvent() {
   }
 
   window.dispatchEvent(new CustomEvent(MONITORING_AUTH_INVALID_EVENT));
+}
+
+export function isAuthenticationRequiredMessage(message) {
+  return (
+    String(message ?? "").trim().toLowerCase() === MONITORING_AUTH_REQUIRED_MESSAGE.toLowerCase()
+  );
+}
+
+export function isAuthenticationError(error) {
+  if (error?.response?.status === 401) {
+    return true;
+  }
+
+  return isAuthenticationRequiredMessage(error?.response?.data?.message || error?.message);
+}
+
+function normalizeAuthenticationError(error) {
+  if (!isAuthenticationError(error)) {
+    return error;
+  }
+
+  const nextMessage = MONITORING_SESSION_EXPIRED_MESSAGE;
+
+  if (error?.response?.data && typeof error.response.data === "object") {
+    error.response.data = {
+      ...error.response.data,
+      auth_invalid: true,
+      message: nextMessage,
+    };
+  }
+
+  error.monitoringAuthInvalid = true;
+  error.monitoringUserMessage = nextMessage;
+  error.message = nextMessage;
+  return error;
 }
 
 function readTokenStorage() {
@@ -124,6 +161,7 @@ api.interceptors.request.use(attachJwtAuthorization);
 
       if (error?.response?.status === 401) {
         clearStoredAuthToken();
+        normalizeAuthenticationError(error);
         dispatchAuthInvalidEvent();
       }
 

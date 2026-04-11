@@ -6,6 +6,7 @@ import {
   DEFAULT_SECURITY_SETTINGS,
   getStoredAuthToken,
   MONITORING_AUTH_INVALID_EVENT,
+  MONITORING_SESSION_EXPIRED_MESSAGE,
   normalizeSecuritySettings,
 } from "../services/api";
 import { getUserRole, hasRole as userHasRole, ROLE_IDS } from "../utils/helpers";
@@ -18,6 +19,7 @@ const USER_ID_KEY = "user_id";
 export const LOGIN_SESSION_STORAGE_KEY = "monitoring:login-session-id";
 export const DEADLINE_ALERT_SESSION_STORAGE_KEY = "monitoring:deadline-alerts";
 export const DEADLINE_REMINDER_SESSION_STORAGE_KEY = "monitoring:deadline-reminder";
+export const AUTH_NOTICE_SESSION_STORAGE_KEY = "monitoring:auth-notice";
 const ONE_MINUTE_MS = 60 * 1000;
 
 const ROLE_HOME_PATHS = {
@@ -143,6 +145,49 @@ export function readStoredLoginState() {
   }
 }
 
+function queueAuthNotice(message, type = "warning") {
+  const normalizedMessage = String(message || "").trim();
+  const normalizedType = String(type || "").trim() || "warning";
+  if (!normalizedMessage) {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(
+      AUTH_NOTICE_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        message: normalizedMessage,
+        type: normalizedType,
+      })
+    );
+  } catch (_) {}
+}
+
+export function consumeAuthNotice() {
+  try {
+    const raw = sessionStorage.getItem(AUTH_NOTICE_SESSION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    sessionStorage.removeItem(AUTH_NOTICE_SESSION_STORAGE_KEY);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    const message = String(parsed.message || "").trim();
+    const type = String(parsed.type || "").trim() || "warning";
+    if (!message) {
+      return null;
+    }
+
+    return { message, type };
+  } catch (_) {
+    return null;
+  }
+}
+
 function persistStoredAuth(user) {
   if (!user) {
     clearStoredAuth();
@@ -186,13 +231,21 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readSessionUser());
   const [isAuthReady, setIsAuthReady] = useState(() => !shouldVerifyStoredSession());
   const sessionWarningVisibleRef = React.useRef(false);
+  const clearActiveClientAuthRef = React.useRef(null);
   const activeUserId = user?.id ?? null;
   const sessionTimeoutMinutes = Math.max(
     1,
     Number(user?.security_settings?.sessionTimeoutMinutes || DEFAULT_SECURITY_SETTINGS.sessionTimeoutMinutes)
   );
 
-  const clearActiveClientAuth = () => {
+  clearActiveClientAuthRef.current = ({ showSessionExpiredNotice = false } = {}) => {
+    const hadStoredSession = readStoredLoginState().isLoggedIn || Boolean(getStoredAuthToken());
+    const hadAuthenticatedUser = Boolean(user?.id || user?.username || activeUserId !== null);
+
+    if (showSessionExpiredNotice && (hadAuthenticatedUser || hadStoredSession)) {
+      queueAuthNotice(MONITORING_SESSION_EXPIRED_MESSAGE, "warning");
+    }
+
     if (sessionWarningVisibleRef.current) {
       sessionWarningVisibleRef.current = false;
       void Swal.close();
@@ -205,6 +258,10 @@ export function AuthProvider({ children }) {
       clearStoredAuth();
     } catch (_) {}
   };
+
+  const clearActiveClientAuth = React.useCallback((options = {}) => {
+    clearActiveClientAuthRef.current?.(options);
+  }, []);
 
   const login = (nextUser) => {
     const normalizedUser = normalizeSessionUser(nextUser);
@@ -273,7 +330,7 @@ export function AuthProvider({ children }) {
       sessionCleared = true;
       warningVisible = false;
       clearTimers();
-      clearActiveClientAuth();
+      clearActiveClientAuth({ showSessionExpiredNotice: true });
     };
 
     const resetTimer = () => {
@@ -355,7 +412,7 @@ export function AuthProvider({ children }) {
       });
       window.removeEventListener("focus", handleActivity);
     };
-  }, [activeUserId, sessionTimeoutMinutes]);
+  }, [activeUserId, clearActiveClientAuth, sessionTimeoutMinutes]);
 
   useEffect(() => {
     if (!shouldVerifyStoredSession()) {
@@ -374,7 +431,7 @@ export function AuthProvider({ children }) {
 
         const nextUser = normalizeSessionUser(response?.data?.user);
         if (!nextUser) {
-          clearActiveClientAuth();
+          clearActiveClientAuth({ showSessionExpiredNotice: true });
           return;
         }
 
@@ -386,7 +443,7 @@ export function AuthProvider({ children }) {
         }
 
         if (error?.response?.status === 401) {
-          clearActiveClientAuth();
+          clearActiveClientAuth({ showSessionExpiredNotice: true });
           return;
         }
       } finally {
@@ -401,11 +458,11 @@ export function AuthProvider({ children }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [clearActiveClientAuth]);
 
   useEffect(() => {
     const handleAuthInvalid = () => {
-      clearActiveClientAuth();
+      clearActiveClientAuth({ showSessionExpiredNotice: true });
     };
 
     window.addEventListener(MONITORING_AUTH_INVALID_EVENT, handleAuthInvalid);
@@ -413,7 +470,7 @@ export function AuthProvider({ children }) {
     return () => {
       window.removeEventListener(MONITORING_AUTH_INVALID_EVENT, handleAuthInvalid);
     };
-  }, []);
+  }, [clearActiveClientAuth]);
 
   useEffect(() => {
     const handleStorage = (event) => {
