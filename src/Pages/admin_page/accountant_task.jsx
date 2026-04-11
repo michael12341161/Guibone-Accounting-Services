@@ -13,6 +13,7 @@ import { Modal } from "../../components/UI/modal";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import ArchiveTasksCompleted from "./archive_tasks_completed";
+import PartnerAccountantPicker from "../../components/tasks/PartnerAccountantPicker";
 import { getAutoDueDateForService, getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { findClientById, getClientId, matchesClientId } from "../../utils/client_identity";
@@ -1033,10 +1034,11 @@ export default function AdminAccountantTaskManagement() {
       accountantMatchesService(accountant, form.service_name || form.title)
     );
   }, [accountants, form.service_name, form.title]);
-  const partnerAccountants = useMemo(
-    () => (Array.isArray(accountants) ? accountants : []).filter((accountant) => isAccountantUser(accountant)),
-    [accountants]
-  );
+  const partnerAccountants = useMemo(() => {
+    return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
+      isAccountantUser(accountant) && accountantMatchesService(accountant, form.service_name || form.title)
+    );
+  }, [accountants, form.service_name, form.title]);
   const selectedAssignee = useMemo(
     () => (Array.isArray(accountants) ? accountants : []).find((accountant) => String(accountant.id) === String(form.accountant_id || "")) || null,
     [accountants, form.accountant_id]
@@ -1458,7 +1460,7 @@ export default function AdminAccountantTaskManagement() {
     }
     if (selectedAssigneeIsSecretary) {
       if (partnerAccountants.length === 0) {
-        setError("No accountant partners are available right now.");
+        setError("No accountant partners match the selected service right now.");
         return;
       }
       if (!String(form.partner_id || "").trim()) {
@@ -1466,7 +1468,7 @@ export default function AdminAccountantTaskManagement() {
         return;
       }
       if (!partnerAccountants.some((accountant) => String(accountant.id) === String(form.partner_id))) {
-        setError("Please select a valid accountant partner.");
+        setError("Please select a partner accountant whose specialization matches the selected service.");
         return;
       }
     }
@@ -1690,6 +1692,12 @@ export default function AdminAccountantTaskManagement() {
     );
     return currentAssignee ? [currentAssignee, ...available] : available;
   }, [accountants, taskAssigneeEditCtx]);
+  const taskPartnerOptions = useMemo(() => {
+    const serviceName = String(taskAssigneeEditCtx?.serviceName || "").trim();
+    return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
+      isAccountantUser(accountant) && accountantMatchesService(accountant, serviceName)
+    );
+  }, [accountants, taskAssigneeEditCtx]);
   const selectedTaskAssignee = useMemo(() => {
     if (!taskAssigneeEditValue) return null;
     return taskAssigneeOptions.find((accountant) => String(accountant.id) === String(taskAssigneeEditValue)) || null;
@@ -1697,8 +1705,8 @@ export default function AdminAccountantTaskManagement() {
   const selectedTaskAssigneeIsSecretary = Boolean(selectedTaskAssignee && isSecretaryUser(selectedTaskAssignee));
   const selectedTaskPartnerAccountant = useMemo(() => {
     if (!taskPartnerEditValue) return null;
-    return partnerAccountants.find((accountant) => String(accountant.id) === String(taskPartnerEditValue)) || null;
-  }, [partnerAccountants, taskPartnerEditValue]);
+    return taskPartnerOptions.find((accountant) => String(accountant.id) === String(taskPartnerEditValue)) || null;
+  }, [taskPartnerEditValue, taskPartnerOptions]);
   const selectedTaskAssigneeWorkload = useMemo(() => {
     if (!taskAssigneeEditValue) return null;
     return staffWorkloadRows.find((staff) => String(staff.id) === String(taskAssigneeEditValue)) || null;
@@ -1721,6 +1729,14 @@ export default function AdminAccountantTaskManagement() {
     if (!taskPartnerEditValue) return;
     setTaskPartnerEditValue("");
   }, [selectedTaskAssigneeIsSecretary, taskPartnerEditValue]);
+
+  useEffect(() => {
+    if (!taskPartnerEditValue) return;
+    const stillExists = taskPartnerOptions.some((accountant) => String(accountant.id) === String(taskPartnerEditValue));
+    if (!stillExists) {
+      setTaskPartnerEditValue("");
+    }
+  }, [taskPartnerEditValue, taskPartnerOptions]);
 
   useEffect(() => {
     return () => {
@@ -2068,16 +2084,16 @@ export default function AdminAccountantTaskManagement() {
       }
     }
     if (shouldRequirePartner) {
-      if (!partnerAccountants.length) {
-        setTaskEditError("No accountant partners are available right now.");
+      if (!taskPartnerOptions.length) {
+        setTaskEditError("No accountant partners match this service right now.");
         return;
       }
       if (!nextPartnerId) {
         setTaskEditError("Please select an accountant partner for the secretary.");
         return;
       }
-      if (!partnerAccountants.some((accountant) => String(accountant.id) === nextPartnerId)) {
-        setTaskEditError("Please select a valid accountant partner.");
+      if (!taskPartnerOptions.some((accountant) => String(accountant.id) === nextPartnerId)) {
+        setTaskEditError("Please select a partner accountant whose specialization matches this service.");
         return;
       }
     }
@@ -2291,25 +2307,24 @@ export default function AdminAccountantTaskManagement() {
                 {selectedAssigneeIsSecretary ? (
                   <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
                     <label className="mb-1 block text-xs font-medium text-slate-600">Partner Accountant</label>
-                    <select
+                    <PartnerAccountantPicker
+                      accountants={partnerAccountants}
                       value={form.partner_id || ""}
-                      onChange={(event) => setForm((current) => ({ ...current, partner_id: event.target.value }))}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    >
-                      <option value="">Select accountant partner</option>
-                      {partnerAccountants.map((accountant) => {
-                        const name = accountant.username || `User #${accountant.id}`;
-                        const specialization = getAccountantSpecialization(accountant);
-                        return (
-                          <option key={accountant.id} value={String(accountant.id)}>
-                            {specialization ? `${name} (${specialization})` : name}
-                          </option>
-                        );
-                      })}
-                    </select>
+                      onChange={(partnerId) => {
+                        setForm((current) => ({ ...current, partner_id: partnerId }));
+                        setError("");
+                      }}
+                      serviceName={form.service_name || form.title}
+                      disabled={partnerAccountants.length === 0}
+                    />
                     <p className="mt-1 text-[11px] text-slate-500">
-                      Required for secretary-assigned tasks. All accountants are available here, even if their specialization does not match the service.
+                      Required for secretary-assigned tasks.
                     </p>
+                    {partnerAccountants.length === 0 ? (
+                      <p className="mt-1 text-[11px] text-rose-600">
+                        No partner accountant matches this task specialization yet.
+                      </p>
+                    ) : null}
                     {selectedPartnerAccountant ? (
                       <p className="mt-1 text-[11px] text-slate-600">
                         Partner: {selectedPartnerAccountant.username || `User #${selectedPartnerAccountant.id}`}
@@ -3359,29 +3374,24 @@ export default function AdminAccountantTaskManagement() {
           {selectedTaskAssigneeIsSecretary ? (
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Partner Accountant</label>
-              <select
+              <PartnerAccountantPicker
+                accountants={taskPartnerOptions}
                 value={taskPartnerEditValue}
-                onChange={(event) => {
-                  setTaskPartnerEditValue(event.target.value);
+                onChange={(partnerId) => {
+                  setTaskPartnerEditValue(partnerId);
                   setTaskEditError("");
                 }}
-                disabled={taskAssigneeSaving || partnerAccountants.length === 0}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
-              >
-                <option value="">Select accountant partner</option>
-                {partnerAccountants.map((accountant) => {
-                  const name = accountant.username || `User #${accountant.id}`;
-                  const specialization = getAccountantSpecialization(accountant);
-                  return (
-                    <option key={accountant.id} value={String(accountant.id)}>
-                      {specialization ? `${name} (${specialization})` : name}
-                    </option>
-                  );
-                })}
-              </select>
+                serviceName={taskAssigneeEditCtx?.serviceName || ""}
+                disabled={taskAssigneeSaving || taskPartnerOptions.length === 0}
+              />
               <div className="mt-2 text-[11px] text-slate-500">
-                Required for secretary-assigned tasks. The partner list includes all accountants regardless of specialization.
+                Required for secretary-assigned tasks.
               </div>
+              {taskPartnerOptions.length === 0 ? (
+                <div className="mt-2 text-[11px] text-rose-600">
+                  No partner accountant matches this task specialization yet.
+                </div>
+              ) : null}
               {selectedTaskPartnerAccountant ? (
                 <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <div className="text-sm font-medium text-slate-900">

@@ -14,7 +14,8 @@ import {
   fetchSystemConfiguration,
   MONITORING_SYSTEM_CONFIG_UPDATED_EVENT,
 } from "../../services/api";
-import { getTaskDeadlineNotificationKind, getTaskDeadlineState, readTaskMetaLine } from "../../utils/task_deadline";
+import { getTaskDeadlineNotificationKind } from "../../utils/task_deadline";
+import { countTasksRequiringAttention, summarizeTasksRequiringAttention } from "../../utils/task_attention";
 
 const DEFAULT_DEADLINE_REMINDER_INTERVAL_MS =
   (DEFAULT_SYSTEM_CONFIGURATION.taskReminderIntervalHours * 60 +
@@ -135,83 +136,6 @@ function parseLoginSessionStartedAt(loginSessionKey) {
   const segments = String(loginSessionKey || "").split(":");
   const startedAt = Number(segments[segments.length - 1]);
   return Number.isFinite(startedAt) ? startedAt : Date.now();
-}
-
-function isArchivedTask(task) {
-  const description = String(task?.description || "");
-  const archivedValue = String(readTaskMetaLine(description, "Archived") || "")
-    .trim()
-    .toLowerCase();
-  const secretaryArchivedValue = String(readTaskMetaLine(description, "SecretaryArchived") || "")
-    .trim()
-    .toLowerCase();
-
-  return ["1", "true", "yes"].includes(archivedValue) || ["1", "true", "yes"].includes(secretaryArchivedValue);
-}
-
-function resolveTaskId(task) {
-  return String(task?.Client_services_ID ?? task?.client_services_id ?? task?.task_id ?? task?.id ?? "").trim();
-}
-
-function countReminderEligibleTasks(list) {
-  const seen = new Set();
-
-  (Array.isArray(list) ? list : []).forEach((task) => {
-    if (!task || isArchivedTask(task)) return;
-
-    const deadlineState = getTaskDeadlineState(task);
-    if (!deadlineState || deadlineState.isClosed) return;
-    if (!deadlineState.isNearDeadline && !deadlineState.isDueToday && !deadlineState.isOverdue) return;
-
-    const taskId = resolveTaskId(task);
-    if (taskId) {
-      seen.add(taskId);
-      return;
-    }
-
-    const fallbackDeadlineKey = String(task?.deadline ?? task?.due_date ?? task?.end_date ?? "").trim();
-    const fallbackNameKey = String(task?.Name ?? task?.name ?? task?.task_name ?? "").trim();
-    if (fallbackDeadlineKey || fallbackNameKey) {
-      seen.add(`${fallbackNameKey}::${fallbackDeadlineKey}`);
-    }
-  });
-
-  return seen.size;
-}
-
-function summarizeDeadlineTasks(list) {
-  const seen = new Set();
-  const summary = { soon: 0, today: 0, overdue: 0 };
-
-  (Array.isArray(list) ? list : []).forEach((task) => {
-    if (!task || isArchivedTask(task)) return;
-
-    const deadlineState = getTaskDeadlineState(task);
-    if (!deadlineState || deadlineState.isClosed) return;
-
-    const taskId = resolveTaskId(task);
-    const fallbackDeadlineKey = String(task?.deadline ?? task?.due_date ?? task?.end_date ?? "").trim();
-    const fallbackNameKey = String(task?.Name ?? task?.name ?? task?.task_name ?? "").trim();
-    const dedupeKey = taskId || `${fallbackNameKey}::${fallbackDeadlineKey}`;
-    if (!dedupeKey || seen.has(dedupeKey)) return;
-    seen.add(dedupeKey);
-
-    if (deadlineState.isOverdue) {
-      summary.overdue += 1;
-      return;
-    }
-
-    if (deadlineState.isDueToday) {
-      summary.today += 1;
-      return;
-    }
-
-    if (deadlineState.isNearDeadline) {
-      summary.soon += 1;
-    }
-  });
-
-  return summary;
 }
 
 function normalizeReminderIntervalMs(hoursValue, minutesValue = 0) {
@@ -397,7 +321,7 @@ export default function DeadlineAlertObserver() {
         if (!active) return;
 
         const tasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
-        const summary = summarizeDeadlineTasks(tasks);
+        const summary = summarizeTasksRequiringAttention(tasks);
         overdueCount = summary.overdue;
       } catch (_) {
         if (!active) return;
@@ -443,7 +367,7 @@ export default function DeadlineAlertObserver() {
         if (!active) return;
 
         const tasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
-        setReminderTaskCount(countReminderEligibleTasks(tasks));
+        setReminderTaskCount(countTasksRequiringAttention(tasks));
       } catch (_) {
         if (!active) return;
         setReminderTaskCount(0);
@@ -493,7 +417,7 @@ export default function DeadlineAlertObserver() {
         if (!active) return;
 
         const tasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
-        const nextReminderTaskCount = countReminderEligibleTasks(tasks);
+        const nextReminderTaskCount = countTasksRequiringAttention(tasks);
         setReminderTaskCount(nextReminderTaskCount);
         if (nextReminderTaskCount <= 0) return;
 

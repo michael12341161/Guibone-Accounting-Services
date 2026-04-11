@@ -25,10 +25,12 @@ import { secretaryBreadcrumbConfig } from "../config/secretaryBreadcrumbConfig";
 import { getProfileMenuExpiryLabel, getUserDisplayName } from "../components/layout/layout_utils";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
+import { usePendingTaskAttentionCount } from "../hooks/usePendingTaskAttentionCount";
 import ForgotPasswordModal from "../Pages/auth/forgot_password";
 import SecretaryProfile from "../Pages/profile/SecretaryProfile";
 import { resolveBackendAssetUrl } from "../services/api";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
+import { buildPendingTaskAttentionMessage } from "../utils/task_attention";
 
 const sidebarIconProps = {
   className: "h-5 w-5",
@@ -186,10 +188,27 @@ export default function SecretaryLayout({ user, onLogout, children }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { permissions } = useModulePermissions();
+  const pendingTaskAttentionCount = usePendingTaskAttentionCount();
   const displayName = useMemo(() => getUserDisplayName(user), [user]);
   const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
-  const visibleNavItems = filterNavItemsByAccess(user, secretaryNavItems, permissions);
+  const visibleNavItems = useMemo(() => {
+    const filteredItems = filterNavItemsByAccess(user, secretaryNavItems, permissions);
+    if (pendingTaskAttentionCount <= 0) {
+      return filteredItems;
+    }
+
+    const helperText = buildPendingTaskAttentionMessage(pendingTaskAttentionCount);
+    return filteredItems.map((item) =>
+      item?.key === "task-management"
+        ? {
+            ...item,
+            badgeCount: pendingTaskAttentionCount,
+            helperText,
+          }
+        : item
+    );
+  }, [permissions, pendingTaskAttentionCount, user]);
   const profileItems = useMemo(() => {
     const items = [
       {

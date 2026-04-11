@@ -35,6 +35,57 @@ function getExpandableGroupKeys(items) {
   return groupKeys;
 }
 
+function normalizeBadgeCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.trunc(count));
+}
+
+function formatBadgeCount(value) {
+  const count = normalizeBadgeCount(value);
+  if (!count) {
+    return "";
+  }
+
+  return count > 99 ? "99+" : String(count);
+}
+
+function getSidebarItemLabel(item) {
+  const label = String(item?.label || "").trim();
+  const helperText = String(item?.helperText || "").trim();
+  return helperText ? `${label}. ${helperText}` : label;
+}
+
+function SidebarBadge({ count, compact = false }) {
+  const badgeText = formatBadgeCount(count);
+  if (!badgeText) {
+    return null;
+  }
+
+  return (
+    <span
+      className={classNames(
+        "relative inline-flex shrink-0",
+        compact ? "absolute -right-1 -top-1" : ""
+      )}
+      aria-hidden="true"
+    >
+      <span className="absolute inset-0 rounded-full bg-rose-400/70 animate-ping" />
+      <span
+        className={classNames(
+          "relative inline-flex items-center justify-center rounded-full bg-rose-600 font-semibold leading-none text-white shadow-sm ring-2 ring-white",
+          compact ? "min-w-[1.1rem] px-1 py-0.5 text-[9px]" : "min-w-[1.35rem] px-1.5 py-0.5 text-[10px]"
+        )}
+      >
+        {badgeText}
+      </span>
+    </span>
+  );
+}
+
 const activeNavItemClasses =
   "border-indigo-500 bg-indigo-50 text-indigo-700 ring-indigo-100 shadow-sm dark:border-transparent dark:bg-white dark:text-slate-950 dark:ring-white/80";
 
@@ -291,11 +342,12 @@ export function Sidebar({
                       routeLoading && "pointer-events-none opacity-60"
                     )}
                     disabled={routeLoading}
-                    aria-label={item.label}
-                    title={item.label}
+                    aria-label={getSidebarItemLabel(item)}
+                    title={getSidebarItemLabel(item)}
                   >
-                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
+                    <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
                       {item.icon || <span className="h-0 w-0" />}
+                      {normalizeBadgeCount(item?.badgeCount) > 0 ? <SidebarBadge count={item.badgeCount} compact /> : null}
                     </span>
                     <span className="sr-only">{item.label}</span>
                   </button>
@@ -319,11 +371,12 @@ export function Sidebar({
                     }
                     aria-disabled={routeLoading}
                     tabIndex={routeLoading ? -1 : 0}
-                    aria-label={item.label}
-                    title={item.label}
+                    aria-label={getSidebarItemLabel(item)}
+                    title={getSidebarItemLabel(item)}
                   >
-                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
+                    <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
                       {item.icon || <span className="h-0 w-0" />}
+                      {normalizeBadgeCount(item?.badgeCount) > 0 ? <SidebarBadge count={item.badgeCount} compact /> : null}
                     </span>
 
                     <span className="sr-only">{item.label}</span>
@@ -343,7 +396,8 @@ export function Sidebar({
                     aria-expanded={expandedGroupKey === item.key}
                     aria-controls={`sidebar-group-${item.key}`}
                     className={classNames(
-                      "flex h-11 w-full items-center justify-between rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                      "flex min-h-11 w-full justify-between rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                      item?.helperText ? "items-start py-2.5" : "items-center",
                       findMatchingNavItem(location.pathname, [item])
                         ? activeNavItemClasses
                         : inactiveNavItemClasses,
@@ -351,16 +405,27 @@ export function Sidebar({
                     )}
                     disabled={routeLoading}
                   >
-                    <span className="flex min-w-0 items-center gap-3">
+                    <span className={classNames("flex min-w-0 gap-3", item?.helperText ? "items-start" : "items-center")}>
                       <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-current">
                         {item.icon || <span className="h-0 w-0" />}
                       </span>
-                      <span className="truncate">{item.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate">{item.label}</span>
+                          {normalizeBadgeCount(item?.badgeCount) > 0 ? <SidebarBadge count={item.badgeCount} /> : null}
+                        </span>
+                        {item?.helperText ? (
+                          <span className="mt-0.5 block text-left text-[11px] font-normal leading-4 text-slate-500">
+                            {item.helperText}
+                          </span>
+                        ) : null}
+                      </span>
                     </span>
 
                     <ChevronDown
                       className={classNames(
                         "h-4 w-4 shrink-0 transition-transform duration-200",
+                        item?.helperText ? "mt-0.5" : "",
                         expandedGroupKey === item.key ? "rotate-180 text-current" : "text-slate-400"
                       )}
                       strokeWidth={1.5}
@@ -422,7 +487,8 @@ export function Sidebar({
                     }}
                     className={({ isActive }) =>
                       classNames(
-                        "group relative flex h-11 w-full items-center gap-3 rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                        "group relative flex min-h-11 w-full gap-3 rounded-xl border-l-4 px-3 text-sm font-medium transition-all duration-150 ring-1 ring-transparent",
+                        item?.helperText ? "items-start py-2.5" : "items-center",
                         isActive ? activeNavItemClasses : inactiveNavItemClasses,
                         routeLoading && "pointer-events-none opacity-60"
                       )
@@ -434,7 +500,17 @@ export function Sidebar({
                       {item.icon || <span className="h-0 w-0" />}
                     </span>
 
-                    <span className="truncate">{item.label}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate">{item.label}</span>
+                        {normalizeBadgeCount(item?.badgeCount) > 0 ? <SidebarBadge count={item.badgeCount} /> : null}
+                      </span>
+                      {item?.helperText ? (
+                        <span className="mt-0.5 block text-[11px] font-normal leading-4 text-slate-500">
+                          {item.helperText}
+                        </span>
+                      ) : null}
+                    </span>
                   </NavLink>
                 </div>
               )}

@@ -8,10 +8,12 @@ import RouteBreadcrumbs from "../components/navigation/RouteBreadcrumbs";
 import { accountantBreadcrumbConfig } from "../config/accountantBreadcrumbConfig";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
+import { usePendingTaskAttentionCount } from "../hooks/usePendingTaskAttentionCount";
 import ForgotPasswordModal from "../Pages/auth/forgot_password";
 import AccountantProfile from "../Pages/profile/AccountantProfile";
 import { resolveBackendAssetUrl } from "../services/api";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
+import { buildPendingTaskAttentionMessage } from "../utils/task_attention";
 
 const sidebarIconProps = {
   className: "h-5 w-5",
@@ -69,10 +71,27 @@ export default function AccountantLayout({ user, onLogout, children }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { permissions } = useModulePermissions();
+  const pendingTaskAttentionCount = usePendingTaskAttentionCount();
   const displayName = useMemo(() => getUserDisplayName(user), [user]);
   const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
-  const visibleNavItems = filterNavItemsByAccess(user, accountantNavItems, permissions);
+  const visibleNavItems = useMemo(() => {
+    const filteredItems = filterNavItemsByAccess(user, accountantNavItems, permissions);
+    if (pendingTaskAttentionCount <= 0) {
+      return filteredItems;
+    }
+
+    const helperText = buildPendingTaskAttentionMessage(pendingTaskAttentionCount);
+    return filteredItems.map((item) =>
+      item?.key === "my-tasks"
+        ? {
+            ...item,
+            badgeCount: pendingTaskAttentionCount,
+            helperText,
+          }
+        : item
+    );
+  }, [permissions, pendingTaskAttentionCount, user]);
   const profileItems = useMemo(() => {
     const items = [
       {

@@ -9,7 +9,7 @@ import {
   normalizeSecuritySettings,
 } from "../services/api";
 import { getUserRole, hasRole as userHasRole, ROLE_IDS } from "../utils/helpers";
-import { getTaskDeadlineState, readTaskMetaLine } from "../utils/task_deadline";
+import { countUrgentUnfinishedTasks } from "../utils/task_attention";
 
 const SESSION_USER_KEY = "session:user";
 const LOGIN_STATE_KEY = "isLoggedIn";
@@ -53,18 +53,6 @@ function normalizeSessionUser(user) {
   };
 }
 
-function isArchivedTask(task) {
-  const description = String(task?.description || "");
-  const archivedValue = String(readTaskMetaLine(description, "Archived") || "")
-    .trim()
-    .toLowerCase();
-  const secretaryArchivedValue = String(readTaskMetaLine(description, "SecretaryArchived") || "")
-    .trim()
-    .toLowerCase();
-
-  return ["1", "true", "yes"].includes(archivedValue) || ["1", "true", "yes"].includes(secretaryArchivedValue);
-}
-
 function shouldWarnOnLogout(roleId) {
   return [ROLE_IDS.ADMIN, ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT].includes(Number(roleId));
 }
@@ -77,13 +65,7 @@ async function countUrgentUnfinishedTasksForLogout(roleId) {
   try {
     const response = await api.get("task_list.php");
     const tasks = Array.isArray(response?.data?.tasks) ? response.data.tasks : [];
-
-    return tasks.filter((task) => {
-      if (!task || isArchivedTask(task)) return false;
-
-      const deadlineState = getTaskDeadlineState(task);
-      return !deadlineState.isClosed && (deadlineState.isDueToday || deadlineState.isOverdue);
-    }).length;
+    return countUrgentUnfinishedTasks(tasks);
   } catch (_) {
     return 0;
   }

@@ -28,10 +28,12 @@ import { getProfileMenuExpiryLabel, getUserDisplayName } from "../components/lay
 import { adminBreadcrumbConfig } from "../config/adminBreadcrumbConfig";
 import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useAuth } from "../hooks/useAuth";
+import { usePendingTaskAttentionCount } from "../hooks/usePendingTaskAttentionCount";
 import ForgotPasswordModal from "../Pages/auth/forgot_password";
 import AdminProfile from "../Pages/profile/AdminProfile";
 import { resolveBackendAssetUrl } from "../services/api";
 import { filterNavItemsByAccess } from "../utils/module_permissions";
+import { buildPendingTaskAttentionMessage } from "../utils/task_attention";
 
 const sidebarIconProps = {
   className: "h-5 w-5",
@@ -205,11 +207,28 @@ export default function AdminLayout({ user, onLogout, children }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { permissions } = useModulePermissions();
+  const pendingTaskAttentionCount = usePendingTaskAttentionCount();
   const displayName = useMemo(() => getUserDisplayName(user), [user]);
   const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const adminEmail = useMemo(() => user?.email || user?.username || "", [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
-  const visibleNavItems = filterNavItemsByAccess(user, adminNavItems, permissions);
+  const visibleNavItems = useMemo(() => {
+    const filteredItems = filterNavItemsByAccess(user, adminNavItems, permissions);
+    if (pendingTaskAttentionCount <= 0) {
+      return filteredItems;
+    }
+
+    const helperText = buildPendingTaskAttentionMessage(pendingTaskAttentionCount);
+    return filteredItems.map((item) =>
+      item?.key === "task-management"
+        ? {
+            ...item,
+            badgeCount: pendingTaskAttentionCount,
+            helperText,
+          }
+        : item
+    );
+  }, [permissions, pendingTaskAttentionCount, user]);
   const profileItems = useMemo(() => {
     const items = [
       {
