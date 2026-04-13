@@ -119,9 +119,9 @@ try {
     }
 
     $sql = "
-        SELECT s.Scheduling_ID,
+        SELECT s.Consultation_ID,
                s.Client_ID,
-               s.Client_services_ID,
+               s.Services_type_Id,
                s.Description,
                s.Date,
                s.Status_ID,
@@ -131,12 +131,11 @@ try {
                CONCAT_WS(' ', c.First_name, c.Middle_name, c.Last_name) AS Client_name
         FROM consultation s
         LEFT JOIN status st ON st.Status_id = s.Status_ID
-        LEFT JOIN client_services cs ON cs.Client_services_ID = s.Client_services_ID
-        LEFT JOIN services_type sv ON sv.Services_type_Id = cs.Services_type_Id
+        LEFT JOIN services_type sv ON sv.Services_type_Id = s.Services_type_Id
         LEFT JOIN client c ON c.Client_ID = s.Client_ID
         {$actionJoin}
         {$where}
-        ORDER BY s.Date DESC, s.Scheduling_ID DESC
+        ORDER BY s.Date DESC, s.Consultation_ID DESC
     ";
 
     $stmt = $conn->prepare($sql);
@@ -172,6 +171,11 @@ try {
             $typeName = trim((string)$m[1]);
         }
 
+        $selectedServiceName = '';
+        if (preg_match('/^\s*\[Service\]\s*(.+)\s*$/im', $desc, $m)) {
+            $selectedServiceName = trim((string)$m[1]);
+        }
+
         $appointmentId = null;
         if (preg_match('/^\s*\[Appointment_ID\]\s*(\d+)\s*$/im', $desc, $m)) {
             $appointmentId = (int)$m[1];
@@ -179,13 +183,13 @@ try {
 
         $statusName = isset($row['Status_name']) ? (string)$row['Status_name'] : '';
         $status = statusLabel($statusName);
-        $serviceName = isset($row['service_name']) ? trim((string)$row['service_name']) : '';
-        if ($typeName !== '') {
-            $serviceName = $typeName;
-        }
+        $serviceName = $selectedServiceName !== ''
+            ? $selectedServiceName
+            : (isset($row['service_name']) ? trim((string)$row['service_name']) : '');
         if ($serviceName === '') {
             $serviceName = 'Consultation';
         }
+        $recordType = $typeName !== '' ? $typeName : 'Consultation';
 
         $notesValue = $notes;
         if ($rescheduleReason !== '') {
@@ -195,8 +199,10 @@ try {
         }
 
         $out[] = [
-            'Scheduling_ID' => isset($row['Scheduling_ID']) ? (int)$row['Scheduling_ID'] : null,
-            'id' => isset($row['Scheduling_ID']) ? (int)$row['Scheduling_ID'] : null,
+            'Consultation_ID' => isset($row['Consultation_ID']) ? (int)$row['Consultation_ID'] : null,
+            'Scheduling_ID' => isset($row['Consultation_ID']) ? (int)$row['Consultation_ID'] : null,
+            'consultation_id' => isset($row['Consultation_ID']) ? (int)$row['Consultation_ID'] : null,
+            'id' => isset($row['Consultation_ID']) ? (int)$row['Consultation_ID'] : null,
             'Appointment_ID' => $appointmentId,
             'Client_ID' => isset($row['Client_ID']) ? (int)$row['Client_ID'] : null,
             'client_id' => isset($row['Client_ID']) ? (int)$row['Client_ID'] : null,
@@ -221,8 +227,15 @@ try {
             'Status_name' => $statusName !== '' ? $statusName : 'Pending',
             'Status' => $status,
             'status' => $status,
+            'Services_type_Id' => isset($row['Services_type_Id']) ? (int)$row['Services_type_Id'] : null,
+            'service_id' => isset($row['Services_type_Id']) ? (int)$row['Services_type_Id'] : null,
+            'Consultation_Service' => $serviceName,
+            'consultation_service' => $serviceName,
             'Name' => $serviceName,
             'service' => $serviceName,
+            'Type' => $recordType,
+            'type' => $recordType,
+            'record_kind' => 'consultation',
             'Description' => $desc,
             'description' => $desc,
         ];

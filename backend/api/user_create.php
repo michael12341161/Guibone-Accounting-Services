@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/account_status_helpers.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -153,6 +154,7 @@ try {
     monitoring_require_roles([MONITORING_ROLE_ADMIN]);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     monitoring_ensure_user_security_columns($conn);
+    monitoring_ensure_user_employment_status_column($conn);
     ensureEmployeeSpecializationSchema($conn);
 
     $raw = file_get_contents('php://input');
@@ -220,11 +222,19 @@ try {
 
     $conn->beginTransaction();
 
-    $ins = $conn->prepare('INSERT INTO user (Username, Password, Role_id, Email) VALUES (:u, :p, :r, :e)');
+    $employmentStatusId = $roleId === MONITORING_ROLE_CLIENT
+        ? null
+        : monitoring_default_employment_status_id($conn);
+
+    $ins = $conn->prepare(
+        'INSERT INTO user (Username, Password, Role_id, Employment_status_id, Email)
+         VALUES (:u, :p, :r, :employment_status_id, :e)'
+    );
     $ins->execute([
         ':u' => $username,
         ':p' => hash('sha256', $password),
         ':r' => $roleId,
+        ':employment_status_id' => $employmentStatusId,
         ':e' => $email,
     ]);
 
@@ -312,8 +322,8 @@ try {
         'employee_sss_account_number' => $sssAccount,
         'employee_pagibig_account_number' => $pagibigAccount,
         'employee_philhealth_account_number' => $philhealthAccount,
-        'employee_status_id' => null,
-        'employee_status' => null,
+        'employee_status_id' => $employmentStatusId,
+        'employee_status' => $employmentStatusId !== null ? 'Active' : null,
         'employee_position' => $roleName,
         'employee_specialization_type_id' => $profileSpecializationId,
         'employee_specialization_type_name' => $specializationType['name'] ?? null,

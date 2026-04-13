@@ -33,7 +33,7 @@ export const clientNavItems = [
     label: "Dashboard",
     to: "/client",
     icon: <LayoutDashboard {...sidebarIconProps} />,
-    accessKey: "client-account",
+    accessKey: "dashboard",
   },
   {
     key: "business-details",

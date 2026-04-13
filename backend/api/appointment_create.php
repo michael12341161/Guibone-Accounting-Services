@@ -138,6 +138,46 @@ function appointmentHasDescriptionColumn(PDO $conn): bool {
     return $cached;
 }
 
+function processingDocumentCatalog(): array {
+    return [
+        'business_permit' => 'Business Permit',
+        'dti' => 'DTI',
+        'sec' => 'SEC',
+        'lgu' => 'LGU',
+    ];
+}
+
+function normalizeProcessingDocumentKey(string $value): string {
+    $normalized = strtolower(trim($value));
+    $normalized = preg_replace('/[^a-z0-9]+/', '_', $normalized);
+    $normalized = trim((string)$normalized, '_');
+
+    if ($normalized === 'businesspermit') {
+        return 'business_permit';
+    }
+
+    return $normalized;
+}
+
+function resolveProcessingDocuments($value): array {
+    $catalog = processingDocumentCatalog();
+    if (!is_array($value)) {
+        return [];
+    }
+
+    $resolved = [];
+    foreach ($value as $item) {
+        $key = normalizeProcessingDocumentKey((string)$item);
+        if ($key === '' || !isset($catalog[$key]) || isset($resolved[$key])) {
+            continue;
+        }
+
+        $resolved[$key] = $catalog[$key];
+    }
+
+    return $resolved;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(405, ['success' => false, 'message' => 'Method not allowed']);
 }
@@ -160,6 +200,7 @@ try {
     $date = isset($data['date']) ? trim((string)$data['date']) : '';
     $time = isset($data['time']) ? trim((string)$data['time']) : '';
     $notes = isset($data['notes']) ? trim((string)$data['notes']) : '';
+    $processingDocuments = resolveProcessingDocuments($data['processing_documents'] ?? []);
     $roleId = (int)($sessionUser['role_id'] ?? 0);
     if ($roleId === MONITORING_ROLE_CLIENT) {
         $clientId = (int)($sessionUser['client_id'] ?? 0);
@@ -215,8 +256,17 @@ try {
             'allowed_services' => ['Processing'],
         ]);
     }
+    if (monitoring_service_name_is_processing($serviceName) && empty($processingDocuments)) {
+        respond(422, [
+            'success' => false,
+            'message' => 'Please select at least one document to process.',
+        ]);
+    }
 
     $descriptionLines = ["[Service] {$serviceName}"];
+    foreach ($processingDocuments as $documentLabel) {
+        $descriptionLines[] = '[Processing_Document] ' . $documentLabel;
+    }
     if ($meetingType !== '') {
         $descriptionLines[] = '[Appointment_Type] ' . $meetingType;
     }
@@ -299,6 +349,8 @@ try {
             'service_name' => $serviceName,
             'appointment_type' => $appointmentType,
             'meeting_type' => $meetingType !== '' ? $meetingType : null,
+            'processing_documents' => array_keys($processingDocuments),
+            'processing_document_labels' => array_values($processingDocuments),
             'date' => $date,
             'Date' => $date,
             'time' => $time !== '' ? $time : null,

@@ -20,6 +20,7 @@ import {
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
 const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
+const STEP_PENDING_RE = /^\s*\[StepPending\]\s*([^\r\n]*)\s*$/i;
 const PROGRESS_RE = /^\s*\[Progress\]\s*(\d{1,3})\s*$/i;
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
 const ADMIN_ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
@@ -103,12 +104,12 @@ const parseTaskSteps = (descriptionRaw) => {
   }));
 };
 
-const parseCompletedStepNumbers = (descriptionRaw) => {
+const parseTaggedStepNumbers = (descriptionRaw, matcher) => {
   const lines = String(descriptionRaw || "").split(/\r?\n/);
   const set = new Set();
 
   for (const line of lines) {
-    const match = String(line || "").match(STEP_DONE_RE);
+    const match = String(line || "").match(matcher);
     if (!match) continue;
     const values = String(match[1] || "")
       .split(/[,\s]+/)
@@ -119,6 +120,9 @@ const parseCompletedStepNumbers = (descriptionRaw) => {
 
   return set;
 };
+
+const parseCompletedStepNumbers = (descriptionRaw) => parseTaggedStepNumbers(descriptionRaw, STEP_DONE_RE);
+const parsePendingStepNumbers = (descriptionRaw) => parseTaggedStepNumbers(descriptionRaw, STEP_PENDING_RE);
 
 const extractProgress = (descriptionRaw) => {
   const lines = String(descriptionRaw || "").split(/\r?\n/);
@@ -132,8 +136,8 @@ const extractProgress = (descriptionRaw) => {
   return 0;
 };
 
-const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
-  const numbers = Array.from(completedSet || [])
+const setTaggedStepNumbers = (descriptionRaw, matcher, tag, stepSet) => {
+  const numbers = Array.from(stepSet || [])
     .map((n) => parseInt(n, 10))
     .filter((n) => Number.isInteger(n) && n > 0)
     .sort((a, b) => a - b);
@@ -143,9 +147,9 @@ const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
   let written = false;
 
   for (const line of lines) {
-    if (STEP_DONE_RE.test(String(line || ""))) {
+    if (matcher.test(String(line || ""))) {
       if (!written && numbers.length > 0) {
-        nextLines.push(`[StepDone] ${numbers.join(",")}`);
+        nextLines.push(`[${tag}] ${numbers.join(",")}`);
         written = true;
       }
       continue;
@@ -157,11 +161,17 @@ const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
     while (nextLines.length && !String(nextLines[nextLines.length - 1] || "").trim()) {
       nextLines.pop();
     }
-    nextLines.push(`[StepDone] ${numbers.join(",")}`);
+    nextLines.push(`[${tag}] ${numbers.join(",")}`);
   }
 
   return nextLines.join("\n").trim();
 };
+
+const setCompletedStepNumbers = (descriptionRaw, completedSet) =>
+  setTaggedStepNumbers(descriptionRaw, STEP_DONE_RE, "StepDone", completedSet);
+
+const setPendingStepNumbers = (descriptionRaw, pendingSet) =>
+  setTaggedStepNumbers(descriptionRaw, STEP_PENDING_RE, "StepPending", pendingSet);
 
 const setProgress = (descriptionRaw, progressRaw) => {
   const progress = Math.max(0, Math.min(100, parseInt(progressRaw, 10) || 0));
@@ -196,6 +206,21 @@ const roleCanCompleteStep = (stepAssignee, actorRole) => {
 const getAssignedStepsForRole = (steps, actorRole) =>
   (Array.isArray(steps) ? steps : []).filter((step) => roleCanCompleteStep(step?.assignee, actorRole));
 
+const getNextOpenStepIndex = (steps, doneSet, pendingSet) => {
+  const taskSteps = Array.isArray(steps) ? steps : [];
+  const completedSteps = doneSet instanceof Set ? doneSet : new Set(doneSet || []);
+  const pendingSteps = pendingSet instanceof Set ? pendingSet : new Set(pendingSet || []);
+
+  for (let i = 0; i < taskSteps.length; i++) {
+    const stepNumber = i + 1;
+    if (completedSteps.has(stepNumber)) continue;
+    if (pendingSteps.has(stepNumber)) continue;
+    return i;
+  }
+
+  return taskSteps.length;
+};
+
 const formatStepNumberLabel = (steps) => {
   const numbers = (Array.isArray(steps) ? steps : [])
     .map((step) => Number(step?.number))
@@ -213,6 +238,7 @@ const formatStepNumberLabel = (steps) => {
 const statusStyle = (statusRaw) => {
   const s = (statusRaw || "Pending").toLowerCase();
   if (s === "completed") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (s === "pending review") return "bg-amber-50 text-amber-700 border-amber-200";
   if (s === "overdue") return "bg-rose-50 text-rose-700 border-rose-200";
   if (s === "incomplete") return "bg-orange-50 text-orange-700 border-orange-200";
   if (s === "declined") return "bg-rose-50 text-rose-700 border-rose-200";
@@ -357,7 +383,7 @@ const cleanDescription = (desc) => {
   // [Progress] 80
   // [Priority] Medium
   // [Deadline] 25/02/2026
-  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|Archived|SecretaryArchived|CreatedAt)\]\s*.*$/gim, "");
+  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|StepPending|Archived|SecretaryArchived|CreatedAt)\]\s*.*$/gim, "");
   d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   d = d.replace(/\s*\[Done\]\s*/gi, " ");
 
@@ -499,6 +525,7 @@ export default function WorkUpdate() {
     const taskId = Number(task?.id || 0);
     if (!taskId || !isEditingStepRemark(taskId, stepNumber)) return;
     if (parseCompletedStepNumbers(task?.description).has(stepNumber)) return;
+    if (parsePendingStepNumbers(task?.description).has(stepNumber)) return;
 
     const nextRemark = String(stepRemarkEditor?.value || "");
     let updatedDesc = setStepRemark(String(task?.description || ""), stepNumber, nextRemark);
@@ -536,23 +563,22 @@ export default function WorkUpdate() {
     if (!steps.length) return;
 
     const doneSet = parseCompletedStepNumbers(task?.description);
-    const nextRequiredIndex = (() => {
-      for (let i = 0; i < steps.length; i++) if (!doneSet.has(i + 1)) return i;
-      return steps.length;
-    })();
+    const pendingSet = parsePendingStepNumbers(task?.description);
+    const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingSet);
 
     if (index !== nextRequiredIndex) return;
 
     const step = steps[index];
     if (!step) return;
     if (!roleCanCompleteStep(step.assignee, "secretary")) return;
+    if (pendingSet.has(index + 1)) return;
 
     const confirmation = await Swal.fire({
-      title: `Complete Step ${index + 1}?`,
-      text: "Are you sure you want to check this step as completed?",
+      title: `Submit Step ${index + 1}?`,
+      text: "This will send the step to pending review until admin or secretary approves it.",
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Yes, complete it",
+      confirmButtonText: "Yes, submit it",
       cancelButtonText: "Cancel",
       confirmButtonColor: "#2563eb",
       cancelButtonColor: "#64748b",
@@ -561,9 +587,56 @@ export default function WorkUpdate() {
     });
     if (!confirmation.isConfirmed) return;
 
+    const nextPending = new Set(pendingSet);
+    nextPending.add(index + 1);
+    let updatedDesc = setPendingStepNumbers(String(task?.description || ""), nextPending);
+    const nextProgress = Math.round((doneSet.size / steps.length) * 100);
+    updatedDesc = setProgress(updatedDesc, nextProgress);
+
+    try {
+      await api.post("task_update_status.php", { task_id: id, description: updatedDesc });
+      await refresh({ silent: true });
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to update progress.");
+      await refresh({ silent: true });
+    }
+  };
+
+  const approveStep = async (task, index) => {
+    if (!canCheckTaskSteps) return;
+    const id = task?.id;
+    if (!id) return;
+
+    const steps = parseTaskSteps(task?.description);
+    if (!steps.length) return;
+
+    const doneSet = parseCompletedStepNumbers(task?.description);
+    const pendingSet = parsePendingStepNumbers(task?.description);
+    const step = steps[index];
+    if (!step) return;
+    if (!pendingSet.has(index + 1) || doneSet.has(index + 1)) return;
+
+    const confirmation = await Swal.fire({
+      title: `Approve Step ${index + 1}?`,
+      text: "This will mark the submitted step as completed.",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Approve",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#16a34a",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+      focusCancel: true,
+    });
+    if (!confirmation.isConfirmed) return;
+
     const nextDone = new Set(doneSet);
     nextDone.add(index + 1);
-    let updatedDesc = setCompletedStepNumbers(String(task?.description || ""), nextDone);
+    const nextPending = new Set(pendingSet);
+    nextPending.delete(index + 1);
+
+    let updatedDesc = setPendingStepNumbers(String(task?.description || ""), nextPending);
+    updatedDesc = setCompletedStepNumbers(updatedDesc, nextDone);
     updatedDesc = setStepCompletionTimestamp(updatedDesc, index + 1, createLocalStepTimestamp());
     const nextProgress = Math.round((nextDone.size / steps.length) * 100);
     updatedDesc = setProgress(updatedDesc, nextProgress);
@@ -572,7 +645,7 @@ export default function WorkUpdate() {
       await api.post("task_update_status.php", { task_id: id, description: updatedDesc });
       await refresh({ silent: true });
     } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Failed to update progress.");
+      setError(e?.response?.data?.message || e?.message || "Failed to approve step.");
       await refresh({ silent: true });
     }
   };
@@ -1019,6 +1092,7 @@ export default function WorkUpdate() {
               const meta = extractMetaFromDescription(t.description);
               const steps = parseTaskSteps(t.description);
               const doneSet = parseCompletedStepNumbers(t.description);
+              const pendingReviewCount = parsePendingStepNumbers(t.description).size;
               const taskStatus = String(t.status || "").toLowerCase();
               const isTaskDone = ["done", "completed"].includes(taskStatus);
               const isTaskDeclined = taskStatus === "declined";
@@ -1090,7 +1164,7 @@ export default function WorkUpdate() {
                     </div>
 
                     <div className="shrink-0">
-                      <StatusBadge value={t.status} />
+                      <StatusBadge value={pendingReviewCount > 0 ? "Pending Review" : t.status} />
                     </div>
                   </div>
 
@@ -1336,26 +1410,36 @@ export default function WorkUpdate() {
                         }
 
                         const doneSet = parseCompletedStepNumbers(liveTask?.description);
+                        const pendingReviewSet = parsePendingStepNumbers(liveTask?.description);
                         const completionTimestamps = parseStepCompletionTimestamps(liveTask?.description);
                         const stepRemarks = parseStepRemarks(liveTask?.description);
                         const stepRemarkTimestamps = parseStepRemarkTimestamps(liveTask?.description);
-                        const nextRequiredIndex = (() => {
-                          for (let i = 0; i < steps.length; i++) if (!doneSet.has(i + 1)) return i;
-                          return steps.length;
-                        })();
+                        const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingReviewSet);
                         const taskLocked = ["done", "completed"].includes(String(liveTask?.status || "").toLowerCase());
 
                         return (
                           <div className="space-y-2">
+                            <div className="text-xs text-slate-500">
+                              {canCheckTaskSteps
+                                ? "Submitted steps stay pending here until admin or secretary approves them."
+                                : "Step completion is disabled for your role. You can review the task details here."}
+                            </div>
                             {steps.map((step, i) => {
                               const stepNumber = i + 1;
                               const done = doneSet.has(stepNumber);
+                              const pendingReview = pendingReviewSet.has(stepNumber) && !done;
                               const canCompleteByOrder = i === nextRequiredIndex;
                               const isAssignedToSecretary = roleCanCompleteStep(step.assignee, "secretary");
                               const canComplete =
-                                canCheckTaskSteps && !taskLocked && !done && canCompleteByOrder && isAssignedToSecretary;
+                                canCheckTaskSteps &&
+                                !taskLocked &&
+                                !done &&
+                                !pendingReview &&
+                                canCompleteByOrder &&
+                                isAssignedToSecretary;
+                              const canApprove = canCheckTaskSteps && !taskLocked && !done && pendingReview;
                               const canEditRemark =
-                                canManageStepRemarks && !taskLocked && !done && isAssignedToSecretary;
+                                canManageStepRemarks && !taskLocked && !done && !pendingReview && isAssignedToSecretary;
                               const stepRemark = canViewTaskUpdateHistory ? String(stepRemarks[stepNumber] || "").trim() : "";
                               const completionLabel = canViewTaskUpdateHistory
                                 ? formatStepDateTime(completionTimestamps[stepNumber])
@@ -1367,7 +1451,13 @@ export default function WorkUpdate() {
                               return (
                                 <div
                                   key={`step-${stepsTask.id}-${i}`}
-                                  className={`flex items-start gap-3 rounded-xl border px-3 py-2 ${done ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 bg-white"}`}
+                                  className={`flex items-start gap-3 rounded-xl border px-3 py-2 ${
+                                    done
+                                      ? "border-emerald-200 bg-emerald-50/40"
+                                      : pendingReview
+                                        ? "border-amber-200 bg-amber-50/70"
+                                        : "border-slate-200 bg-white"
+                                  }`}
                                 >
                                   <div className="pt-0.5">
                                     <input
@@ -1384,8 +1474,10 @@ export default function WorkUpdate() {
                                           ? "Step completion is disabled for your role"
                                           : done
                                             ? "Step already completed"
+                                            : pendingReview
+                                              ? "Submitted and waiting for approval"
                                             : canComplete
-                                              ? `Mark Step ${stepNumber} as completed`
+                                              ? `Submit Step ${stepNumber} for approval`
                                               : !isAssignedToSecretary
                                                 ? "Only secretary-assigned steps can be completed"
                                                 : "This step will unlock after earlier steps are done"
@@ -1397,13 +1489,15 @@ export default function WorkUpdate() {
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
                                         <span>{`Step ${stepNumber}`}</span>
-                                        <StepAssigneeIdentity assignee={step.assignee} />
-                                      </div>
-                                      {done ? (
-                                        <span className="text-[11px] font-medium text-emerald-700">Completed</span>
-                                      ) : canComplete ? (
-                                        <span className="text-[11px] font-medium text-indigo-700">Current</span>
-                                      ) : !canCheckTaskSteps && isAssignedToSecretary ? (
+                                      <StepAssigneeIdentity assignee={step.assignee} />
+                                    </div>
+                                    {done ? (
+                                      <span className="text-[11px] font-medium text-emerald-700">Completed</span>
+                                    ) : pendingReview ? (
+                                      <span className="text-[11px] font-medium text-amber-700">Pending Review</span>
+                                    ) : canComplete ? (
+                                      <span className="text-[11px] font-medium text-indigo-700">Current</span>
+                                    ) : !canCheckTaskSteps && isAssignedToSecretary ? (
                                         <span className="text-[11px] font-medium text-slate-400">Read only</span>
                                       ) : !isAssignedToSecretary ? (
                                         <span className="text-[11px] font-medium text-emerald-700">{stepAssigneeLabel(step.assignee)} step</span>
@@ -1412,7 +1506,9 @@ export default function WorkUpdate() {
                                       )}
                                     </div>
                                     <div
-                                      className={`mt-0.5 text-sm leading-5 ${done ? "line-through text-slate-400" : "text-slate-800"}`}
+                                      className={`mt-0.5 text-sm leading-5 ${
+                                        done ? "line-through text-slate-400" : pendingReview ? "text-amber-950" : "text-slate-800"
+                                      }`}
                                       style={done ? { textDecorationThickness: "2px" } : undefined}
                                     >
                                       {step.text}
@@ -1421,6 +1517,22 @@ export default function WorkUpdate() {
                                     {done && completionLabel ? (
                                       <div className="mt-2 text-[11px] font-medium text-emerald-700">
                                         Completed on {completionLabel}
+                                      </div>
+                                    ) : pendingReview ? (
+                                      <div className="mt-2 text-[11px] font-medium text-amber-700">
+                                        Submitted and waiting for approval.
+                                      </div>
+                                    ) : null}
+
+                                    {canApprove ? (
+                                      <div className="mt-2 flex items-center justify-end">
+                                        <button
+                                          type="button"
+                                          onClick={() => approveStep(liveTask, i)}
+                                          className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                        >
+                                          Approve
+                                        </button>
                                       </div>
                                     ) : null}
 
@@ -1451,7 +1563,9 @@ export default function WorkUpdate() {
                                               ? (stepRemark ? "Edit remark" : "Add remark")
                                               : done
                                                 ? "Completed steps cannot add remarks"
-                                                : "Only secretary-assigned steps can add remarks"
+                                                : pendingReview
+                                                  ? "Submitted steps cannot add remarks until reviewed"
+                                                  : "Only secretary-assigned steps can add remarks"
                                           }
                                           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                                             !canEditRemark || stepRemarkSaving

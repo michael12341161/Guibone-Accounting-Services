@@ -9,7 +9,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { validatePasswordValue } from "../../utils/passwordValidation";
-import { useErrorToast } from "../../utils/feedback";
+import { showConfirmDialog, showDangerConfirmDialog, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import {
   normalizeMiddleName,
   normalizeMiddleNameOrNull,
@@ -62,11 +62,14 @@ function resolveUserStatus(user) {
   }
 
   const statusId = Number(user?.employee_status_id ?? user?.status_id ?? 0);
-  if (statusId === 1) {
+  if (statusId === 1 || statusId === 3) {
     return "Active";
   }
-  if (statusId === 2) {
+  if (statusId === 2 || statusId === 4) {
     return "Inactive";
+  }
+  if (statusId === 5) {
+    return "Resigned";
   }
 
   return user?.id ? "Active" : "-";
@@ -78,7 +81,7 @@ function getStatusPillClass(status) {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (statusText === "inactive") {
-    return "border-slate-300 bg-slate-100 text-slate-600";
+    return "border-rose-200 bg-rose-50 text-rose-700";
   }
   if (statusText === "-") {
     return "border-slate-200 bg-slate-50 text-slate-600";
@@ -219,6 +222,7 @@ export default function UserManagement() {
   const [editingUser, setEditingUser] = useState(null);
   const [specializationTypes, setSpecializationTypes] = useState(DEFAULT_SPECIALIZATION_TYPES);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
+  const [statusActionUserId, setStatusActionUserId] = useState(null);
   const viewGovernmentAccounts = useMemo(() => extractGovernmentAccountNumbers(viewUser), [viewUser]);
   const viewSpecializationName = useMemo(() => {
     return resolveSpecializationName(viewUser, specializationTypes) || "-";
@@ -518,6 +522,78 @@ export default function UserManagement() {
 
   const roleOptions = ["All", "Accountant", "Secretary"];
 
+  const toggleUserStatus = async (targetUser) => {
+    if (!targetUser?.id) return;
+    if (!canEditUsers) {
+      setError("You do not have permission to edit users.");
+      return;
+    }
+
+    const currentStatus = resolveUserStatus(targetUser);
+    const nextStatus = String(currentStatus).trim().toLowerCase() === "inactive" ? "Active" : "Inactive";
+
+    if (nextStatus === "Inactive") {
+      const confirmation = await showDangerConfirmDialog({
+        title: "Set account to inactive?",
+        text: "This user will no longer be able to log in or use forgot password until the account is reactivated.",
+        confirmButtonText: "Set Inactive",
+      });
+      if (!confirmation.isConfirmed) {
+        return;
+      }
+    } else {
+      const confirmation = await showConfirmDialog({
+        title: "Set account to active?",
+        text: "This user will be able to log in and use forgot password again.",
+        confirmButtonText: "Set Active",
+      });
+      if (!confirmation.isConfirmed) {
+        return;
+      }
+    }
+
+    setError("");
+    setSuccess("");
+    setStatusActionUserId(targetUser.id);
+
+    try {
+      const response = await api.post("user_update.php", {
+        action: "update_status",
+        id: targetUser.id,
+        employment_status: nextStatus,
+      });
+
+      if (!response?.data?.success) {
+        throw new Error(response?.data?.message || "Failed to update user status.");
+      }
+
+      const updatedUser = response?.data?.user || {};
+      setUsers((prev) =>
+        prev.map((entry) =>
+          entry.id === targetUser.id
+            ? {
+                ...entry,
+                employee_status_id: updatedUser.employee_status_id ?? entry.employee_status_id,
+                employee_status: updatedUser.employee_status ?? nextStatus,
+                status: updatedUser.employee_status ?? nextStatus,
+              }
+            : entry
+        )
+      );
+      showSuccessToast({
+        title: nextStatus === "Active" ? "User account activated." : "User account set to inactive.",
+        description:
+          nextStatus === "Active"
+            ? "The user can log in and use forgot password again."
+            : "The user can no longer log in until the account is reactivated.",
+      });
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || requestError?.message || "Failed to update user status.");
+    } finally {
+      setStatusActionUserId(null);
+    }
+  };
+
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
       const roleText = String(user?.role || "").toLowerCase();
@@ -597,11 +673,26 @@ export default function UserManagement() {
       key: "status",
       header: "Status",
       width: "10%",
-      render: (value) => (
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(value)}`}>
-          {value || "-"}
-        </span>
-      ),
+      render: (value, row) =>
+        canEditUsers ? (
+          <button
+            type="button"
+            onClick={() => {
+              void toggleUserStatus(row.raw);
+            }}
+            disabled={statusActionUserId === row.raw?.id}
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+              getStatusPillClass(value)
+            } ${statusActionUserId === row.raw?.id ? "cursor-wait opacity-70" : ""}`}
+            title="Click to change status"
+          >
+            {value || "-"}
+          </button>
+        ) : (
+          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(value)}`}>
+            {value || "-"}
+          </span>
+        ),
     },
     ...(hasRowActions
       ? [

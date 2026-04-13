@@ -76,77 +76,44 @@ function resolveClientId(PDO $conn, int $clientId, string $clientUsername): int 
     return 0;
 }
 
-function resolveService(PDO $conn, string $serviceName): array {
+function isConsultationPlaceholder(string $value): bool {
+    $normalized = strtolower(trim($value));
+    return $normalized === '' || $normalized === 'consultation';
+}
+
+function resolveConsultationService(PDO $conn, string $serviceName): array {
     $name = trim($serviceName);
-    if ($name !== '') {
-        $stmt = $conn->prepare('SELECT Services_type_Id, Name FROM services_type WHERE Name = :n LIMIT 1');
-        $stmt->execute([':n' => $name]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return [(int)$row['Services_type_Id'], (string)$row['Name']];
-        }
-        // Consultation can be a free-form service label not stored in services table.
-        return [null, $name];
+    if ($name === '' || isConsultationPlaceholder($name)) {
+        return [null, ''];
     }
 
-    $fallback = $conn->query('SELECT Services_type_Id, Name FROM services_type ORDER BY Services_type_Id ASC LIMIT 1');
-    $row = $fallback ? $fallback->fetch(PDO::FETCH_ASSOC) : null;
+    $stmt = $conn->prepare('SELECT Services_type_Id, Name FROM services_type WHERE Name = :n LIMIT 1');
+    $stmt->execute([':n' => $name]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
         return [null, $name];
     }
-    return [(int)$row['Services_type_Id'], (string)$row['Name']];
+
+    return [(int)$row['Services_type_Id'], trim((string)$row['Name'])];
 }
 
-function resolveClientServiceId(PDO $conn, int $clientId, ?int $serviceId, string $serviceName): int {
-    if ($serviceId !== null) {
-        $find = $conn->prepare(
-            'SELECT Client_services_ID
-             FROM client_services
-             WHERE Client_ID = :cid
-               AND Services_type_Id = :sid
-             ORDER BY Client_services_ID DESC
-             LIMIT 1'
-        );
-        $find->execute([':cid' => $clientId, ':sid' => $serviceId]);
-        $existing = (int)($find->fetchColumn() ?: 0);
-        if ($existing > 0) {
-            return $existing;
-        }
-
-        $ins = $conn->prepare(
-            'INSERT INTO client_services (Client_ID, Services_type_Id, Name)
-             VALUES (:cid, :sid, :name)'
-        );
-        $ins->execute([
-            ':cid' => $clientId,
-            ':sid' => $serviceId,
-            ':name' => $serviceName !== '' ? $serviceName : 'Consultation',
-        ]);
-        return (int)$conn->lastInsertId();
+function resolveDefaultConsultationService(PDO $conn): array {
+    $stmt = $conn->query(
+        "SELECT Services_type_Id, Name
+         FROM services_type
+         WHERE Name IS NOT NULL
+           AND TRIM(Name) <> ''
+           AND LOWER(TRIM(Name)) <> 'processing'
+           AND LOWER(TRIM(Name)) <> 'consultation'
+         ORDER BY Services_type_Id ASC
+         LIMIT 1"
+    );
+    $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
+    if (!$row) {
+        return [null, ''];
     }
 
-    $latest = $conn->prepare(
-        'SELECT Client_services_ID
-         FROM client_services
-         WHERE Client_ID = :cid
-         ORDER BY Client_services_ID DESC
-         LIMIT 1'
-    );
-    $latest->execute([':cid' => $clientId]);
-    $existing = (int)($latest->fetchColumn() ?: 0);
-    if ($existing > 0) {
-        return $existing;
-    }
-
-    $ins = $conn->prepare(
-        'INSERT INTO client_services (Client_ID, Services_type_Id, Name)
-         VALUES (:cid, NULL, :name)'
-    );
-    $ins->execute([
-        ':cid' => $clientId,
-        ':name' => $serviceName !== '' ? $serviceName : 'Consultation',
-    ]);
-    return (int)$conn->lastInsertId();
+    return [(int)$row['Services_type_Id'], trim((string)$row['Name'])];
 }
 
 function resolveStatusId(PDO $conn, string $group, $names, int $fallback): int {
@@ -192,7 +159,7 @@ try {
     $clientId = isset($data['client_id']) ? (int)$data['client_id'] : 0;
     $clientUsername = isset($data['client_username']) ? trim((string)$data['client_username']) : '';
     $serviceInput = isset($data['service']) ? trim((string)$data['service']) : '';
-    $type = isset($data['appointment_type']) ? trim((string)$data['appointment_type']) : 'Consultation';
+    $consultationServiceInput = isset($data['consultation_service']) ? trim((string)$data['consultation_service']) : '';
     $meetingType = isset($data['meeting_type']) ? trim((string)$data['meeting_type']) : '';
     $date = isset($data['date']) ? trim((string)$data['date']) : '';
     $time = isset($data['time']) ? trim((string)$data['time']) : '';
@@ -249,10 +216,17 @@ try {
         ]);
     }
 
-    [$serviceId, $serviceName] = resolveService($conn, $serviceInput);
-    $clientServiceId = resolveClientServiceId($conn, $resolvedClientId, $serviceId, $serviceName);
-    if ($clientServiceId <= 0) {
-        respond(500, ['success' => false, 'message' => 'Unable to resolve client service']);
+    $selectedConsultationService = $consultationServiceInput !== '' ? $consultationServiceInput : $serviceInput;
+    if (isConsultationPlaceholder($selectedConsultationService)) {
+        [$serviceId, $serviceName] = resolveDefaultConsultationService($conn);
+    } else {
+        [$serviceId, $serviceName] = resolveConsultationService($conn, $selectedConsultationService);
+    }
+    if ($serviceId === null || $serviceName === '') {
+        respond(422, ['success' => false, 'message' => 'Please choose a valid consultation service.']);
+    }
+    if (monitoring_service_name_is_processing($serviceName)) {
+        respond(422, ['success' => false, 'message' => 'Processing cannot be selected for consultation requests.']);
     }
 
     if ($userId <= 0) {
@@ -270,7 +244,7 @@ try {
     $rejectedId = resolveStatusId($conn, 'CONSULTATION', ['Reject', 'Rejected', 'Declined', 'Cancelled'], 16);
 
     $dup = $conn->prepare(
-        'SELECT Scheduling_ID
+        'SELECT Consultation_ID
          FROM consultation
          WHERE Date = :d
            AND Status_ID <> :rejected
@@ -287,7 +261,7 @@ try {
     }
 
     $descriptionParts = [];
-    $descriptionParts[] = '[Type] ' . ($type !== '' ? $type : 'Consultation');
+    $descriptionParts[] = '[Type] Consultation';
     if ($meetingType !== '') {
         $descriptionParts[] = '[Appointment_Type] ' . $meetingType;
     }
@@ -304,12 +278,12 @@ try {
     $description = implode("\n", $descriptionParts);
 
     $actionColumn = resolveConsultationActionColumn($conn);
-    $insertColumns = ['Description', 'Status_ID', 'Client_services_ID', 'Client_ID', 'Date'];
-    $insertValues = [':descr', ':status_id', ':csid', ':cid', ':date'];
+    $insertColumns = ['Description', 'Status_ID', 'Services_type_Id', 'Client_ID', 'Date'];
+    $insertValues = [':descr', ':status_id', ':service_id', ':cid', ':date'];
     $insertParams = [
         ':descr' => $description,
         ':status_id' => $pendingId,
-        ':csid' => $clientServiceId,
+        ':service_id' => $serviceId,
         ':cid' => $resolvedClientId,
         ':date' => $date,
     ];
@@ -332,19 +306,30 @@ try {
         'success' => true,
         'scheduling' => [
             'id' => $newId,
+            'Consultation_ID' => $newId,
             'Scheduling_ID' => $newId,
+            'consultation_id' => $newId,
             'client_id' => $resolvedClientId,
             'Client_ID' => $resolvedClientId,
             'user_id' => null,
             'action_by' => null,
             'Action_by' => null,
-            'name' => $serviceName !== '' ? $serviceName : 'Consultation',
+            'Services_type_Id' => $serviceId,
+            'service_id' => $serviceId,
+            'consultation_service' => $serviceName,
+            'Consultation_Service' => $serviceName,
+            'name' => $serviceName,
+            'Name' => $serviceName,
+            'service' => $serviceName,
             'date' => $date,
             'Date' => $date,
             'time' => $time,
             'Time' => $time,
             'appointment_type' => $meetingType,
             'Appointment_Type' => $meetingType,
+            'type' => 'Consultation',
+            'Type' => 'Consultation',
+            'record_kind' => 'consultation',
             'status' => 'Pending',
             'Status' => 'Pending',
             'Description' => $description,

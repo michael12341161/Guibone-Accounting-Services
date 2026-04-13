@@ -58,6 +58,41 @@ function resolveAppointmentActionColumn(PDO $conn): ?string {
     return null;
 }
 
+function resolveAppointmentPendingStatusIds(PDO $conn): array {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $ids = [];
+    try {
+        $stmt = $conn->query(
+            'SELECT Status_id
+             FROM status
+             WHERE Status_group = "APPOINTMENT"
+               AND LOWER(Status_name) IN ("pending", "not started")'
+        );
+        while (($value = $stmt->fetchColumn()) !== false) {
+            $id = (int)$value;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+    } catch (Throwable $__) {
+        // Fall back to defaults below.
+    }
+
+    if (!$ids) {
+        $fallbackId = resolveAppointmentStatusId($conn, 'pending');
+        if ($fallbackId > 0) {
+            $ids[] = $fallbackId;
+        }
+    }
+
+    $cached = array_values(array_unique($ids));
+    return $cached;
+}
+
 function resolveAppointmentStatusId(PDO $conn, string $statusInput): int {
     $normalized = normalizeAppointmentStatus($statusInput);
 
@@ -122,7 +157,18 @@ try {
         respond(422, ['success' => false, 'message' => 'status is required']);
     }
 
-    $check = $conn->prepare('SELECT Appointment_ID, Client_ID FROM appointment WHERE Appointment_ID = :id LIMIT 1');
+    $check = $conn->prepare(
+        'SELECT a.Appointment_ID,
+                a.Client_ID,
+                a.Status_ID,
+                s.Status_name AS current_status_name
+         FROM appointment a
+         LEFT JOIN status s
+           ON s.Status_id = a.Status_ID
+          AND s.Status_group = "APPOINTMENT"
+         WHERE a.Appointment_ID = :id
+         LIMIT 1'
+    );
     $check->execute([':id' => $appointmentId]);
     $appointmentRow = $check->fetch(PDO::FETCH_ASSOC);
     if (!$appointmentRow) {
@@ -130,12 +176,21 @@ try {
     }
     monitoring_require_client_access((int)($appointmentRow['Client_ID'] ?? 0), [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
 
+    $normalizedStatus = normalizeAppointmentStatus($status);
+    $currentStatus = normalizeAppointmentStatus((string)($appointmentRow['current_status_name'] ?? ''));
+    $isPendingAppointment =
+        $currentStatus === 'pending' ||
+        in_array((int)($appointmentRow['Status_ID'] ?? 0), resolveAppointmentPendingStatusIds($conn), true);
+
+    if (($normalizedStatus === 'approved' || $normalizedStatus === 'rejected') && !$isPendingAppointment) {
+        respond(409, ['success' => false, 'message' => 'Only pending appointments can be approved or declined.']);
+    }
+
     $statusId = resolveAppointmentStatusId($conn, $status);
     if ($statusId <= 0) {
         respond(422, ['success' => false, 'message' => 'Unable to map status']);
     }
 
-    $normalizedStatus = normalizeAppointmentStatus($status);
     $actionColumn = resolveAppointmentActionColumn($conn);
     $params = [
         ':sid' => $statusId,

@@ -164,7 +164,7 @@ function extractProgressValue(descriptionRaw) {
 
 function cleanTaskDescription(descriptionRaw) {
   let next = String(descriptionRaw || "");
-  next = next.replace(/^\s*\[(Progress|Priority|Deadline|StepDone|PartnerId|PartnerName|CreatedAt|Archived|SecretaryArchived)\]\s*.*$/gim, "");
+  next = next.replace(/^\s*\[(Progress|Priority|Deadline|StepDone|StepPending|PartnerId|PartnerName|CreatedAt|Archived|SecretaryArchived)\]\s*.*$/gim, "");
   next = next.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   next = next.replace(/^\s*Step\s+\d+(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*.*$/gim, "");
 
@@ -1587,4 +1587,3 @@ export default function Calendar() {
     </div>
   );
 }
-

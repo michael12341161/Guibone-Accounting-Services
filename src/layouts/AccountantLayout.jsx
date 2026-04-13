@@ -75,7 +75,7 @@ export default function AccountantLayout({ user, onLogout, children }) {
   const displayName = useMemo(() => getUserDisplayName(user), [user]);
   const passwordExpiryLabel = useMemo(() => getProfileMenuExpiryLabel(user), [user]);
   const avatarSrc = useMemo(() => resolveBackendAssetUrl(user?.profile_image), [user]);
-  const visibleNavItems = useMemo(() => {
+  const navItems = useMemo(() => {
     const filteredItems = filterNavItemsByAccess(user, accountantNavItems, permissions);
     if (pendingTaskAttentionCount <= 0) {
       return filteredItems;
@@ -146,7 +146,7 @@ export default function AccountantLayout({ user, onLogout, children }) {
 
   return (
     <DashboardShell
-      navItems={visibleNavItems}
+      navItems={navItems}
       navbarProps={{
         logoSrc: appLogo,
         logoAlt: "Guibone Accounting Services",

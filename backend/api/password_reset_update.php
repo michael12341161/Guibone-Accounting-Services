@@ -4,6 +4,7 @@ monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/account_status_helpers.php';
 
 function respond($code, $payload) {
   http_response_code($code);
@@ -31,6 +32,7 @@ if ($newPassword === '') {
 
 try {
   monitoring_ensure_user_security_columns($conn);
+  monitoring_ensure_user_employment_status_column($conn);
   $securitySettings = monitoring_get_security_settings($conn);
   $maxPasswordLength = (int)$securitySettings['maxPasswordLength'];
   $passwordValidationMessage = monitoring_validate_password_value($newPassword, $maxPasswordLength);
@@ -54,6 +56,16 @@ try {
   $tokenHash = hash('sha256', $token);
   if (!hash_equals((string)$sess['reset_token_hash'], $tokenHash)) {
     respond(400, ['success' => false, 'message' => 'Invalid or expired reset token.']);
+  }
+
+  $accountAccess = monitoring_fetch_account_access_status_by_email($conn, $email);
+  if (!empty($accountAccess['is_inactive'])) {
+    unset($_SESSION['pw_reset']);
+    respond(403, [
+      'success' => false,
+      'message' => monitoring_get_inactive_account_message(),
+      'inactive_account' => true,
+    ]);
   }
 
   $hash = hash('sha256', (string)$newPassword);

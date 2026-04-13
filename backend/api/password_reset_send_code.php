@@ -4,6 +4,7 @@ monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/account_status_helpers.php';
 
 // PHPMailer (bundled in project)
 require_once __DIR__ . '/../../PHPMailer-master/src/Exception.php';
@@ -33,6 +34,7 @@ $codeExpiresInMinutes = (int)max(1, ceil($codeExpiresInSeconds / 60));
 
 // Check user exists
 try {
+  monitoring_ensure_user_employment_status_column($conn);
   $stmt = $conn->prepare('SELECT User_id, Email FROM user WHERE Email = :e LIMIT 1');
   $stmt->execute([':e' => $email]);
   $u = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -42,6 +44,15 @@ try {
       'success' => true,
       'message' => 'If the email is registered, a code has been sent.',
       'code_expires_in_minutes' => $codeExpiresInMinutes,
+    ]);
+  }
+
+  $accountAccess = monitoring_fetch_account_access_status_by_email($conn, $email);
+  if (!empty($accountAccess['is_inactive'])) {
+    respond(403, [
+      'success' => false,
+      'message' => monitoring_get_inactive_account_message(),
+      'inactive_account' => true,
     ]);
   }
 } catch (Throwable $e) {

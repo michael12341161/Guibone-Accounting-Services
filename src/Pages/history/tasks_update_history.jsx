@@ -194,7 +194,7 @@ const getTaskCompletedOnLabel = (task) => {
 const cleanDescription = (desc) => {
   let value = String(desc || "");
 
-  value = value.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|Archived|SecretaryArchived|CreatedAt)\]\s*.*$/gim, "");
+  value = value.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|StepPending|Archived|SecretaryArchived|CreatedAt)\]\s*.*$/gim, "");
   value = value.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   value = value.replace(/\s*\[Done\]\s*/gi, " ");
   value = value.replace(/^\s*Step\s*\d+(?:\s*\((?:Owner|Accountant|Secretary)\))?\s*[:-]\s*.*$/gim, "");

@@ -9,7 +9,7 @@ import {
 import { fetchConsultationSlots } from "../../services/consultationSlots";
 import { getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
-import { useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import {
   DEFAULT_CONSULTATION_TIME_SLOTS,
   getConfiguredConsultationTimesForDate,
@@ -43,6 +43,16 @@ const WORD_EXT = new Set(["doc", "docx"]);
 const EXCEL_EXT = new Set(["xls", "xlsx", "csv"]);
 const PDF_EXT = new Set(["pdf"]);
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
+const CONSULTATION_SERVICE_LABEL = "Consultation";
+const PROCESSING_DOCUMENT_OPTIONS = [
+  { value: "business_permit", label: "Business Permit" },
+  { value: "dti", label: "DTI" },
+  { value: "sec", label: "SEC" },
+  { value: "lgu", label: "LGU" },
+];
+const PROCESSING_DOCUMENT_KEYS = new Set(
+  PROCESSING_DOCUMENT_OPTIONS.map((option) => option.value)
+);
 
 function readMetaLine(text, key) {
   const source = String(text || "");
@@ -63,13 +73,9 @@ function isProcessingService(value) {
   return String(value || "").trim().toLowerCase() === "processing";
 }
 
-function filterServicesForPortal(names, portalConfig) {
-  const allowAppointments = portalConfig?.allowClientAppointments !== false;
-  const allowConsultations = portalConfig?.allowClientConsultations !== false;
-
-  return (Array.isArray(names) ? names : []).filter((name) =>
-    isConsultationService(name) ? allowConsultations : allowAppointments
-  );
+function isConsultationTopicService(value) {
+  const normalized = String(value || "").trim();
+  return normalized !== "" && !isConsultationService(normalized) && !isProcessingService(normalized);
 }
 
 function getServiceRestrictionMessage(access = DEFAULT_SERVICE_ACCESS) {
@@ -80,6 +86,19 @@ function getServiceRestrictionMessage(access = DEFAULT_SERVICE_ACCESS) {
     return "Processing is the only available service until your business is registered.";
   }
   return "";
+}
+
+function normalizeProcessingDocumentSelection(values) {
+  if (!Array.isArray(values)) return [];
+  const selected = new Set(
+    values
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter((value) => PROCESSING_DOCUMENT_KEYS.has(value))
+  );
+
+  return PROCESSING_DOCUMENT_OPTIONS.map((option) => option.value).filter((value) =>
+    selected.has(value)
+  );
 }
 
 function normalizeAppointmentStatus(value) {
@@ -398,6 +417,8 @@ export default function ClientAppointment() {
 
   const [form, setForm] = useState({
     service: "",
+    consultation_service: "",
+    processing_documents: [],
     meeting_type: "Online",
     date: "",
     time: "",
@@ -407,6 +428,10 @@ export default function ClientAppointment() {
   const isConsultationSelected = useMemo(
     () => isConsultationService(form.service),
     [form.service]
+  );
+  const isProcessingSelected = useMemo(
+    () => !isConsultationSelected && isProcessingService(form.service),
+    [form.service, isConsultationSelected]
   );
   const appointmentsEnabled = portalConfig.allowClientAppointments !== false;
   const consultationsEnabled = portalConfig.allowClientConsultations !== false;
@@ -418,8 +443,11 @@ export default function ClientAppointment() {
       : `Appointment and consultation requests are currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`;
   const serviceRestrictionMessage = getServiceRestrictionMessage(serviceAccess);
   const selectedServiceDuration = useMemo(
-    () => getEstimatedServiceDuration(form.service),
-    [form.service]
+    () =>
+      isConsultationSelected
+        ? ""
+        : getEstimatedServiceDuration(form.service),
+    [form.service, isConsultationSelected]
   );
 
   useEffect(() => {
@@ -482,33 +510,91 @@ export default function ClientAppointment() {
       : normalizedAccess.restrictedToProcessing
         ? ["Processing"]
         : [];
-    const portalFilteredServices = filterServicesForPortal(resolvedServices, portalConfig);
+    const consultationServices = resolvedServices.filter((name) =>
+      isConsultationTopicService(name)
+    );
+    const nextAvailableServiceOptions = [];
+
+    if (portalConfig?.allowClientAppointments !== false) {
+      nextAvailableServiceOptions.push(...resolvedServices);
+    }
+    if (
+      portalConfig?.allowClientConsultations !== false &&
+      !normalizedAccess.restrictedToProcessing &&
+      !normalizedAccess.businessPermitExpired &&
+      consultationServices.length > 0
+    ) {
+      nextAvailableServiceOptions.push(CONSULTATION_SERVICE_LABEL);
+    }
 
     setServiceAccess(normalizedAccess);
-    setServices(portalFilteredServices);
+    setServices(resolvedServices);
     setForm((current) => ({
       ...current,
-      service: portalFilteredServices.includes(current.service)
+      service: nextAvailableServiceOptions.includes(current.service)
         ? current.service
-        : portalFilteredServices[0] || "",
+        : nextAvailableServiceOptions[0] || "",
+      consultation_service: consultationServices.includes(current.consultation_service)
+        ? current.consultation_service
+        : consultationServices[0] || "",
+      processing_documents: isProcessingService(
+        nextAvailableServiceOptions.includes(current.service)
+          ? current.service
+          : nextAvailableServiceOptions[0] || ""
+      )
+        ? normalizeProcessingDocumentSelection(current.processing_documents)
+        : [],
     }));
   };
 
-  useEffect(() => {
-    setServices((current) =>
-      filterServicesForPortal(current, {
-        allowClientAppointments: appointmentsEnabled,
-        allowClientConsultations: consultationsEnabled,
-      })
-    );
-  }, [appointmentsEnabled, consultationsEnabled]);
+  const consultationServiceOptions = useMemo(
+    () => services.filter((serviceName) => isConsultationTopicService(serviceName)),
+    [services]
+  );
+
+  const availableServiceOptions = useMemo(() => {
+    const options = [];
+
+    if (appointmentsEnabled) {
+      options.push(...services);
+    }
+    if (
+      consultationsEnabled &&
+      !serviceAccess.restrictedToProcessing &&
+      !serviceAccess.businessPermitExpired &&
+      consultationServiceOptions.length > 0
+    ) {
+      options.push(CONSULTATION_SERVICE_LABEL);
+    }
+
+    return Array.from(new Set(options));
+  }, [
+    appointmentsEnabled,
+    consultationServiceOptions.length,
+    consultationsEnabled,
+    serviceAccess.businessPermitExpired,
+    serviceAccess.restrictedToProcessing,
+    services,
+  ]);
 
   useEffect(() => {
     setForm((current) => ({
       ...current,
-      service: services.includes(current.service) ? current.service : services[0] || "",
+      service: availableServiceOptions.includes(current.service)
+        ? current.service
+        : availableServiceOptions[0] || "",
+      consultation_service: consultationServiceOptions.includes(current.consultation_service)
+        ? current.consultation_service
+        : consultationServiceOptions[0] || "",
+      processing_documents: isProcessingService(
+        availableServiceOptions.includes(current.service)
+          ? current.service
+          : availableServiceOptions[0] || ""
+      )
+        ? normalizeProcessingDocumentSelection(current.processing_documents)
+        : [],
     }));
-  }, [services]);
+  }, [availableServiceOptions, consultationServiceOptions]);
 
   const loadServices = async ({ silent } = { silent: false }) => {
     try {
@@ -610,7 +696,35 @@ export default function ClientAppointment() {
 
   const onChange = (e) => {
     const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+      processing_documents:
+        name === "service" && !isProcessingService(value)
+          ? []
+          : current.processing_documents,
+    }));
+  };
+
+  const onToggleProcessingDocument = (value) => {
+    setForm((current) => {
+      const nextSelection = new Set(
+        normalizeProcessingDocumentSelection(current.processing_documents)
+      );
+
+      if (nextSelection.has(value)) {
+        nextSelection.delete(value);
+      } else if (PROCESSING_DOCUMENT_KEYS.has(value)) {
+        nextSelection.add(value);
+      }
+
+      return {
+        ...current,
+        processing_documents: normalizeProcessingDocumentSelection(
+          Array.from(nextSelection)
+        ),
+      };
+    });
   };
 
   const onFormFileChange = (e) => {
@@ -647,9 +761,14 @@ export default function ClientAppointment() {
       const normalized = rows
         .map((row) => {
           const description = String(row?.Description ?? row?.description ?? "");
-          const typeName = readMetaLine(description, "Type");
           const serviceName =
-            row?.Name ?? row?.service ?? row?.service_name ?? typeName ?? "";
+            row?.Consultation_Service ??
+            row?.consultation_service ??
+            row?.Name ??
+            row?.service ??
+            row?.service_name ??
+            readMetaLine(description, "Service") ??
+            "";
           const date = row?.Date ?? row?.date ?? "";
           const time = row?.Time ?? row?.time ?? readMetaLine(description, "Time");
           const status =
@@ -657,17 +776,19 @@ export default function ClientAppointment() {
 
           return {
             schedulingId:
-              row?.Scheduling_ID ?? row?.scheduling_id ?? row?.SchedulingId ?? row?.id,
+              row?.Consultation_ID ??
+              row?.consultation_id ??
+              row?.Scheduling_ID ??
+              row?.scheduling_id ??
+              row?.SchedulingId ??
+              row?.id,
             service: String(serviceName || ""),
             date: date ? String(date).slice(0, 10) : "",
             time: time ? String(time).slice(0, 5) : "",
             status: String(status || ""),
           };
         })
-        .filter(
-          (row) =>
-            isConsultationService(row.service) && row.date !== "" && row.time !== ""
-        );
+        .filter((row) => row.date !== "" && row.time !== "");
 
       setConsultationAvailability(normalized);
       setConsultationSlots(slotResponse?.data?.slots || []);
@@ -684,6 +805,13 @@ export default function ClientAppointment() {
     setSuccess("");
     if (!appointmentsEnabled && !consultationsEnabled) {
       setError(bookingPausedMessage || "Appointment and consultation requests are currently unavailable.");
+      return;
+    }
+    if (availableServiceOptions.length === 0 && !loadingServices) {
+      setError(
+        serviceRestrictionMessage ||
+          "No services are available for your account right now."
+      );
       return;
     }
     if (
@@ -969,6 +1097,9 @@ export default function ClientAppointment() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    const selectedBookingService = isConsultationSelected
+      ? form.consultation_service
+      : form.service;
 
     if (isConsultationSelected && !consultationsEnabled) {
       setError(
@@ -990,24 +1121,29 @@ export default function ClientAppointment() {
     }
 
     if (
-      serviceAccess.businessPermitExpired &&
-      !isProcessingService(form.service)
+      (serviceAccess.businessPermitExpired || serviceAccess.restrictedToProcessing) &&
+      (isConsultationSelected || !isProcessingService(selectedBookingService))
     ) {
       setError(serviceRestrictionMessage);
       return;
     }
 
-    if (services.length === 0) {
+    if (availableServiceOptions.length === 0) {
       setError("No services are available right now. Please try again.");
       return;
     }
 
-    if (!form.service || !form.date || !form.time) {
+    if (!selectedBookingService || !form.date || !form.time) {
       setError(
         isConsultationSelected
-          ? "Please select a service, date, and consultation time slot."
+          ? "Please select the service to consult, date, and consultation time slot."
           : "Please select a service and choose date/time."
       );
+      return;
+    }
+
+    if (isProcessingSelected && form.processing_documents.length === 0) {
+      setError("Please select at least one document to process.");
       return;
     }
 
@@ -1035,6 +1171,10 @@ export default function ClientAppointment() {
         client_id: user?.client_id || user?.Client_ID || null,
         client_username: user?.username || null,
         service: form.service,
+        consultation_service: isConsultationSelected ? form.consultation_service : null,
+        processing_documents: isProcessingSelected
+          ? normalizeProcessingDocumentSelection(form.processing_documents)
+          : [],
         appointment_type: isConsultationSelected ? "Consultation" : "Service",
         meeting_type: form.meeting_type, // Online | Onsite
         date: form.date,
@@ -1109,11 +1249,21 @@ export default function ClientAppointment() {
           }
         }
 
-        setSuccess(successMessage);
+        showSuccessToast(successMessage);
         if (uploadWarning) {
-          setError(uploadWarning);
+          showErrorToast({
+            title: "Attachment upload issue",
+            description: uploadWarning,
+            duration: 3600,
+          });
         }
-        setForm((f) => ({ ...f, date: "", time: "", notes: "" }));
+        setForm((f) => ({
+          ...f,
+          date: "",
+          time: "",
+          notes: "",
+          processing_documents: [],
+        }));
         setSelectedFiles([]);
         if (isConsultationSelected) {
           await loadConsultationAvailability({ silent: true });
@@ -1126,21 +1276,25 @@ export default function ClientAppointment() {
         }
         setIsCreateOpen(false);
       } else {
-        setError(
-          res?.data?.message ||
+        showErrorToast({
+          title: isConsultationSelected ? "Consultation request failed" : "Appointment request failed",
+          description:
+            res?.data?.message ||
             (isConsultationSelected
               ? "Failed to submit consultation request."
-              : "Failed to submit appointment request.")
-        );
+              : "Failed to submit appointment request."),
+        });
       }
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
+      showErrorToast({
+        title: isConsultationSelected ? "Consultation request failed" : "Appointment request failed",
+        description:
+          err?.response?.data?.message ||
           err?.message ||
           (isConsultationSelected
             ? "Consultation request endpoint is not available yet (scheduling_create.php)."
-            : "Appointment request endpoint is not available yet (appointment_create.php).")
-      );
+            : "Appointment request endpoint is not available yet (appointment_create.php)."),
+      });
     } finally {
       setSubmitting(false);
     }
@@ -1317,18 +1471,18 @@ export default function ClientAppointment() {
                 name="service"
                 value={form.service}
                 onChange={onChange}
-                disabled={loadingServices || services.length === 0}
+                disabled={loadingServices || availableServiceOptions.length === 0}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                 required
               >
-                {services.length === 0 ? (
+                {availableServiceOptions.length === 0 ? (
                   <option value="">
                     {loadingServices
                       ? "Loading available services..."
                       : "No services available"}
                   </option>
                 ) : null}
-                {services.map((serviceName) => (
+                {availableServiceOptions.map((serviceName) => (
                   <option key={serviceName} value={serviceName}>
                     {serviceName}
                   </option>
@@ -1354,11 +1508,78 @@ export default function ClientAppointment() {
                   ? "Please wait while the available services are being loaded."
                   : serviceAccess.restrictedToProcessing
                   ? serviceRestrictionMessage
-                  : services.length === 0
+                  : availableServiceOptions.length === 0
                     ? "No services are available right now. Please try again in a moment."
                     : "Choose the service you want to book."}
               </p>
             </div>
+
+            {isConsultationSelected ? (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Service To Consult
+                </label>
+                <select
+                  name="consultation_service"
+                  value={form.consultation_service}
+                  onChange={onChange}
+                  disabled={loadingServices || consultationServiceOptions.length === 0}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                >
+                  {consultationServiceOptions.length === 0 ? (
+                    <option value="">
+                      {loadingServices
+                        ? "Loading available services..."
+                        : "No consultation services available"}
+                    </option>
+                  ) : null}
+                  {consultationServiceOptions.map((serviceName) => (
+                    <option key={serviceName} value={serviceName}>
+                      {serviceName}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Choose which service you want to discuss during the consultation.
+                </p>
+              </div>
+            ) : null}
+
+            {isProcessingSelected ? (
+              <div className="md:col-span-3">
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Documents To Process
+                </label>
+                <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+                  {PROCESSING_DOCUMENT_OPTIONS.map((option) => {
+                    const checked = form.processing_documents.includes(option.value);
+
+                    return (
+                      <label
+                        key={option.value}
+                        className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition ${
+                          checked
+                            ? "border-indigo-300 bg-indigo-50 text-indigo-900"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggleProcessingDocument(option.value)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="font-medium">{option.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Select all documents you want us to process for this appointment.
+                </p>
+              </div>
+            ) : null}
 
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-700">
@@ -1489,7 +1710,7 @@ export default function ClientAppointment() {
             </button>
             <button
               type="submit"
-              disabled={submitting || loadingServices || services.length === 0}
+              disabled={submitting || loadingServices || availableServiceOptions.length === 0}
               className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
             >
               {submitting

@@ -15,6 +15,7 @@ const MONITORING_JWT_LEEWAY_SECONDS = 5;
 
 require_once __DIR__ . '/auth_jwt.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/account_status_helpers.php';
 function monitoring_is_https(): bool
 {
     $https = strtolower((string)($_SERVER['HTTPS'] ?? ''));
@@ -252,10 +253,51 @@ function monitoring_read_session_user(bool $enforceTimeout = true): ?array
 {
     $jwtUser = monitoring_read_session_user_from_jwt();
     if ($jwtUser !== null) {
-        return $jwtUser;
+        return monitoring_validate_session_user_access($jwtUser);
     }
 
-    return monitoring_read_session_user_from_session($enforceTimeout, true);
+    return monitoring_validate_session_user_access(monitoring_read_session_user_from_session($enforceTimeout, true));
+}
+
+function monitoring_validate_session_user_access(?array $user): ?array
+{
+    if (!is_array($user)) {
+        return null;
+    }
+
+    $userId = isset($user['id']) ? (int)$user['id'] : 0;
+    if ($userId <= 0) {
+        return $user;
+    }
+
+    if (monitoring_read_impersonation_state() !== null) {
+        return $user;
+    }
+
+    try {
+        $conn = monitoring_user_status_connection();
+        if (!$conn) {
+            return $user;
+        }
+
+        $access = monitoring_fetch_account_access_status_by_user_id($conn, $userId);
+        if (!$access) {
+            return $user;
+        }
+
+        if (!empty($access['blocked_message'])) {
+            monitoring_destroy_session();
+            return null;
+        }
+
+        if (!empty($access['approval_status'])) {
+            $user['approval_status'] = $access['approval_status'];
+        }
+    } catch (Throwable $__) {
+        return $user;
+    }
+
+    return $user;
 }
 
 function monitoring_require_auth(): array

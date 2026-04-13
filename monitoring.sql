@@ -342,10 +342,10 @@ INSERT INTO `client_services` (`Client_services_ID`, `Client_ID`, `Services_type
 --
 
 CREATE TABLE `consultation` (
-  `Scheduling_ID` int(11) NOT NULL,
+  `Consultation_ID` int(11) NOT NULL,
   `Description` text DEFAULT NULL,
   `Status_ID` int(11) DEFAULT NULL,
-  `Client_services_ID` int(11) DEFAULT NULL,
+  `Services_type_Id` int(11) DEFAULT NULL,
   `Client_ID` int(11) NOT NULL,
   `action_by` int(11) DEFAULT NULL,
   `Date` date DEFAULT NULL
@@ -520,7 +520,6 @@ INSERT INTO `services_type` (`Services_type_Id`, `Name`) VALUES
 (1, 'Tax Filing'),
 (2, 'Auditing'),
 (3, 'Book Keeping'),
-(4, 'Consultation'),
 (5, 'Processing');
 
 -- --------------------------------------------------------
@@ -636,6 +635,7 @@ CREATE TABLE `user` (
   `Failed_login_attempts` int(11) NOT NULL DEFAULT 0,
   `Locked_until` datetime DEFAULT NULL,
   `Role_id` int(11) DEFAULT NULL,
+  `Employment_status_id` int(11) DEFAULT NULL,
   `Email` varchar(150) DEFAULT NULL,
   `first_name` varchar(100) DEFAULT NULL,
   `middle_name` varchar(100) DEFAULT NULL,
@@ -655,22 +655,22 @@ CREATE TABLE `user` (
 -- Dumping data for table `user`
 --
 
-INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `Failed_login_attempts`, `Locked_until`, `Role_id`, `Email`, `first_name`, `middle_name`, `last_name`, `Profile_Image`, `date_of_birth`, `phone_number`, `specialization_type_ID`, `sss_account_number`, `pagibig_account_number`, `philhealth_account_number`, `Created_at`, `updated_at`) VALUES
-(1, 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '2026-02-14 01:18:12', 0, NULL, 1, 'admin@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-02-14 01:18:12', '2026-03-25 10:45:57'),
-(21, 'dong', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:23:17', 0, NULL, 2, 'dong@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2026-03-20', '4234324', 4, '313213', '21212', NULL, '2026-03-20 13:23:17', '2026-04-02 12:15:36'),
-(22, 'roberth', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 21:23:52', 0, NULL, 3, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2026-03-20', '4234324', 3, '313213', '21212', NULL, '2026-03-20 13:23:52', '2026-03-26 07:54:29'),
-(23, 'nacaya.michael123@gmail.com', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:25:13', 0, NULL, 4, 'nacaya.michael123@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 13:25:13', '2026-03-20 13:25:13'),
-(24, 'michaelnacaya86@gmail.com', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 22:22:53', 0, NULL, 4, 'michaelnacaya86@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 14:22:53', '2026-03-26 05:34:29'),
-(25, 'elaine.santos@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:10:00', 0, NULL, 4, 'elaine.santos@example.com', 'Elaine', 'M.', 'Santos', NULL, '1994-05-12', '09170000001', NULL, NULL, NULL, NULL, '2026-03-21 08:10:00', '2026-03-21 08:10:00'),
-(26, 'jose.castro@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:25:00', 0, NULL, 4, 'jose.castro@example.com', 'Jose', 'P.', 'Castro', NULL, '1990-09-21', '09170000002', NULL, NULL, NULL, NULL, '2026-03-21 08:25:00', '2026-03-21 08:25:00'),
-(27, 'maria.reyes@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:40:00', 0, NULL, 4, 'maria.reyes@example.com', 'Maria', 'L.', 'Reyes', NULL, '1996-02-14', '09170000003', NULL, NULL, NULL, NULL, '2026-03-21 08:40:00', '2026-03-21 08:40:00'),
-(28, 'paolo.delacruz@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:55:00', 0, NULL, 4, 'paolo.delacruz@example.com', 'Paolo', 'D.', 'Dela Cruz', NULL, '1989-11-30', '09170000004', NULL, NULL, NULL, NULL, '2026-03-21 08:55:00', '2026-03-21 08:55:00'),
-(29, 'andrea.flores@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:10:00', 0, NULL, 4, 'andrea.flores@example.com', 'Andrea', 'S.', 'Flores', NULL, '1993-07-08', '09170000005', NULL, NULL, NULL, NULL, '2026-03-22 09:10:00', '2026-03-22 09:10:00'),
-(30, 'miguel.ramos@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:25:00', 0, NULL, 4, 'miguel.ramos@example.com', 'Miguel', 'A.', 'Ramos', NULL, '1988-03-17', '09170000006', NULL, NULL, NULL, NULL, '2026-03-22 09:25:00', '2026-03-22 09:25:00'),
-(31, 'sofia.mendoza@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:40:00', 0, NULL, 4, 'sofia.mendoza@example.com', 'Sofia', 'C.', 'Mendoza', NULL, '1995-12-03', '09170000007', NULL, NULL, NULL, NULL, '2026-03-22 09:40:00', '2026-03-22 09:40:00'),
-(32, 'daniel.garcia@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 09:55:00', 0, NULL, 4, 'daniel.garcia@example.com', 'Daniel', 'T.', 'Garcia', NULL, '1991-06-26', '09170000008', NULL, NULL, NULL, NULL, '2026-03-23 09:55:00', '2026-03-23 09:55:00'),
-(33, 'camille.torres@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 10:10:00', 0, NULL, 4, 'camille.torres@example.com', 'Camille', 'R.', 'Torres', NULL, '1997-01-19', '09170000009', NULL, NULL, NULL, NULL, '2026-03-23 10:10:00', '2026-03-23 10:10:00'),
-(34, 'adrian.navarro@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 10:25:00', 0, NULL, 4, 'adrian.navarro@example.com', 'Adrian', 'V.', 'Navarro', NULL, '1987-10-11', '09170000010', NULL, NULL, NULL, NULL, '2026-03-23 10:25:00', '2026-03-23 10:25:00');
+INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `Failed_login_attempts`, `Locked_until`, `Role_id`, `Employment_status_id`, `Email`, `first_name`, `middle_name`, `last_name`, `Profile_Image`, `date_of_birth`, `phone_number`, `specialization_type_ID`, `sss_account_number`, `pagibig_account_number`, `philhealth_account_number`, `Created_at`, `updated_at`) VALUES
+(1, 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '2026-02-14 01:18:12', 0, NULL, 1, 3, 'admin@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-02-14 01:18:12', '2026-03-25 10:45:57'),
+(21, 'dong', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:23:17', 0, NULL, 2, 3, 'dong@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2026-03-20', '4234324', 4, '313213', '21212', NULL, '2026-03-20 13:23:17', '2026-04-02 12:15:36'),
+(22, 'roberth', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 21:23:52', 0, NULL, 3, 3, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2026-03-20', '4234324', 3, '313213', '21212', NULL, '2026-03-20 13:23:52', '2026-03-26 07:54:29'),
+(23, 'nacaya.michael123@gmail.com', 'd8c9cf11fad21a9b4ad008bec3d28f23af9eac11ad6fc772a72e9da2b0fbb311', '2026-03-20 21:25:13', 0, NULL, 4, NULL, 'nacaya.michael123@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 13:25:13', '2026-03-20 13:25:13'),
+(24, 'michaelnacaya86@gmail.com', '288691455f75bbd92deae0ab9c4453906b8d13eef7e66764ac9accbabed4f2bf', '2026-03-20 22:22:53', 0, NULL, 4, NULL, 'michaelnacaya86@gmail.com', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-20 14:22:53', '2026-03-26 05:34:29'),
+(25, 'elaine.santos@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:10:00', 0, NULL, 4, NULL, 'elaine.santos@example.com', 'Elaine', 'M.', 'Santos', NULL, '1994-05-12', '09170000001', NULL, NULL, NULL, NULL, '2026-03-21 08:10:00', '2026-03-21 08:10:00'),
+(26, 'jose.castro@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:25:00', 0, NULL, 4, NULL, 'jose.castro@example.com', 'Jose', 'P.', 'Castro', NULL, '1990-09-21', '09170000002', NULL, NULL, NULL, NULL, '2026-03-21 08:25:00', '2026-03-21 08:25:00'),
+(27, 'maria.reyes@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:40:00', 0, NULL, 4, NULL, 'maria.reyes@example.com', 'Maria', 'L.', 'Reyes', NULL, '1996-02-14', '09170000003', NULL, NULL, NULL, NULL, '2026-03-21 08:40:00', '2026-03-21 08:40:00'),
+(28, 'paolo.delacruz@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-21 08:55:00', 0, NULL, 4, NULL, 'paolo.delacruz@example.com', 'Paolo', 'D.', 'Dela Cruz', NULL, '1989-11-30', '09170000004', NULL, NULL, NULL, NULL, '2026-03-21 08:55:00', '2026-03-21 08:55:00'),
+(29, 'andrea.flores@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:10:00', 0, NULL, 4, NULL, 'andrea.flores@example.com', 'Andrea', 'S.', 'Flores', NULL, '1993-07-08', '09170000005', NULL, NULL, NULL, NULL, '2026-03-22 09:10:00', '2026-03-22 09:10:00'),
+(30, 'miguel.ramos@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:25:00', 0, NULL, 4, NULL, 'miguel.ramos@example.com', 'Miguel', 'A.', 'Ramos', NULL, '1988-03-17', '09170000006', NULL, NULL, NULL, NULL, '2026-03-22 09:25:00', '2026-03-22 09:25:00'),
+(31, 'sofia.mendoza@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-22 09:40:00', 0, NULL, 4, NULL, 'sofia.mendoza@example.com', 'Sofia', 'C.', 'Mendoza', NULL, '1995-12-03', '09170000007', NULL, NULL, NULL, NULL, '2026-03-22 09:40:00', '2026-03-22 09:40:00'),
+(32, 'daniel.garcia@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 09:55:00', 0, NULL, 4, NULL, 'daniel.garcia@example.com', 'Daniel', 'T.', 'Garcia', NULL, '1991-06-26', '09170000008', NULL, NULL, NULL, NULL, '2026-03-23 09:55:00', '2026-03-23 09:55:00'),
+(33, 'camille.torres@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 10:10:00', 0, NULL, 4, NULL, 'camille.torres@example.com', 'Camille', 'R.', 'Torres', NULL, '1997-01-19', '09170000009', NULL, NULL, NULL, NULL, '2026-03-23 10:10:00', '2026-03-23 10:10:00'),
+(34, 'adrian.navarro@example.com', 'ba6b9cf408a3bc5568cc18317077a3d5fc81849c1b84128180240ab9680d0dd7', '2026-03-23 10:25:00', 0, NULL, 4, NULL, 'adrian.navarro@example.com', 'Adrian', 'V.', 'Navarro', NULL, '1987-10-11', '09170000010', NULL, NULL, NULL, NULL, '2026-03-23 10:25:00', '2026-03-23 10:25:00');
 
 --
 -- Indexes for dumped tables
@@ -757,9 +757,9 @@ ALTER TABLE `client_services`
 -- Indexes for table `consultation`
 --
 ALTER TABLE `consultation`
-  ADD PRIMARY KEY (`Scheduling_ID`),
+  ADD PRIMARY KEY (`Consultation_ID`),
   ADD KEY `Status_ID` (`Status_ID`),
-  ADD KEY `Client_services_ID` (`Client_services_ID`),
+  ADD KEY `Services_type_Id` (`Services_type_Id`),
   ADD KEY `Client_ID` (`Client_ID`),
   ADD KEY `action_by` (`action_by`);
 
@@ -908,7 +908,7 @@ ALTER TABLE `client_services`
 -- AUTO_INCREMENT for table `consultation`
 --
 ALTER TABLE `consultation`
-  MODIFY `Scheduling_ID` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `Consultation_ID` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `documents`
@@ -1038,7 +1038,7 @@ ALTER TABLE `client_services`
 --
 ALTER TABLE `consultation`
   ADD CONSTRAINT `consultation_ibfk_1` FOREIGN KEY (`Status_ID`) REFERENCES `status` (`Status_id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `consultation_ibfk_2` FOREIGN KEY (`Client_services_ID`) REFERENCES `client_services` (`Client_services_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `consultation_ibfk_2` FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `consultation_ibfk_3` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `consultation_ibfk_4` FOREIGN KEY (`action_by`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 

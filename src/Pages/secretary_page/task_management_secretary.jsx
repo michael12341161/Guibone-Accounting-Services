@@ -17,6 +17,7 @@ import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
 import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { filterTaskServiceOptions } from "../../utils/task_service_options";
 import {
   DEFAULT_TASK_WORKLOAD_SETTINGS,
   MAX_TASK_WORKLOAD_LIMIT,
@@ -31,6 +32,7 @@ const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s
 const ADMIN_ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
 const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
+const STEP_PENDING_RE = /^\s*\[StepPending\]\s*([^\r\n]*)\s*$/i;
 const PROGRESS_RE = /^\s*\[Progress\]\s*(\d{1,3})\s*$/i;
 
 const normalizeTaskIds = (ids) =>
@@ -161,12 +163,12 @@ const replaceTaskSteps = (descriptionRaw, steps) => {
   return nextLines.join("\n").trim();
 };
 
-const parseCompletedStepNumbers = (descriptionRaw) => {
+const parseTaggedStepNumbers = (descriptionRaw, matcher) => {
   const lines = String(descriptionRaw || "").split(/\r?\n/);
   const set = new Set();
 
   for (const line of lines) {
-    const match = String(line || "").match(STEP_DONE_RE);
+    const match = String(line || "").match(matcher);
     if (!match) continue;
     const values = String(match[1] || "")
       .split(/[,\s]+/)
@@ -178,8 +180,11 @@ const parseCompletedStepNumbers = (descriptionRaw) => {
   return set;
 };
 
-const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
-  const numbers = Array.from(completedSet || [])
+const parseCompletedStepNumbers = (descriptionRaw) => parseTaggedStepNumbers(descriptionRaw, STEP_DONE_RE);
+const parsePendingStepNumbers = (descriptionRaw) => parseTaggedStepNumbers(descriptionRaw, STEP_PENDING_RE);
+
+const setTaggedStepNumbers = (descriptionRaw, matcher, tag, stepSet) => {
+  const numbers = Array.from(stepSet || [])
     .map((n) => parseInt(n, 10))
     .filter((n) => Number.isInteger(n) && n > 0)
     .sort((a, b) => a - b);
@@ -189,9 +194,9 @@ const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
   let written = false;
 
   for (const line of lines) {
-    if (STEP_DONE_RE.test(String(line || ""))) {
+    if (matcher.test(String(line || ""))) {
       if (!written && numbers.length > 0) {
-        nextLines.push(`[StepDone] ${numbers.join(",")}`);
+        nextLines.push(`[${tag}] ${numbers.join(",")}`);
         written = true;
       }
       continue;
@@ -203,11 +208,17 @@ const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
     while (nextLines.length && !String(nextLines[nextLines.length - 1] || "").trim()) {
       nextLines.pop();
     }
-    nextLines.push(`[StepDone] ${numbers.join(",")}`);
+    nextLines.push(`[${tag}] ${numbers.join(",")}`);
   }
 
   return nextLines.join("\n").trim();
 };
+
+const setCompletedStepNumbers = (descriptionRaw, completedSet) =>
+  setTaggedStepNumbers(descriptionRaw, STEP_DONE_RE, "StepDone", completedSet);
+
+const setPendingStepNumbers = (descriptionRaw, pendingSet) =>
+  setTaggedStepNumbers(descriptionRaw, STEP_PENDING_RE, "StepPending", pendingSet);
 
 const setProgress = (descriptionRaw, progressRaw) => {
   const progress = Math.max(0, Math.min(100, parseInt(progressRaw, 10) || 0));
@@ -377,6 +388,7 @@ const cleanDescription = (desc) => {
       if (/^\[Declined reason\]\s*/i.test(l)) return false;
       if (/^\[(?:SecretaryArchived|Archived)\]\s*/i.test(l)) return false;
       if (/^\[StepDone\]\s*/i.test(l)) return false;
+      if (/^\[StepPending\]\s*/i.test(l)) return false;
       if (/^\[(?:StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*/i.test(l)) return false;
       if (/^Step\s+\d+(?:\s*\((?:Owner|Accountant|Secretary)\))?\s*:/i.test(l)) return false;
       return true;
@@ -1099,9 +1111,7 @@ export default function SecretaryTaskManagement() {
         const response = await fetchAvailableServices(form.client_id);
         if (!active) return;
 
-        const nextServices = Array.isArray(response?.data?.services)
-          ? response.data.services
-          : [];
+        const nextServices = filterTaskServiceOptions(response?.data?.services);
 
         setServices(nextServices);
         setForm((current) => {
@@ -2579,19 +2589,22 @@ export default function SecretaryTaskManagement() {
 
               const baseDescription = String(t.description || "");
               const doneSet = parseCompletedStepNumbers(baseDescription);
+              const pendingSet = parsePendingStepNumbers(baseDescription);
               const filteredSteps = steps.filter((_, idx) => idx !== stepIndex);
 
               const nextDone = new Set();
+              const nextPending = new Set();
               steps.forEach((_, oldIdx) => {
                 if (oldIdx === stepIndex) return;
                 const oldNumber = oldIdx + 1;
-                if (!doneSet.has(oldNumber)) return;
                 const newNumber = oldIdx < stepIndex ? oldNumber : oldNumber - 1;
-                nextDone.add(newNumber);
+                if (doneSet.has(oldNumber)) nextDone.add(newNumber);
+                if (pendingSet.has(oldNumber)) nextPending.add(newNumber);
               });
 
               let nextDescription = replaceTaskSteps(baseDescription, filteredSteps);
               nextDescription = setCompletedStepNumbers(nextDescription, nextDone);
+              nextDescription = setPendingStepNumbers(nextDescription, nextPending);
               nextDescription = remapIndexedStepMeta(nextDescription, (oldNumber) => {
                 if (oldNumber === stepIndex + 1) return null;
                 return oldNumber < stepIndex + 1 ? oldNumber : oldNumber - 1;
@@ -2879,8 +2892,11 @@ export default function SecretaryTaskManagement() {
 
                               let updatedDesc = replaceTaskSteps(currentDesc, nextSteps);
                               const doneSet = parseCompletedStepNumbers(currentDesc);
+                              const pendingSet = parsePendingStepNumbers(currentDesc);
                               const nextDone = new Set([...doneSet].filter((n) => n > 0 && n <= nextSteps.length));
+                              const nextPending = new Set([...pendingSet].filter((n) => n > 0 && n <= nextSteps.length));
                               updatedDesc = setCompletedStepNumbers(updatedDesc, nextDone);
+                              updatedDesc = setPendingStepNumbers(updatedDesc, nextPending);
                               const nextProgress = nextSteps.length ? Math.round((nextDone.size / nextSteps.length) * 100) : 0;
                               updatedDesc = setProgress(updatedDesc, nextProgress);
 

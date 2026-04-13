@@ -28,7 +28,7 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showConfirmDialog, showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 
 const PAGE_SIZE = 10;
@@ -632,6 +632,7 @@ export default function ClientManagement() {
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [switchingClientAccountId, setSwitchingClientAccountId] = useState(null);
+  const [statusActionClientId, setStatusActionClientId] = useState(null);
   const locationRequestIdRef = useRef(0);
 
   const canViewClientManagement = hasFeatureActionAccess(user, "client-management", "view", permissions);
@@ -1310,6 +1311,29 @@ export default function ClientManagement() {
 
     const currentId = Number(client.status_id);
     const nextId = currentId === 1 ? 2 : 1;
+    const nextStatusLabel = nextId === 1 ? "Active" : "Inactive";
+
+    if (nextStatusLabel === "Inactive") {
+      const confirmation = await showDangerConfirmDialog({
+        title: "Set client account to inactive?",
+        text: "This client will no longer be able to log in or use forgot password until the account is reactivated.",
+        confirmButtonText: "Set Inactive",
+      });
+      if (!confirmation.isConfirmed) {
+        return;
+      }
+    } else {
+      const confirmation = await showConfirmDialog({
+        title: "Set client account to active?",
+        text: "This client will be able to log in and use forgot password again.",
+        confirmButtonText: "Set Active",
+      });
+      if (!confirmation.isConfirmed) {
+        return;
+      }
+    }
+
+    setStatusActionClientId(client.id);
 
     setClients((prev) =>
       prev.map((c) =>
@@ -1317,7 +1341,7 @@ export default function ClientManagement() {
           ? {
               ...c,
               status_id: nextId,
-              status: nextId === 1 ? "Active" : "Inactive",
+              status: nextStatusLabel,
             }
           : c
       )
@@ -1350,11 +1374,20 @@ export default function ClientManagement() {
       if (updated?.id) {
         setClients((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
       }
+      showSuccessToast({
+        title: nextStatusLabel === "Active" ? "Client account activated." : "Client account set to inactive.",
+        description:
+          nextStatusLabel === "Active"
+            ? "The client can log in and use forgot password again."
+            : "The client can no longer log in until the account is reactivated.",
+      });
     } catch (err) {
       setClients((prev) =>
         prev.map((c) => (c.id === client.id ? { ...c, status_id: currentId, status: client.status } : c))
       );
       setError(err?.response?.data?.message || err?.message || "Failed to update status.");
+    } finally {
+      setStatusActionClientId(null);
     }
   }, [canEditClientManagement]);
 
@@ -1489,13 +1522,18 @@ export default function ClientManagement() {
               }
               void promptClientManagementAccess();
             }}
+            disabled={canEditClientManagement && statusActionClientId === row.raw?.id}
             aria-disabled={!canEditClientManagement}
             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(
               value
             )} hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-              canEditClientManagement ? "" : "cursor-not-allowed opacity-60"
+              canEditClientManagement
+                ? statusActionClientId === row.raw?.id
+                  ? "cursor-wait opacity-70"
+                  : ""
+                : "cursor-not-allowed opacity-60"
             }`}
-            title={canEditClientManagement ? "Click to toggle status" : "Request access"}
+            title={canEditClientManagement ? "Click to change status" : "Request access"}
           >
             {value}
           </button>
@@ -1583,6 +1621,7 @@ export default function ClientManagement() {
       onViewInfo,
       openClientAccount,
       promptClientManagementAccess,
+      statusActionClientId,
       switchingClientAccountId,
       toggleClientStatus,
     ]

@@ -147,8 +147,7 @@ export default function AccountantDashboard({ user, onLogout }) {
 
   return (
     <AccountantLayout user={user} onLogout={onLogout}>
-      {currentKey !== "invoices" &&
-        currentKey !== "my-tasks" &&
+      {currentKey !== "my-tasks" &&
         currentKey !== "calendar" &&
         (currentKey !== "dashboard" || canViewDashboard) && (
         currentKey === "dashboard" ? (

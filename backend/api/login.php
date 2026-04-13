@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/status_helpers.php';
+require_once __DIR__ . '/account_status_helpers.php';
 require_once __DIR__ . '/audit_logs_helper.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
@@ -29,6 +30,7 @@ try {
     }
 
     monitoring_ensure_user_security_columns($conn);
+    monitoring_ensure_user_employment_status_column($conn);
     $securitySettings = monitoring_get_security_settings($conn);
     $lockoutAttempts = max(1, (int)$securitySettings['lockoutAttempts']);
     $lockoutDurationMinutes = max(1, (int)$securitySettings['lockoutDurationMinutes']);
@@ -47,9 +49,12 @@ try {
                 u.Failed_login_attempts AS Failed_login_attempts,
                 u.Locked_until AS Locked_until,
                 u.Role_id AS Role_ID,
+                u.Employment_status_id AS Employment_Status_ID,
+                es.Status_name AS Employment_Status_Name,
                 c.Client_ID AS Client_ID,
                 c.Status_id AS Client_Status_ID,
                 s.Status_name AS Client_Status_Name,
+                c.Rejection_reason AS Client_Rejection_Reason,
                 u.Email,
                 u.Created_at AS Created_at,
                 CASE
@@ -67,6 +72,7 @@ try {
                 ' . $profileImageSelect . '
          FROM user u
          LEFT JOIN client c ON c.User_id = u.User_id
+         LEFT JOIN status es ON es.Status_id = u.Employment_status_id
          LEFT JOIN status s ON s.Status_id = c.Status_id
          WHERE u.Username = :u
          LIMIT 1'
@@ -167,7 +173,20 @@ try {
             ? (int)$user['Client_Status_ID']
             : 0;
         $clientStatusName = isset($user['Client_Status_Name']) ? (string)$user['Client_Status_Name'] : null;
+        $clientRejectionReason = trim((string)($user['Client_Rejection_Reason'] ?? ''));
+        $clientActivityStatus = monitoring_client_activity_status($clientStatusName, $clientStatusId, 'Pending');
         $approvalStatus = monitoring_client_approval_status($clientStatusName, $clientStatusId, 'Pending');
+
+        if ($clientActivityStatus === 'Inactive' && $clientRejectionReason === '') {
+            monitoring_write_audit_log($conn, $userId, 'Blocked login due to inactive account', $auditContext);
+            echo json_encode([
+                'success' => false,
+                'message' => monitoring_get_inactive_account_message(),
+                'approval_status' => $approvalStatus,
+                'inactive_account' => true,
+            ]);
+            exit;
+        }
 
         if (strcasecmp($approvalStatus, 'Approved') !== 0) {
             monitoring_write_audit_log($conn, $userId, 'Blocked login due to client approval status', $auditContext);
@@ -177,6 +196,21 @@ try {
                     ? 'Your registration was rejected. Please check your email for the reason and submit a new application after completing the requirements.'
                     : 'Your account is still pending approval. Please wait for approval before logging in.',
                 'approval_status' => $approvalStatus,
+            ]);
+            exit;
+        }
+    } else {
+        $employmentStatusId = isset($user['Employment_Status_ID']) && $user['Employment_Status_ID'] !== null
+            ? (int)$user['Employment_Status_ID']
+            : null;
+        $employmentStatusName = isset($user['Employment_Status_Name']) ? (string)$user['Employment_Status_Name'] : null;
+        $employmentStatus = monitoring_employee_status_label($employmentStatusName, $employmentStatusId, 'Active');
+        if (strcasecmp($employmentStatus, 'Active') !== 0) {
+            monitoring_write_audit_log($conn, $userId, 'Blocked login due to inactive account', $auditContext);
+            echo json_encode([
+                'success' => false,
+                'message' => monitoring_get_inactive_account_message(),
+                'inactive_account' => true,
             ]);
             exit;
         }

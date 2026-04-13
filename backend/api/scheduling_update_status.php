@@ -61,6 +61,38 @@ function resolveConsultationActionColumn(PDO $conn): ?string {
     return null;
 }
 
+function resolveConsultationPendingStatusIds(PDO $conn): array {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $ids = [];
+    try {
+        $stmt = $conn->query(
+            'SELECT Status_id
+             FROM status
+             WHERE Status_group = "CONSULTATION"
+               AND LOWER(Status_name) IN ("pending", "not started")'
+        );
+        while (($value = $stmt->fetchColumn()) !== false) {
+            $id = (int)$value;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+    } catch (Throwable $__) {
+        // Fall back to defaults below.
+    }
+
+    if (!$ids) {
+        $ids[] = 15;
+    }
+
+    $cached = array_values(array_unique(array_filter($ids, static fn ($id) => (int)$id > 0)));
+    return $cached;
+}
+
 function mapSchedulingCandidates(string $statusName): array {
     $canonical = normalizeSchedulingStatus($statusName);
 
@@ -91,6 +123,12 @@ try {
     }
 
     $schedulingId = isset($data['scheduling_id']) ? (int)$data['scheduling_id'] : 0;
+    if ($schedulingId <= 0 && isset($data['consultation_id'])) {
+        $schedulingId = (int)$data['consultation_id'];
+    }
+    if ($schedulingId <= 0 && isset($data['Consultation_ID'])) {
+        $schedulingId = (int)$data['Consultation_ID'];
+    }
     if ($schedulingId <= 0 && isset($data['Scheduling_ID'])) {
         $schedulingId = (int)$data['Scheduling_ID'];
     }
@@ -161,7 +199,17 @@ try {
         respond(422, ['success' => false, 'message' => 'Unknown status: ' . $status]);
     }
 
-    $ownerStmt = $conn->prepare('SELECT Client_ID FROM consultation WHERE Scheduling_ID = :id LIMIT 1');
+    $ownerStmt = $conn->prepare(
+        'SELECT c.Client_ID,
+                c.Status_ID,
+                s.Status_name AS current_status_name
+         FROM consultation c
+         LEFT JOIN status s
+           ON s.Status_id = c.Status_ID
+          AND s.Status_group = "CONSULTATION"
+         WHERE c.Consultation_ID = :id
+         LIMIT 1'
+    );
     $ownerStmt->execute([':id' => $schedulingId]);
     $ownerRow = $ownerStmt->fetch(PDO::FETCH_ASSOC);
     if (!$ownerRow) {
@@ -170,6 +218,15 @@ try {
     monitoring_require_client_access((int)($ownerRow['Client_ID'] ?? 0), [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
 
     $normalizedStatus = normalizeSchedulingStatus($status);
+    $currentStatus = normalizeSchedulingStatus((string)($ownerRow['current_status_name'] ?? ''));
+    $isPendingConsultation =
+        $currentStatus === 'pending' ||
+        in_array((int)($ownerRow['Status_ID'] ?? 0), resolveConsultationPendingStatusIds($conn), true);
+
+    if (($normalizedStatus === 'approved' || $normalizedStatus === 'rejected') && !$isPendingConsultation) {
+        respond(409, ['success' => false, 'message' => 'Only pending consultation requests can be approved or declined.']);
+    }
+
     $actionColumn = resolveConsultationActionColumn($conn);
     $params = [
         ':sid' => $statusId,
@@ -186,12 +243,12 @@ try {
         }
     }
 
-    $sql .= ' WHERE Scheduling_ID = :id';
+    $sql .= ' WHERE Consultation_ID = :id';
     $update = $conn->prepare($sql);
     $update->execute($params);
 
     if ($update->rowCount() < 1) {
-        $check = $conn->prepare('SELECT Scheduling_ID FROM consultation WHERE Scheduling_ID = :id LIMIT 1');
+        $check = $conn->prepare('SELECT Consultation_ID FROM consultation WHERE Consultation_ID = :id LIMIT 1');
         $check->execute([':id' => $schedulingId]);
         if (!$check->fetch(PDO::FETCH_ASSOC)) {
             respond(404, ['success' => false, 'message' => 'Scheduling request not found']);

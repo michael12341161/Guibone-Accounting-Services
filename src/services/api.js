@@ -10,6 +10,7 @@ const AUTH_TOKEN_KEY = "auth:jwt";
 const JWT_REFRESH_HEADER = "x-monitoring-jwt";
 export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
 export const MONITORING_SYSTEM_CONFIG_UPDATED_EVENT = "monitoring:system-config-updated";
+export const MONITORING_SCHEDULED_BACKUP_EVENT = "monitoring:scheduled-backup";
 export const MONITORING_AUTH_REQUIRED_MESSAGE = "Authentication is required.";
 export const MONITORING_SESSION_EXPIRED_MESSAGE = "Session expired. Please log in again.";
 
@@ -228,6 +229,18 @@ export const DEFAULT_SYSTEM_CONFIGURATION = Object.freeze({
   smtpPassword: "",
 });
 
+export const DEFAULT_BACKUP_SCHEDULE = Object.freeze({
+  enabled: false,
+  frequency: "once",
+  scheduled_for: "",
+  last_attempt_at: "",
+  last_attempt_status: "",
+  last_attempt_message: "",
+  last_backup_name: "",
+});
+
+const BACKUP_SCHEDULE_FREQUENCY_VALUES = new Set(["once", "daily", "weekly", "monthly"]);
+
 function parseIntegerSetting(value, fallback) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.trunc(value);
@@ -265,6 +278,13 @@ function parseBooleanSetting(value, fallback) {
   }
 
   return fallback;
+}
+
+function parseBackupScheduleFrequency(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return BACKUP_SCHEDULE_FREQUENCY_VALUES.has(normalized)
+    ? normalized
+    : DEFAULT_BACKUP_SCHEDULE.frequency;
 }
 
 export function normalizeSecuritySettings(input) {
@@ -325,6 +345,23 @@ export function normalizeSystemConfiguration(input) {
     smtpPort: parseIntegerSetting(source.smtpPort, DEFAULT_SYSTEM_CONFIGURATION.smtpPort),
     smtpUsername: String(source.smtpUsername ?? "").trim(),
     smtpPassword: String(source.smtpPassword ?? ""),
+  };
+}
+
+export function normalizeBackupSchedule(input) {
+  const source = input && typeof input === "object" ? input : {};
+
+  return {
+    enabled: parseBooleanSetting(source.enabled, DEFAULT_BACKUP_SCHEDULE.enabled),
+    frequency: parseBackupScheduleFrequency(source.frequency),
+    scheduled_for: String(source.scheduled_for ?? "").trim(),
+    last_attempt_at: String(source.last_attempt_at ?? "").trim(),
+    last_attempt_status: parseStringSetting(
+      source.last_attempt_status,
+      DEFAULT_BACKUP_SCHEDULE.last_attempt_status
+    ),
+    last_attempt_message: String(source.last_attempt_message ?? "").trim(),
+    last_backup_name: String(source.last_backup_name ?? "").trim(),
   };
 }
 
@@ -475,6 +512,27 @@ export async function createDatabaseBackup(config = {}) {
     "backup_data.php",
     {
       action: "create_backup",
+    },
+    config
+  );
+}
+
+export async function saveBackupSchedule(schedule, config = {}) {
+  return api.post(
+    "backup_data.php",
+    {
+      action: "save_schedule",
+      ...schedule,
+    },
+    config
+  );
+}
+
+export async function processScheduledDatabaseBackup(config = {}) {
+  return api.post(
+    "backup_data.php",
+    {
+      action: "process_scheduled_backup",
     },
     config
   );

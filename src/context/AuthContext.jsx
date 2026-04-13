@@ -6,10 +6,14 @@ import {
   DEFAULT_SECURITY_SETTINGS,
   getStoredAuthToken,
   MONITORING_AUTH_INVALID_EVENT,
+  MONITORING_SCHEDULED_BACKUP_EVENT,
   MONITORING_SESSION_EXPIRED_MESSAGE,
+  normalizeBackupSchedule,
+  processScheduledDatabaseBackup,
   normalizeSecuritySettings,
 } from "../services/api";
-import { getUserRole, hasRole as userHasRole, ROLE_IDS } from "../utils/helpers";
+import { getUserRole, hasRole as userHasRole, ROLE_IDS, formatDateTime } from "../utils/helpers";
+import { showErrorToast, showSuccessToast } from "../utils/feedback";
 import { countUrgentUnfinishedTasks } from "../utils/task_attention";
 
 const SESSION_USER_KEY = "session:user";
@@ -30,6 +34,27 @@ const ROLE_HOME_PATHS = {
 };
 
 export const AuthContext = createContext(null);
+
+function buildScheduledBackupToastDescription(message, nextSchedule, backupName) {
+  const nextMessage = String(message ?? "").trim();
+  const nextBackupName = String(backupName ?? "").trim();
+
+  if (nextBackupName && nextSchedule?.enabled && nextSchedule?.scheduled_for) {
+    return `${nextBackupName} is ready. Next backup: ${formatDateTime(nextSchedule.scheduled_for)}.`;
+  }
+
+  if (nextBackupName) {
+    return `${nextBackupName} is ready.`;
+  }
+
+  if (nextSchedule?.enabled && nextSchedule?.scheduled_for) {
+    return nextMessage
+      ? `${nextMessage} Next backup: ${formatDateTime(nextSchedule.scheduled_for)}.`
+      : `Next backup: ${formatDateTime(nextSchedule.scheduled_for)}.`;
+  }
+
+  return nextMessage || "The automatic backup finished successfully.";
+}
 
 function getSessionWarningWindowMs(timeoutMs) {
   if (timeoutMs > ONE_MINUTE_MS) {
@@ -233,6 +258,7 @@ export function AuthProvider({ children }) {
   const sessionWarningVisibleRef = React.useRef(false);
   const clearActiveClientAuthRef = React.useRef(null);
   const activeUserId = user?.id ?? null;
+  const currentUserRoleId = getUserRole(user);
   const sessionTimeoutMinutes = Math.max(
     1,
     Number(user?.security_settings?.sessionTimeoutMinutes || DEFAULT_SECURITY_SETTINGS.sessionTimeoutMinutes)
@@ -459,6 +485,92 @@ export function AuthProvider({ children }) {
       active = false;
     };
   }, [clearActiveClientAuth]);
+
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") {
+      return undefined;
+    }
+
+    let active = true;
+    let inFlight = false;
+
+    const tickScheduledBackup = async () => {
+      if (!active || inFlight) {
+        return;
+      }
+
+      inFlight = true;
+
+      try {
+        const response = await processScheduledDatabaseBackup();
+        if (!active) {
+          return;
+        }
+
+        const executed = !!response?.data?.executed;
+        const failed = !!response?.data?.failed;
+        if (!executed && !failed) {
+          return;
+        }
+
+        const nextSchedule = normalizeBackupSchedule(response?.data?.schedule);
+        const responseMessage = String(response?.data?.message ?? "").trim();
+
+        window.dispatchEvent(
+          new CustomEvent(MONITORING_SCHEDULED_BACKUP_EVENT, {
+            detail: {
+              executed,
+              failed,
+              message: responseMessage,
+              backup: response?.data?.backup || null,
+              schedule: nextSchedule,
+            },
+          })
+        );
+
+        if (currentUserRoleId === ROLE_IDS.ADMIN) {
+          if (executed) {
+            showSuccessToast({
+              title: "Automatic backup completed",
+              description: buildScheduledBackupToastDescription(
+                responseMessage,
+                nextSchedule,
+                response?.data?.backup?.name
+              ),
+              id: "monitoring-scheduled-backup-success",
+              duration: 3500,
+            });
+          } else if (failed) {
+            const nextRunLabel =
+              nextSchedule.enabled && nextSchedule.scheduled_for
+                ? ` Next backup: ${formatDateTime(nextSchedule.scheduled_for)}.`
+                : "";
+
+            showErrorToast({
+              title: "Automatic backup failed",
+              description:
+                (responseMessage || "The scheduled backup could not be created.") + nextRunLabel,
+              id: "monitoring-scheduled-backup-error",
+              duration: 4000,
+            });
+          }
+        }
+      } catch (_) {
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void tickScheduledBackup();
+    const intervalId = window.setInterval(() => {
+      void tickScheduledBackup();
+    }, ONE_MINUTE_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [user?.id, currentUserRoleId]);
 
   useEffect(() => {
     const handleAuthInvalid = () => {

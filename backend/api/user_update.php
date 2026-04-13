@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/account_status_helpers.php';
 require_once __DIR__ . '/audit_logs_helper.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/Exception.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/PHPMailer.php';
@@ -320,7 +321,7 @@ function buildProfileImageSelect(PDO $conn, string $alias = 'profile_image'): st
     $clientExpr = $hasClientProfileImage ? 'c.Profile_Image' : 'NULL';
     $userExpr = $hasUserProfileImage ? 'u.Profile_Image' : 'NULL';
 
-    return "COALESCE({$userExpr}, {$clientExpr}) AS {$alias},";
+    return "COALESCE({$userExpr}, {$clientExpr}) AS {$alias}";
 }
 
 function deleteUserProfileImageFile(string $path): void {
@@ -442,8 +443,9 @@ function fetchUserRow(PDO $conn, int $id): ?array {
         'SELECT u.User_id AS id,
                 u.Username AS username,
                 u.Email AS email,
-                ' . $profileImageSelect . '
+                ' . $profileImageSelect . ',
                 u.Role_id AS role_id,
+                u.Employment_status_id AS employment_status_id,
                 r.Role_name AS role,
                 c.Client_ID AS client_id,
                 c.First_name AS client_first_name,
@@ -453,6 +455,7 @@ function fetchUserRow(PDO $conn, int $id): ?array {
                 c.Phone AS client_phone,
                 c.Status_id AS client_status_id,
                 s.Status_name AS client_status_name,
+                es.Status_name AS employment_status_name,
                 u.first_name AS profile_first_name,
                 u.middle_name AS profile_middle_name,
                 u.last_name AS profile_last_name,
@@ -465,6 +468,7 @@ function fetchUserRow(PDO $conn, int $id): ?array {
                 u.philhealth_account_number AS profile_philhealth_account_number
          FROM user u
          LEFT JOIN role r ON r.Role_id = u.Role_id
+         LEFT JOIN status es ON es.Status_id = u.Employment_status_id
          LEFT JOIN client c ON c.User_id = u.User_id
          LEFT JOIN status s ON s.Status_id = c.Status_id
          LEFT JOIN specialization_type st ON st.specialization_type_ID = u.specialization_type_ID
@@ -483,6 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     monitoring_ensure_user_security_columns($conn);
+    monitoring_ensure_user_employment_status_column($conn);
     ensureEmployeeSpecializationSchema($conn);
 
     $raw = file_get_contents('php://input');
@@ -605,6 +610,7 @@ try {
                 u.Username,
                 u.Email,
                 u.Role_id,
+                u.Employment_status_id,
                 c.Client_ID AS Client_id,
                 u.Profile_Image,
                 c.Profile_Image AS Client_Profile_Image
@@ -619,6 +625,54 @@ try {
         respond(404, ['success' => false, 'message' => 'User not found']);
     }
     $currentProfile = loadEmployeeProfile($conn, $id);
+
+    if ($action === 'update_status') {
+        monitoring_require_roles([MONITORING_ROLE_ADMIN], $sessionUser);
+
+        if ((int)$rowCurrent['Role_id'] === MONITORING_ROLE_CLIENT) {
+            respond(422, ['success' => false, 'message' => 'Client accounts must be updated from Client Management.']);
+        }
+
+        $requestedStatusId = isset($data['employment_status_id']) && preg_match('/^\d+$/', (string)$data['employment_status_id'])
+            ? monitoring_validate_status_id($conn, 'EMPLOYMENT', (int)$data['employment_status_id'])
+            : null;
+        $requestedStatusLabel = trim((string)($data['employment_status'] ?? $data['status'] ?? ''));
+        $nextEmploymentStatusId = $requestedStatusId ?? monitoring_resolve_employment_status_id($conn, $requestedStatusLabel);
+        if ($nextEmploymentStatusId === null) {
+            respond(422, ['success' => false, 'message' => 'A valid employment status is required.']);
+        }
+
+        $updateStatusStatement = $conn->prepare(
+            'UPDATE user
+             SET Employment_status_id = :employment_status_id
+             WHERE User_id = :id'
+        );
+        $updateStatusStatement->execute([
+            ':employment_status_id' => $nextEmploymentStatusId,
+            ':id' => $id,
+        ]);
+
+        $updatedStatusRow = fetchUserRow($conn, $id);
+        if (!$updatedStatusRow) {
+            respond(404, ['success' => false, 'message' => 'User not found after status update.']);
+        }
+
+        $employmentStatusLabel = monitoring_employee_status_label(
+            isset($updatedStatusRow['employment_status_name']) ? (string)$updatedStatusRow['employment_status_name'] : null,
+            $updatedStatusRow['employment_status_id'] ?? null,
+            'Active'
+        );
+
+        respond(200, [
+            'success' => true,
+            'message' => 'User status updated successfully.',
+            'user' => [
+                'id' => $id,
+                'employee_status_id' => isset($updatedStatusRow['employment_status_id']) ? (int)$updatedStatusRow['employment_status_id'] : null,
+                'employee_status' => $employmentStatusLabel,
+            ],
+        ]);
+    }
 
     if ($action === 'update_profile_image') {
         if (!isset($_FILES['profile_image'])) {
@@ -777,6 +831,12 @@ try {
         }
     }
 
+    $nextEmploymentStatusId = $roleId === MONITORING_ROLE_CLIENT
+        ? null
+        : ((isset($rowCurrent['Employment_status_id']) && $rowCurrent['Employment_status_id'] !== null)
+            ? (int)$rowCurrent['Employment_status_id']
+            : monitoring_default_employment_status_id($conn));
+
     $conn->beginTransaction();
 
     if ($password !== '') {
@@ -785,6 +845,7 @@ try {
              SET Username = :u,
                  Email = :e,
                  Role_id = :r,
+                 Employment_status_id = :employment_status_id,
                  Password = :p,
                  Password_changed_at = NOW(),
                  Failed_login_attempts = 0,
@@ -795,6 +856,7 @@ try {
             ':u' => $username,
             ':e' => $email,
             ':r' => $roleId,
+            ':employment_status_id' => $nextEmploymentStatusId,
             ':p' => hash('sha256', $password),
             ':id' => $id,
         ]);
@@ -803,13 +865,15 @@ try {
             'UPDATE user
              SET Username = :u,
                  Email = :e,
-                 Role_id = :r
+                 Role_id = :r,
+                 Employment_status_id = :employment_status_id
              WHERE User_id = :id'
         );
         $upd->execute([
             ':u' => $username,
             ':e' => $email,
             ':r' => $roleId,
+            ':employment_status_id' => $nextEmploymentStatusId,
             ':id' => $id,
         ]);
     }
@@ -992,8 +1056,10 @@ try {
         'employee_sss_account_number' => $sssAccount,
         'employee_pagibig_account_number' => $pagibigAccount,
         'employee_philhealth_account_number' => $philhealthAccount,
-        'employee_status_id' => isset($fresh['client_status_id']) ? (int)$fresh['client_status_id'] : null,
-        'employee_status' => $fresh['client_status_name'] ?? null,
+        'employee_status_id' => isset($fresh['employment_status_id']) && $fresh['employment_status_id'] !== null
+            ? (int)$fresh['employment_status_id']
+            : (isset($fresh['client_status_id']) ? (int)$fresh['client_status_id'] : null),
+        'employee_status' => $fresh['employment_status_name'] ?? $fresh['client_status_name'] ?? null,
         'employee_position' => $fresh['role'] ?? $roleName,
         'employee_specialization_type_id' => $profileSpecializationId,
         'employee_specialization_type_name' => $profileSpecializationName,

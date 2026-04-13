@@ -3,7 +3,7 @@
         "admin": true,
         "secretary": true,
         "accountant": true,
-        "client": false
+        "client": true
     },
     "user-management": {
         "admin": true,
@@ -57,13 +57,13 @@
             },
             "edit": {
                 "admin": true,
-                "secretary": false,
+                "secretary": true,
                 "accountant": false,
                 "client": false
             },
             "add-new-client": {
                 "admin": true,
-                "secretary": false,
+                "secretary": true,
                 "accountant": false,
                 "client": false
             },
@@ -75,7 +75,7 @@
             },
             "file-upload": {
                 "admin": true,
-                "secretary": false,
+                "secretary": true,
                 "accountant": false,
                 "client": false
             }
@@ -181,25 +181,25 @@
     },
     "scheduling": {
         "admin": true,
-        "secretary": true,
+        "secretary": false,
         "accountant": false,
         "client": false,
         "actions": {
             "approve": {
                 "admin": true,
-                "secretary": true,
+                "secretary": false,
                 "accountant": false,
                 "client": false
             },
             "decline": {
                 "admin": true,
-                "secretary": true,
+                "secretary": false,
                 "accountant": false,
                 "client": false
             },
             "reschedule": {
                 "admin": true,
-                "secretary": true,
+                "secretary": false,
                 "accountant": false,
                 "client": false
             },
@@ -214,13 +214,13 @@
     "tasks": {
         "admin": true,
         "secretary": true,
-        "accountant": true,
+        "accountant": false,
         "client": false,
         "actions": {
             "create-task": {
                 "admin": true,
                 "secretary": true,
-                "accountant": true,
+                "accountant": false,
                 "client": false
             },
             "client-appointments": {
@@ -238,13 +238,13 @@
             "edit-step": {
                 "admin": true,
                 "secretary": true,
-                "accountant": true,
+                "accountant": false,
                 "client": false
             },
             "remove-step": {
                 "admin": true,
                 "secretary": true,
-                "accountant": true,
+                "accountant": false,
                 "client": false
             }
         }
@@ -253,7 +253,7 @@
         "admin": true,
         "secretary": true,
         "accountant": true,
-        "client": false
+        "client": true
     },
     "work-update": {
         "admin": true,
@@ -326,7 +326,7 @@
     "reports": {
         "admin": true,
         "secretary": true,
-        "accountant": true,
+        "accountant": false,
         "client": false
     },
     "client-account": {

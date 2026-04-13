@@ -10,6 +10,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { requestModuleAccess } from "../../services/api";
 import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { formatDocumentTypeLabel, normalizeDocumentKey } from "../../utils/document_management";
 
 const PAGE_SIZE = 10;
 const WORD_EXT = new Set(["doc", "docx"]);
@@ -143,15 +144,82 @@ function collectAttachmentEntries(row, description) {
   return Array.from(map.values());
 }
 
+function readMetaLines(text, key) {
+  const source = String(text || "");
+  const escaped = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^\\s*\\[${escaped}\\]\\s*([^\\r\\n]*)\\s*$`, "gim");
+  const values = [];
+  let match;
+
+  while ((match = re.exec(source)) !== null) {
+    const value = String(match[1] || "").trim();
+    if (value) {
+      values.push(value);
+    }
+  }
+
+  return values;
+}
+
+function extractProcessingDocuments(row, description) {
+  const rawValues = [];
+
+  if (Array.isArray(row?.processing_document_labels)) {
+    rawValues.push(...row.processing_document_labels);
+  }
+  if (Array.isArray(row?.processing_documents)) {
+    rawValues.push(...row.processing_documents);
+  }
+  rawValues.push(...readMetaLines(description, "Processing_Document"));
+  rawValues.push(...readMetaLines(description, "Processing_Documents"));
+
+  const seen = new Set();
+  const labels = [];
+
+  rawValues.forEach((value) => {
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .forEach((item) => {
+        const key = normalizeDocumentKey(item);
+        const label = formatDocumentTypeLabel(item);
+        const dedupeKey = key || label.toLowerCase();
+        if (seen.has(dedupeKey)) {
+          return;
+        }
+
+        seen.add(dedupeKey);
+        labels.push(label);
+      });
+  });
+
+  return labels;
+}
+
 function normalizeStatusLabel(status) {
   const raw = String(status || "").trim();
   if (!raw) return "Pending";
   return raw.toLowerCase() === "active" ? "Approved" : raw;
 }
 
-function statusPillClass(status) {
+function normalizeAppointmentDecisionStatus(status) {
   const value = String(status || "").trim().toLowerCase();
-  if (value === "approved" || value === "active") {
+  if (!value || value === "pending" || value === "not started") {
+    return "pending";
+  }
+  if (value === "approved" || value === "active" || value === "started" || value === "in progress") {
+    return "approved";
+  }
+  if (value === "declined" || value === "reject" || value === "rejected" || value === "cancelled" || value === "canceled") {
+    return "declined";
+  }
+  return value;
+}
+
+function statusPillClass(status) {
+  const value = normalizeAppointmentDecisionStatus(status);
+  if (value === "approved") {
     return "bg-emerald-50 text-emerald-700 border-emerald-200";
   }
   if (value === "declined") {
@@ -164,7 +232,7 @@ function statusPillClass(status) {
 }
 
 function formatActionBy(row) {
-  const status = String(row?.statusRaw || row?.status || "").trim().toLowerCase();
+  const status = normalizeAppointmentDecisionStatus(row?.statusRaw || row?.status);
   if (!status || status === "pending") return "-";
 
   const display = String(row?.actionBy || "").trim();
@@ -184,6 +252,8 @@ export default function AppointmentManagement() {
   const [declineReason, setDeclineReason] = useState("");
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [activeFileRow, setActiveFileRow] = useState(null);
+  const [documentModalOpen, setDocumentModalOpen] = useState(false);
+  const [activeDocumentRow, setActiveDocumentRow] = useState(null);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [requestingAccess, setRequestingAccess] = useState(false);
@@ -308,6 +378,8 @@ export default function AppointmentManagement() {
   }, []);
 
   const onUpdateStatus = async (id, status, reason) => {
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+
     try {
       setUpdatingId(id);
       setError("");
@@ -336,9 +408,15 @@ export default function AppointmentManagement() {
       }
 
       await refresh({ silent: true });
+      showSuccessToast(
+        res?.data?.message ||
+          (normalizedStatus === "approved"
+            ? "Appointment approved successfully."
+            : "Appointment declined successfully.")
+      );
     } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Failed to update appointment.");
       await refresh({ silent: true });
+      showErrorToast(e?.response?.data?.message || e?.message || "Failed to update appointment.");
     } finally {
       setUpdatingId(null);
     }
@@ -371,6 +449,7 @@ export default function AppointmentManagement() {
         const meetingMatch = desc.match(/^\s*\[Appointment_Type\]\s*(Online|Onsite)\s*$/im);
         const meetingType = row.meeting_type || row.meetingType || row.Appointment_Type || (meetingMatch ? meetingMatch[1] : "");
         const attachments = collectAttachmentEntries(row, desc);
+        const processingDocuments = extractProcessingDocuments(row, desc);
         const latestAttachment = attachments.length
           ? attachments[attachments.length - 1]
           : { path: "", filename: "" };
@@ -398,6 +477,7 @@ export default function AppointmentManagement() {
           attachmentPath: String(latestAttachment.path || "").trim(),
           attachmentFilename: String(latestAttachment.filename || "").trim(),
           attachments,
+          processingDocuments,
         };
       })
       .filter((row) => !row.isConsultation);
@@ -414,6 +494,7 @@ export default function AppointmentManagement() {
         String(row.date || "").toLowerCase().includes(q) ||
         String(row.time || "").toLowerCase().includes(q) ||
         String(row.notes || "").toLowerCase().includes(q) ||
+        String((row.processingDocuments || []).join(" ")).toLowerCase().includes(q) ||
         String(row.status || "").toLowerCase().includes(q)
       );
     });
@@ -450,6 +531,9 @@ export default function AppointmentManagement() {
         attachmentPath: row.attachmentPath || "",
         attachmentFilename: row.attachmentFilename || "",
         attachments: Array.isArray(row.attachments) ? row.attachments : [],
+        processingDocuments: Array.isArray(row.processingDocuments)
+          ? row.processingDocuments
+          : [],
       })),
     [pagedRows]
   );
@@ -462,6 +546,16 @@ export default function AppointmentManagement() {
   const closeFileCard = () => {
     setFileModalOpen(false);
     setActiveFileRow(null);
+  };
+
+  const openDocumentCard = (row) => {
+    setActiveDocumentRow(row);
+    setDocumentModalOpen(true);
+  };
+
+  const closeDocumentCard = () => {
+    setDocumentModalOpen(false);
+    setActiveDocumentRow(null);
   };
 
   const activeAttachments = useMemo(() => {
@@ -481,6 +575,20 @@ export default function AppointmentManagement() {
     }
     return [];
   }, [activeFileRow]);
+
+  const activeProcessingDocuments = useMemo(() => {
+    if (!activeDocumentRow) return [];
+    return Array.isArray(activeDocumentRow.processingDocuments)
+      ? activeDocumentRow.processingDocuments
+      : [];
+  }, [activeDocumentRow]);
+
+  const declineTargetRow = useMemo(
+    () => normalized.find((row) => String(row.id) === String(declineId)) || null,
+    [declineId, normalized]
+  );
+  const canSubmitDecline =
+    Boolean(declineId) && normalizeAppointmentDecisionStatus(declineTargetRow?.status) === "pending";
 
   const columns = [
     { key: "client", header: "Client", width: "17%" },
@@ -514,19 +622,27 @@ export default function AppointmentManagement() {
       key: "actions",
       header: "Actions",
       align: "right",
-      width: "8%",
+      width: "14%",
       render: (_, row) => {
-        const statusLower = String(row.statusRaw || row.status || "").trim().toLowerCase();
+        const statusLower = normalizeAppointmentDecisionStatus(row.statusRaw || row.status);
         const disabled = updatingId === row.id;
-        const approveDisabled = disabled || statusLower === "approved" || statusLower === "active";
-        const declineDisabled = disabled || statusLower === "declined";
+        const isPending = statusLower === "pending";
+        const approveDisabled = disabled || !isPending;
+        const declineDisabled = disabled || !isPending;
+        const hasProcessingDocuments = Array.isArray(row.processingDocuments) && row.processingDocuments.length > 0;
         return (
           <div className="flex items-center justify-end gap-1">
             <IconButton
               size="sm"
               variant="success"
               aria-label={`Approve ${row.client}`}
-              title={canApproveAppointments ? "Approve" : "Request access"}
+              title={
+                !canApproveAppointments
+                  ? "Request access"
+                  : isPending
+                    ? "Approve"
+                    : "Only pending requests can be approved"
+              }
               disabled={approveDisabled}
               aria-disabled={approveDisabled || !canApproveAppointments}
               className={!canApproveAppointments ? "cursor-not-allowed opacity-60" : ""}
@@ -544,11 +660,43 @@ export default function AppointmentManagement() {
               </svg>
             </IconButton>
 
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              title={
+                !canViewAppointmentFiles
+                  ? "Request access"
+                  : hasProcessingDocuments
+                    ? "View Docs"
+                    : "No processing documents selected"
+              }
+              disabled={disabled || !hasProcessingDocuments}
+              aria-disabled={disabled || !canViewAppointmentFiles || !hasProcessingDocuments}
+              className={!canViewAppointmentFiles ? "cursor-not-allowed opacity-60" : ""}
+              onClick={() => {
+                if (disabled || !hasProcessingDocuments) return;
+                if (!canViewAppointmentFiles) {
+                  void promptAppointmentAccess();
+                  return;
+                }
+                openDocumentCard(row);
+              }}
+            >
+              View Docs
+            </Button>
+
             <IconButton
               size="sm"
               variant="secondary"
               aria-label={`Decline ${row.client}`}
-              title={canDeclineAppointments ? "Decline" : "Request access"}
+              title={
+                !canDeclineAppointments
+                  ? "Request access"
+                  : isPending
+                    ? "Decline"
+                    : "Only pending requests can be declined"
+              }
               disabled={declineDisabled}
               aria-disabled={declineDisabled || !canDeclineAppointments}
               className={!canDeclineAppointments ? "cursor-not-allowed opacity-60" : ""}
@@ -703,7 +851,7 @@ export default function AppointmentManagement() {
             <Button
               type="button"
               variant="danger"
-              disabled={!declineId || updatingId === declineId}
+              disabled={!canSubmitDecline || updatingId === declineId}
               onClick={async () => {
                 const id = declineId;
                 const reason = declineReason;
@@ -717,14 +865,75 @@ export default function AppointmentManagement() {
         }
       >
         <div>
+          {!canSubmitDecline && declineId ? (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              This appointment has already been processed and can no longer be declined.
+            </div>
+          ) : null}
           <label className="mb-1 block text-xs font-medium text-slate-600">Reason (optional)</label>
           <textarea
             rows={4}
             value={declineReason}
             onChange={(e) => setDeclineReason(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-rose-500/50 focus:ring-2 focus:ring-rose-500/30"
-            placeholder="Enter reason for declining..."
+            disabled={!canSubmitDecline || updatingId === declineId}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-rose-500/50 focus:ring-2 focus:ring-rose-500/30 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+            placeholder={
+              canSubmitDecline ? "Enter reason for declining..." : "This appointment can no longer be changed."
+            }
           />
+        </div>
+      </Modal>
+
+      <Modal
+        open={documentModalOpen}
+        onClose={closeDocumentCard}
+        title="Documents To Process"
+        description="Review the documents this client wants processed."
+        size="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeDocumentCard}>
+              Close
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">Client</div>
+            <div className="mt-1 text-sm font-medium text-slate-800">
+              {activeDocumentRow?.client || "-"}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">Service</div>
+            <div className="mt-1 text-sm font-medium text-slate-800">
+              {activeDocumentRow?.service || "-"}
+            </div>
+          </div>
+
+          {activeProcessingDocuments.length > 0 ? (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-indigo-700">
+                Requested Documents ({activeProcessingDocuments.length})
+              </div>
+              <div className="mt-2 space-y-2">
+                {activeProcessingDocuments.map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-md border border-indigo-200/80 bg-white/90 px-3 py-2 text-sm font-medium text-slate-800"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              No processing documents were selected for this appointment.
+            </div>
+          )}
         </div>
       </Modal>
 

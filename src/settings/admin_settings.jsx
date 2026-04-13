@@ -3,6 +3,7 @@ import { useAuth } from "../hooks/useAuth";
 import {
   cleanupDatabaseBackups,
   createDatabaseBackup,
+  DEFAULT_BACKUP_SCHEDULE,
   DEFAULT_SECURITY_SETTINGS,
   DEFAULT_SYSTEM_CONFIGURATION,
   deleteDatabaseBackup,
@@ -12,7 +13,10 @@ import {
   fetchBackupDataOverview,
   fetchSecuritySettings,
   fetchSystemConfiguration,
+  MONITORING_SCHEDULED_BACKUP_EVENT,
   MONITORING_SYSTEM_CONFIG_UPDATED_EVENT,
+  normalizeBackupSchedule,
+  saveBackupSchedule,
   saveSecuritySettings,
   saveSystemConfiguration,
   sendSystemTestEmail,
@@ -72,6 +76,32 @@ const BACKUP_EXPORT_FORMAT_OPTIONS = [
   { value: "json", label: "JSON" },
   { value: "sql", label: "SQL" },
 ];
+const BACKUP_SCHEDULE_FREQUENCY_OPTIONS = [
+  { value: "once", label: "One time" },
+  { value: "daily", label: "Every day" },
+  { value: "weekly", label: "Every week" },
+  { value: "monthly", label: "Every month" },
+];
+
+function getBackupScheduleFrequencyLabel(value) {
+  return (
+    BACKUP_SCHEDULE_FREQUENCY_OPTIONS.find((option) => option.value === value)?.label ||
+    BACKUP_SCHEDULE_FREQUENCY_OPTIONS[0].label
+  );
+}
+
+function getBackupScheduleFrequencyHelper(value) {
+  switch (value) {
+    case "daily":
+      return "The selected time will repeat every day starting from the date you choose.";
+    case "weekly":
+      return "The selected day and time will repeat every week.";
+    case "monthly":
+      return "The selected day of the month and time will repeat every month. Shorter months use their last available day.";
+    default:
+      return "The selected backup will run once at the exact date and time you choose.";
+  }
+}
 
 function parseSecurityNumber(value) {
   const normalized = String(value ?? "").trim();
@@ -313,6 +343,37 @@ async function readBlobErrorMessage(error, fallbackMessage) {
   return error?.response?.data?.message || error?.message || fallbackMessage;
 }
 
+function toDateTimeLocalInput(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const pad = (part) => String(part).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function parseDateTimeLocalInput(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString();
+}
+
 function StatusBanner({ type, children }) {
   if (!children) return null;
 
@@ -400,12 +461,17 @@ export default function AdminSettings() {
     last_backup_at: null,
     last_backup_name: "",
   });
+  const [backupSchedule, setBackupSchedule] = React.useState(() => ({ ...DEFAULT_BACKUP_SCHEDULE }));
+  const [backupScheduleEnabled, setBackupScheduleEnabled] = React.useState(false);
+  const [backupScheduleFrequency, setBackupScheduleFrequency] = React.useState(DEFAULT_BACKUP_SCHEDULE.frequency);
+  const [backupScheduledForInput, setBackupScheduledForInput] = React.useState("");
   const [backupTables, setBackupTables] = React.useState([]);
   const [backupFiles, setBackupFiles] = React.useState([]);
   const [backupLoading, setBackupLoading] = React.useState(false);
   const [backupCreating, setBackupCreating] = React.useState(false);
   const [backupCleaning, setBackupCleaning] = React.useState(false);
   const [backupExporting, setBackupExporting] = React.useState(false);
+  const [backupScheduleSaving, setBackupScheduleSaving] = React.useState(false);
   const [backupDownloading, setBackupDownloading] = React.useState("");
   const [backupDeleting, setBackupDeleting] = React.useState("");
   const [backupStatus, setBackupStatus] = React.useState({ type: "", text: "" });
@@ -490,6 +556,8 @@ export default function AdminSettings() {
 
         const nextTables = Array.isArray(response?.data?.tables) ? response.data.tables : [];
         const nextBackups = Array.isArray(response?.data?.backups) ? response.data.backups : [];
+        const nextSchedule = normalizeBackupSchedule(response?.data?.schedule);
+        const scheduledBackupState = response?.data?.scheduled_backup;
 
         setBackupSummary(
           response?.data?.summary || {
@@ -503,11 +571,40 @@ export default function AdminSettings() {
             last_backup_name: "",
           }
         );
+        setBackupSchedule(nextSchedule);
+        setBackupScheduleEnabled(nextSchedule.enabled);
+        setBackupScheduleFrequency(nextSchedule.frequency);
+        setBackupScheduledForInput(toDateTimeLocalInput(nextSchedule.scheduled_for));
         setBackupTables(nextTables);
         setBackupFiles(nextBackups);
         setBackupExportTable((current) =>
           nextTables.some((table) => table.name === current) ? current : nextTables[0]?.name || ""
         );
+
+        if (scheduledBackupState?.executed) {
+          const scheduledMessage =
+            scheduledBackupState?.message || "The scheduled backup was created successfully.";
+          setBackupStatus((current) => (current.type === "error" ? { type: "", text: "" } : current));
+          showSuccessToast({
+            title: "Automatic backup completed",
+            description: scheduledMessage,
+            id: "monitoring-scheduled-backup-success",
+            duration: 3500,
+          });
+        } else if (scheduledBackupState?.failed) {
+          const scheduledMessage =
+            scheduledBackupState?.message || "The scheduled backup could not be created.";
+          setBackupStatus({
+            type: "error",
+            text: scheduledMessage,
+          });
+          showErrorToast({
+            title: "Automatic backup failed",
+            description: scheduledMessage,
+            id: "monitoring-scheduled-backup-error",
+            duration: 4000,
+          });
+        }
       } catch (error) {
         if (!active) return;
 
@@ -529,6 +626,39 @@ export default function AdminSettings() {
       controller.abort();
     };
   }, [showBackup, backupRefreshKey]);
+
+  React.useEffect(() => {
+    if (!showBackup || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleScheduledBackup = (event) => {
+      const detail = event?.detail || {};
+      const nextSchedule = normalizeBackupSchedule(detail.schedule);
+
+      setBackupSchedule(nextSchedule);
+      setBackupScheduleEnabled(nextSchedule.enabled);
+      setBackupScheduleFrequency(nextSchedule.frequency);
+      setBackupScheduledForInput(toDateTimeLocalInput(nextSchedule.scheduled_for));
+
+      if (detail.failed) {
+        setBackupStatus({
+          type: "error",
+          text: detail.message || "The scheduled backup could not be created.",
+        });
+      } else if (detail.executed) {
+        setBackupStatus((current) => (current.type === "error" ? { type: "", text: "" } : current));
+      }
+
+      setBackupRefreshKey((value) => value + 1);
+    };
+
+    window.addEventListener(MONITORING_SCHEDULED_BACKUP_EVENT, handleScheduledBackup);
+
+    return () => {
+      window.removeEventListener(MONITORING_SCHEDULED_BACKUP_EVENT, handleScheduledBackup);
+    };
+  }, [showBackup]);
 
   React.useEffect(() => {
     if (!showAudit) {
@@ -955,13 +1085,11 @@ export default function AdminSettings() {
       });
       setBackupRefreshKey((value) => value + 1);
 
-      showSuccessToast({
-        title: "Backup created",
-        description:
-          createdBackup?.name
-            ? `${createdBackup.name} was saved successfully.`
-            : response?.data?.message || "Database backup created successfully.",
-      });
+      showSuccessToast(
+        createdBackup?.name
+          ? `${createdBackup.name} was saved successfully.`
+          : response?.data?.message || "Database backup created successfully."
+      );
     } catch (error) {
       const message = error?.response?.data?.message || "Unable to create database backup.";
       setBackupStatus({ type: "error", text: message });
@@ -971,6 +1099,85 @@ export default function AdminSettings() {
       });
     } finally {
       setBackupCreating(false);
+    }
+  };
+
+  const handleSaveBackupSchedule = async (enabled, scheduledForInputValue, frequencyValue) => {
+    const nextEnabled = !!enabled;
+    const nextScheduledForInput = String(scheduledForInputValue ?? "").trim();
+    const nextFrequency = String(frequencyValue ?? DEFAULT_BACKUP_SCHEDULE.frequency).trim().toLowerCase() || "once";
+
+    if (nextEnabled && !nextScheduledForInput) {
+      const message = "Choose a date and time before scheduling an automatic backup.";
+      setBackupStatus({ type: "error", text: message });
+      showErrorToast({
+        title: "Schedule not saved",
+        description: message,
+      });
+      return;
+    }
+
+    const scheduledFor = nextEnabled ? parseDateTimeLocalInput(nextScheduledForInput) : "";
+    if (nextEnabled && !scheduledFor) {
+      const message = "Enter a valid future date and time for the automatic backup.";
+      setBackupStatus({ type: "error", text: message });
+      showErrorToast({
+        title: "Schedule not saved",
+        description: message,
+      });
+      return;
+    }
+
+    if (nextEnabled) {
+      const scheduledTimestamp = Date.parse(scheduledFor);
+      if (!Number.isFinite(scheduledTimestamp) || scheduledTimestamp <= Date.now()) {
+        const message = "Choose a future date and time for the automatic backup.";
+        setBackupStatus({ type: "error", text: message });
+        showErrorToast({
+          title: "Schedule not saved",
+          description: message,
+        });
+        return;
+      }
+    }
+
+    setBackupScheduleSaving(true);
+    setBackupStatus({ type: "", text: "" });
+
+    try {
+      const response = await saveBackupSchedule({
+        enabled: nextEnabled,
+        frequency: nextFrequency,
+        scheduled_for: scheduledFor,
+      });
+      const nextSchedule = normalizeBackupSchedule(response?.data?.schedule);
+      setBackupSchedule(nextSchedule);
+      setBackupScheduleEnabled(nextSchedule.enabled);
+      setBackupScheduleFrequency(nextSchedule.frequency);
+      setBackupScheduledForInput(toDateTimeLocalInput(nextSchedule.scheduled_for));
+
+      const frequencyLabel = getBackupScheduleFrequencyLabel(nextSchedule.frequency);
+      const message = nextSchedule.enabled
+        ? response?.data?.message ||
+          `${frequencyLabel} automatic backup scheduled for ${formatDateTime(nextSchedule.scheduled_for)}.`
+        : response?.data?.message || "Automatic backup schedule cleared.";
+      setBackupStatus({ type: "success", text: message });
+
+      showSuccessToast({
+        title: nextSchedule.enabled ? "Automatic backup scheduled" : "Automatic backup cleared",
+        description: nextSchedule.enabled
+          ? `${frequencyLabel} backup will run next on ${formatDateTime(nextSchedule.scheduled_for)}.`
+          : "No automatic backup is scheduled right now.",
+      });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to save the automatic backup schedule.";
+      setBackupStatus({ type: "error", text: message });
+      showErrorToast({
+        title: "Schedule not saved",
+        description: message,
+      });
+    } finally {
+      setBackupScheduleSaving(false);
     }
   };
 
@@ -1081,7 +1288,18 @@ export default function AdminSettings() {
   const handleDeleteBackup = async (filename) => {
     const confirmation = await showDangerConfirmDialog({
       title: "Delete this backup?",
-      text: `${filename} will be removed from backup storage.`,
+      text: `${filename} will be removed from backup storage. Type delete to confirm.`,
+      input: "text",
+      inputPlaceholder: "Type delete",
+      inputAttributes: {
+        autocapitalize: "off",
+        autocorrect: "off",
+        spellcheck: "false",
+      },
+      inputValidator: (value) =>
+        String(value ?? "").trim().toLowerCase() === "delete"
+          ? undefined
+          : "Type delete to confirm this backup deletion.",
       confirmButtonText: "Delete backup",
     });
 
@@ -1458,6 +1676,129 @@ export default function AdminSettings() {
 
                         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                           <div className="mb-4">
+                            <h4 className="text-sm font-semibold text-slate-800">Schedule Automatic Backup</h4>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Choose when automatic SQL backups should run. The app checks for due schedules about once
+                              a minute while users are active.
+                            </p>
+                          </div>
+
+                          <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={backupScheduleEnabled}
+                              onChange={(event) => {
+                                setBackupScheduleEnabled(event.target.checked);
+                              }}
+                              disabled={backupScheduleSaving}
+                              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-slate-800">Enable automatic backup</div>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                                When enabled, the next backup will be created automatically at the chosen time.
+                              </p>
+                            </div>
+                          </label>
+
+                          <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto_auto] md:items-end">
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Repeat
+                              </label>
+                              <select
+                                value={backupScheduleFrequency}
+                                onChange={(event) => setBackupScheduleFrequency(event.target.value)}
+                                disabled={backupScheduleSaving}
+                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {BACKUP_SCHEDULE_FREQUENCY_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Backup date and time
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={backupScheduledForInput}
+                                min={toDateTimeLocalInput(new Date(Date.now() + 60 * 1000))}
+                                onChange={(event) => setBackupScheduledForInput(event.target.value)}
+                                disabled={backupScheduleSaving}
+                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleSaveBackupSchedule(
+                                  backupScheduleEnabled,
+                                  backupScheduledForInput,
+                                  backupScheduleFrequency
+                                )
+                              }
+                              disabled={backupScheduleSaving}
+                              className="inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {backupScheduleSaving ? "Saving..." : "Save Schedule"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveBackupSchedule(false, "", backupScheduleFrequency)}
+                              disabled={backupScheduleSaving}
+                              className="inline-flex items-center justify-center rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              Clear
+                            </button>
+                          </div>
+
+                          <p className="mt-3 text-xs leading-5 text-slate-500">
+                            {getBackupScheduleFrequencyHelper(backupScheduleFrequency)}
+                          </p>
+
+                          <div className="mt-4 space-y-2 text-xs text-slate-500">
+                            <p>
+                              Repeat:{" "}
+                              <span className="font-medium text-slate-700">
+                                {backupSchedule.enabled
+                                  ? getBackupScheduleFrequencyLabel(backupSchedule.frequency)
+                                  : "Not scheduled"}
+                              </span>
+                            </p>
+                            <p>
+                              Next automatic backup:{" "}
+                              <span className="font-medium text-slate-700">
+                                {backupSchedule.enabled && backupSchedule.scheduled_for
+                                  ? formatDateTime(backupSchedule.scheduled_for)
+                                  : "Not scheduled"}
+                              </span>
+                            </p>
+                            <p>
+                              Last automatic attempt:{" "}
+                              <span className="font-medium text-slate-700">
+                                {backupSchedule.last_attempt_at
+                                  ? formatDateTime(backupSchedule.last_attempt_at)
+                                  : "No automatic backup has run yet."}
+                              </span>
+                            </p>
+                          </div>
+
+                          {backupSchedule.last_attempt_status === "error" && backupSchedule.last_attempt_message ? (
+                            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
+                              <div>{backupSchedule.last_attempt_message}</div>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                          <div className="mb-4">
                             <h4 className="text-sm font-semibold text-slate-800">Export Live Table Data</h4>
                             <p className="mt-1 text-xs leading-5 text-slate-500">
                               Export a single database table in CSV, JSON, or import-ready SQL format.
@@ -1558,7 +1899,8 @@ export default function AdminSettings() {
                             <div>
                               <h4 className="text-sm font-semibold text-slate-800">Recent Backups</h4>
                               <p className="mt-1 text-xs text-slate-500">
-                                Download or remove stored SQL snapshots.
+                                Download or remove stored SQL snapshots. The newest files stay at the top and the list
+                                scrolls when there are many backups.
                               </p>
                             </div>
                             <button
@@ -1576,7 +1918,7 @@ export default function AdminSettings() {
                               No backup files stored yet.
                             </div>
                           ) : (
-                            <div className="space-y-3">
+                            <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
                               {backupFiles.map((backup) => (
                                 <div
                                   key={backup.name}
@@ -1586,7 +1928,7 @@ export default function AdminSettings() {
                                     <div className="min-w-0">
                                       <div className="truncate text-sm font-medium text-slate-800">{backup.name}</div>
                                       <p className="mt-1 text-xs text-slate-500">
-                                        {formatDateTime(backup.created_at)} • {formatBytes(backup.size_bytes)}
+                                        {formatDateTime(backup.created_at)} {" • "} {formatBytes(backup.size_bytes)}
                                       </p>
                                     </div>
 

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/account_status_helpers.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -126,7 +127,7 @@ function buildProfileImageSelect(PDO $conn, string $alias = 'profile_image'): st
     $clientExpr = $hasClientProfileImage ? 'c.Profile_Image' : 'NULL';
     $userExpr = $hasUserProfileImage ? 'u.Profile_Image' : 'NULL';
 
-    return "COALESCE({$userExpr}, {$clientExpr}) AS {$alias},";
+    return "COALESCE({$userExpr}, {$clientExpr}) AS {$alias}";
 }
 
 function buildGovernmentFinancialDetails(array $accountsByType): array {
@@ -242,8 +243,10 @@ function mapUserRow(array $row): array {
         'employee_sss_account_number' => $sssAccount,
         'employee_pagibig_account_number' => $pagibigAccount,
         'employee_philhealth_account_number' => $philhealthAccount,
-        'employee_status_id' => isset($row['client_status_id']) ? (int)$row['client_status_id'] : null,
-        'employee_status' => $row['client_status_name'] ?? null,
+        'employee_status_id' => isset($row['employment_status_id']) && $row['employment_status_id'] !== null
+            ? (int)$row['employment_status_id']
+            : (isset($row['client_status_id']) ? (int)$row['client_status_id'] : null),
+        'employee_status' => $row['employment_status_name'] ?? $row['client_status_name'] ?? null,
         'employee_position' => $employeePosition,
         'employee_specialization_type_id' => $employeeSpecializationId,
         'employee_specialization_type_name' => $employeeSpecializationName,
@@ -298,6 +301,7 @@ try {
     $sessionUser = $sessionUser ?? monitoring_require_auth();
 
     ensureEmployeeSpecializationSchema($conn);
+    monitoring_ensure_user_employment_status_column($conn);
     $profileImageSelect = buildProfileImageSelect($conn);
     $canViewAllUsers = monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
     $whereSql = '';
@@ -311,8 +315,9 @@ try {
         'SELECT u.User_id AS id,
                 u.Username AS username,
                 u.Email AS email,
-                ' . $profileImageSelect . '
+                ' . $profileImageSelect . ',
                 u.Role_id AS role_id,
+                u.Employment_status_id AS employment_status_id,
                 r.Role_name AS role,
                 c.Client_ID AS client_id,
                 c.First_name AS client_first_name,
@@ -322,6 +327,7 @@ try {
                 c.Phone AS client_phone,
                 c.Status_id AS client_status_id,
                 s.Status_name AS client_status_name,
+                es.Status_name AS employment_status_name,
                 u.first_name AS profile_first_name,
                 u.middle_name AS profile_middle_name,
                 u.last_name AS profile_last_name,
@@ -334,6 +340,7 @@ try {
                 u.philhealth_account_number AS profile_philhealth_account_number
          FROM user u
          LEFT JOIN role r ON r.Role_id = u.Role_id
+         LEFT JOIN status es ON es.Status_id = u.Employment_status_id
          LEFT JOIN client c ON c.User_id = u.User_id
          LEFT JOIN status s ON s.Status_id = c.Status_id
          LEFT JOIN specialization_type st ON st.specialization_type_ID = u.specialization_type_ID

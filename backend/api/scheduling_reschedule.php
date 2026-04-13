@@ -148,6 +148,12 @@ try {
     }
 
     $schedulingId = isset($data['scheduling_id']) ? (int)$data['scheduling_id'] : 0;
+    if ($schedulingId <= 0 && isset($data['consultation_id'])) {
+        $schedulingId = (int)$data['consultation_id'];
+    }
+    if ($schedulingId <= 0 && isset($data['Consultation_ID'])) {
+        $schedulingId = (int)$data['Consultation_ID'];
+    }
     if ($schedulingId <= 0 && isset($data['Scheduling_ID'])) {
         $schedulingId = (int)$data['Scheduling_ID'];
     }
@@ -225,7 +231,7 @@ try {
     }
 
     $currentStmt = $conn->prepare(
-        'SELECT s.Scheduling_ID,
+        'SELECT s.Consultation_ID,
                 s.Client_ID,
                 s.Status_ID,
                 s.Description,
@@ -233,7 +239,7 @@ try {
                 st.Status_name
          FROM consultation s
          LEFT JOIN status st ON st.Status_id = s.Status_ID
-         WHERE s.Scheduling_ID = :id
+         WHERE s.Consultation_ID = :id
          LIMIT 1'
     );
     $currentStmt->execute([':id' => $schedulingId]);
@@ -252,10 +258,10 @@ try {
     }
 
     $conflictStmt = $conn->prepare(
-        'SELECT s.Scheduling_ID
+        'SELECT s.Consultation_ID
          FROM consultation s
          LEFT JOIN status st ON st.Status_id = s.Status_ID
-         WHERE s.Scheduling_ID <> :id
+         WHERE s.Consultation_ID <> :id
            AND s.Date = :date
            AND s.Description LIKE :time_like
            AND (
@@ -288,7 +294,7 @@ try {
              " . quoteIdentifier($actionColumn) . " = NULL";
     }
     $updateSql .= '
-         WHERE Scheduling_ID = :id';
+         WHERE Consultation_ID = :id';
     $updateStmt = $conn->prepare($updateSql);
     $updateStmt->execute([
         ':date' => $date,
@@ -303,7 +309,9 @@ try {
         'status_reset' => $statusKey !== 'pending',
         'scheduling' => [
             'id' => $schedulingId,
+            'Consultation_ID' => $schedulingId,
             'Scheduling_ID' => $schedulingId,
+            'consultation_id' => $schedulingId,
             'Client_ID' => $resolvedClientId,
             'client_id' => $resolvedClientId,
             'Date' => $date,

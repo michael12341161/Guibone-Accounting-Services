@@ -314,6 +314,40 @@ html.dark table {
   color: var(--theme-text-secondary);
 }
 
+.watchlist-selected-row {
+  background-color: #ffffff !important;
+}
+
+.watchlist-selected-row:hover {
+  background-color: #ffffff !important;
+}
+
+.watchlist-selected-row td {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
+.watchlist-selected-row td:first-child {
+  box-shadow: inset 3px 0 0 #94a3b8;
+}
+
+.watchlist-open-button {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.watchlist-open-button:hover {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.watchlist-open-button-selected {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #94a3b8 !important;
+}
+
 html.dark .fc-theme-standard td,
 html.dark .fc-theme-standard th {
   border-color: var(--theme-border);

@@ -86,6 +86,68 @@ function resolveAppointmentActionColumn(PDO $conn): ?string {
     return null;
 }
 
+function processingDocumentCatalog(): array {
+    return [
+        'business_permit' => 'Business Permit',
+        'dti' => 'DTI',
+        'sec' => 'SEC',
+        'lgu' => 'LGU',
+    ];
+}
+
+function normalizeProcessingDocumentKey(string $value): string {
+    $normalized = strtolower(trim($value));
+    $normalized = preg_replace('/[^a-z0-9]+/', '_', $normalized);
+    $normalized = trim((string)$normalized, '_');
+
+    if ($normalized === 'businesspermit') {
+        return 'business_permit';
+    }
+
+    return $normalized;
+}
+
+function readDescriptionMetaLines(string $text, string $key): array {
+    $source = trim($text);
+    if ($source === '') {
+        return [];
+    }
+
+    $escapedKey = preg_quote($key, '/');
+    if (!preg_match_all('/^\s*\[' . $escapedKey . '\]\s*([^\r\n]*)\s*$/im', $source, $matches)) {
+        return [];
+    }
+
+    return array_values(array_filter(array_map(static function ($value) {
+        return trim((string)$value);
+    }, $matches[1]), static function ($value) {
+        return $value !== '';
+    }));
+}
+
+function extractProcessingDocuments(string $description): array {
+    $catalog = processingDocumentCatalog();
+    $resolved = [];
+    $rawValues = array_merge(
+        readDescriptionMetaLines($description, 'Processing_Document'),
+        readDescriptionMetaLines($description, 'Processing_Documents')
+    );
+
+    foreach ($rawValues as $rawValue) {
+        $parts = preg_split('/\s*,\s*/', $rawValue) ?: [];
+        foreach ($parts as $part) {
+            $key = normalizeProcessingDocumentKey((string)$part);
+            if ($key === '' || !isset($catalog[$key]) || isset($resolved[$key])) {
+                continue;
+            }
+
+            $resolved[$key] = $catalog[$key];
+        }
+    }
+
+    return $resolved;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     respond(405, ['success' => false, 'message' => 'Method not allowed']);
 }
@@ -272,6 +334,7 @@ try {
         if ($description === '') {
             $description = "[Service] {$serviceName}";
         }
+        $processingDocuments = extractProcessingDocuments($description);
         foreach ($attachmentList as $attachmentItem) {
             $path = isset($attachmentItem['path']) ? trim((string)$attachmentItem['path']) : '';
             if ($path !== '' && strpos($description, "[Attachment] {$path}") === false) {
@@ -298,6 +361,8 @@ try {
             'service' => $serviceName,
             'service_name' => $serviceName,
             'Service_name' => $serviceName,
+            'processing_documents' => array_keys($processingDocuments),
+            'processing_document_labels' => array_values($processingDocuments),
 
             'date' => $date,
             'Date' => $date,

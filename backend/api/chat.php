@@ -272,6 +272,69 @@ function fullNameFromRow(array $row): string
     return trim((string)($row['username'] ?? 'Unknown User'));
 }
 
+function chatRoleSortValue($roleId): int
+{
+    switch ((int)$roleId) {
+        case 1:
+            return 1;
+        case 2:
+            return 2;
+        case 3:
+            return 3;
+        case 4:
+            return 4;
+        default:
+            return 5;
+    }
+}
+
+function chatUserActivityTimestamp(array $user): int
+{
+    $lastMessageAt = trim((string)($user['last_message_at'] ?? ''));
+    if ($lastMessageAt === '') {
+        return 0;
+    }
+
+    $timestamp = strtotime($lastMessageAt);
+    return $timestamp === false ? 0 : $timestamp;
+}
+
+function compareChatUsers(array $left, array $right): int
+{
+    $leftUnread = max(0, (int)($left['unread_count'] ?? 0));
+    $rightUnread = max(0, (int)($right['unread_count'] ?? 0));
+    if ($leftUnread !== $rightUnread) {
+        return $rightUnread <=> $leftUnread;
+    }
+
+    $leftOnline = !empty($left['is_online']) ? 1 : 0;
+    $rightOnline = !empty($right['is_online']) ? 1 : 0;
+    if ($leftOnline !== $rightOnline) {
+        return $rightOnline <=> $leftOnline;
+    }
+
+    $leftActivity = chatUserActivityTimestamp($left);
+    $rightActivity = chatUserActivityTimestamp($right);
+    if ($leftActivity !== $rightActivity) {
+        return $rightActivity <=> $leftActivity;
+    }
+
+    $leftRoleSort = chatRoleSortValue($left['role_id'] ?? null);
+    $rightRoleSort = chatRoleSortValue($right['role_id'] ?? null);
+    if ($leftRoleSort !== $rightRoleSort) {
+        return $leftRoleSort <=> $rightRoleSort;
+    }
+
+    $leftName = strtolower(trim((string)($left['full_name'] ?? $left['username'] ?? '')));
+    $rightName = strtolower(trim((string)($right['full_name'] ?? $right['username'] ?? '')));
+    $nameComparison = strcmp($leftName, $rightName);
+    if ($nameComparison !== 0) {
+        return $nameComparison;
+    }
+
+    return ((int)($left['id'] ?? 0)) <=> ((int)($right['id'] ?? 0));
+}
+
 function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []): array
 {
     $allowedRoleIds = chatAllowedPartnerRoleIds($sessionUser);
@@ -361,7 +424,7 @@ function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []):
     $stmt->execute([':current_user_id' => (int)$sessionUser['id']]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    return array_map(function (array $row) use ($presenceMap, $currentUserId): array {
+    $users = array_map(function (array $row) use ($presenceMap, $currentUserId): array {
         $userId = (int)$row['id'];
         $lastSeenTimestamp = isset($presenceMap[(string)$userId]) ? (int)$presenceMap[(string)$userId] : 0;
         $isOnline = $lastSeenTimestamp > 0;
@@ -385,6 +448,10 @@ function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []):
             'unread_count' => max(0, (int)($row['unread_count'] ?? 0)),
         ];
     }, $rows);
+
+    usort($users, 'compareChatUsers');
+
+    return $users;
 }
 
 function fetchConversation(PDO $conn, int $currentUserId, int $partnerId): array

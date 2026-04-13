@@ -58,7 +58,13 @@ export function Modal({
   if (!rendered) return null;
 
   const sizeClasses =
-    size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
+    size === "sm"
+      ? "max-w-md"
+      : size === "lg"
+        ? "max-w-3xl"
+        : size === "xl"
+          ? "max-w-5xl"
+          : "max-w-xl";
 
   const handleOverlayClick = () => {
     if (!closeOnOverlayClick) return;

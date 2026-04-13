@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/account_status_helpers.php';
 
 function respond($code, $payload) {
   http_response_code($code);
@@ -25,6 +26,17 @@ if ($code === '' || !preg_match('/^\d{6}$/', $code)) {
 }
 
 try {
+  monitoring_ensure_user_employment_status_column($conn);
+  $accountAccess = monitoring_fetch_account_access_status_by_email($conn, $email);
+  if (!empty($accountAccess['is_inactive'])) {
+    unset($_SESSION['pw_reset']);
+    respond(403, [
+      'success' => false,
+      'message' => monitoring_get_inactive_account_message(),
+      'inactive_account' => true,
+    ]);
+  }
+
   $sess = isset($_SESSION['pw_reset']) && is_array($_SESSION['pw_reset']) ? $_SESSION['pw_reset'] : null;
   if (!$sess || !isset($sess['email'], $sess['code_hash'], $sess['expires_at'])) {
     respond(400, ['success' => false, 'message' => 'Invalid or expired code.']);

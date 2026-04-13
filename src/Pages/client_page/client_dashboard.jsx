@@ -551,7 +551,7 @@ export default function ClientDashboard({ user, onLogout }) {
  
   const location = useLocation();
   const isDashboardRoute = location.pathname === "/client" || location.pathname === "/client/";
-  const canViewDashboard = hasModuleAccess(user, "client-account", permissions);
+  const canViewDashboard = hasModuleAccess(user, "dashboard", permissions);
 
 
 
@@ -916,7 +916,7 @@ export default function ClientDashboard({ user, onLogout }) {
 
       {/* Default dashboard content when at /client */}
       {(location.pathname === "/client" || location.pathname === "/client/") && (
-        <ModuleAccessGate moduleKey="client-account">
+        <ModuleAccessGate moduleKey="dashboard">
           <>
             <DashboardHero user={user} />
 
@@ -1188,6 +1188,4 @@ export default function ClientDashboard({ user, onLogout }) {
     </ClientLayout>
   );
 }
-
-
 

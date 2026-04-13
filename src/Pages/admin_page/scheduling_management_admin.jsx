@@ -9,7 +9,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { formatDate } from "../../utils/helpers";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
-import { useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import {
   DEFAULT_CONSULTATION_TIME_SLOTS,
   getConfiguredConsultationTimesForDate,
@@ -49,6 +49,10 @@ const formatActionBy = (row) => {
   const display = String(row?.actionBy || "").trim();
   return display || "-";
 };
+
+function canUpdateConsultationDecision(status) {
+  return normalizeStatus(status).toLowerCase() === "pending";
+}
 
 function canRescheduleConsultation(status) {
   const value = normalizeStatus(status).toLowerCase();
@@ -234,13 +238,26 @@ export default function SchedulingManagementAdmin() {
       const arr = Array.isArray(list) ? list : [];
 
       const extracted = arr.map((row) => {
-        const schedulingId = row.Scheduling_ID ?? row.scheduling_id ?? row.SchedulingId ?? row.id;
+        const schedulingId =
+          row.Consultation_ID ??
+          row.consultation_id ??
+          row.Scheduling_ID ??
+          row.scheduling_id ??
+          row.SchedulingId ??
+          row.id;
         const clientId = row.Client_ID ?? row.client_id ?? null;
 
         return {
           schedulingId,
           clientId,
           clientName: row.Client_name ?? row.client_name ?? row.clientName ?? "(Unknown client)",
+          service:
+            row.Consultation_Service ??
+            row.consultation_service ??
+            row.Name ??
+            row.service ??
+            row.service_name ??
+            "Consultation",
           date: row.Date ?? row.date ?? "",
           time: row.Time ?? row.time ?? "",
           meetingType: row.Appointment_Type ?? row.appointment_type ?? row.meetingType ?? "",
@@ -324,6 +341,19 @@ export default function SchedulingManagementAdmin() {
   );
 
   const onUpdateStatus = async (schedulingId, status) => {
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+    const targetRow = (rows || []).find(
+      (row) => String(row.schedulingId) === String(schedulingId)
+    );
+    if (
+      (normalizedStatus === "approved" || normalizedStatus === "declined") &&
+      targetRow &&
+      !canUpdateConsultationDecision(targetRow.status)
+    ) {
+      showErrorToast("Only pending consultations can be approved or declined.");
+      return;
+    }
+
     try {
       setUpdatingId(schedulingId);
       setError("");
@@ -344,9 +374,15 @@ export default function SchedulingManagementAdmin() {
       }
 
       await refresh({ silent: true });
+      showSuccessToast(
+        res?.data?.message ||
+          (normalizedStatus === "approved"
+            ? "Consultation approved successfully."
+            : "Consultation declined successfully.")
+      );
     } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Failed to update consultation.");
       await refresh({ silent: true });
+      showErrorToast(e?.response?.data?.message || e?.message || "Failed to update consultation.");
     } finally {
       setUpdatingId(null);
     }
@@ -368,6 +404,7 @@ export default function SchedulingManagementAdmin() {
     return normalized.filter((row) => {
       return (
         String(row.clientName || "").toLowerCase().includes(q) ||
+        String(row.service || "").toLowerCase().includes(q) ||
         String(row.date || "").toLowerCase().includes(q) ||
         String(row.time || "").toLowerCase().includes(q) ||
         String(row.meetingType || "").toLowerCase().includes(q) ||
@@ -430,6 +467,7 @@ export default function SchedulingManagementAdmin() {
         schedulingId: row.schedulingId,
         clientId: row.clientId,
         client: row.clientName,
+        service: row.service || "Consultation",
         date: row.date || "-",
         time: row.time || "-",
         type: row.meetingType || "-",
@@ -442,20 +480,31 @@ export default function SchedulingManagementAdmin() {
     [pagedRows]
   );
 
+  const confirmTargetRow = useMemo(
+    () =>
+      normalized.find(
+        (row) => String(row.schedulingId) === String(confirmAction?.id)
+      ) || null,
+    [confirmAction?.id, normalized]
+  );
+  const canConfirmDecision =
+    Boolean(confirmAction) && canUpdateConsultationDecision(confirmTargetRow?.status);
+
   const visibleRowActionCount = [canApproveConsultations, canDeclineConsultations, canRescheduleConsultations].filter(Boolean).length;
   const hasRowActions = visibleRowActionCount > 0;
   const actionColumnWidth =
     visibleRowActionCount >= 3 ? "12%" : visibleRowActionCount === 2 ? "10%" : "8%";
 
   const columns = [
-    { key: "client", header: "Client", width: "20%" },
+    { key: "client", header: "Client", width: "16%" },
+    { key: "service", header: "Service", width: "14%" },
     { key: "date", header: "Date", width: "12%" },
-    { key: "time", header: "Time", width: "11%" },
-    { key: "type", header: "Type", width: "11%" },
+    { key: "time", header: "Time", width: "10%" },
+    { key: "type", header: "Type", width: "10%" },
     {
       key: "notes",
       header: "Notes",
-      width: "26%",
+      width: "20%",
       render: (value) => <div className="line-clamp-2">{value}</div>,
     },
     {
@@ -482,8 +531,7 @@ export default function SchedulingManagementAdmin() {
             align: "right",
             width: actionColumnWidth,
             render: (_, row) => {
-              const status = normalizeStatus(row.status).toLowerCase();
-              const isPending = status === "pending";
+              const isPending = canUpdateConsultationDecision(row.status);
               const disabled = updatingId === row.id;
               const canRescheduleRow =
                 canRescheduleConsultations &&
@@ -518,7 +566,7 @@ export default function SchedulingManagementAdmin() {
                       variant="success"
                       aria-label={`Approve ${row.client}`}
                       title={isPending ? "Approve" : "Only pending requests can be approved"}
-                      disabled={disabled || !isPending || status === "approved"}
+                      disabled={disabled || !isPending}
                       onClick={() => {
                         setConfirmAction({ id: row.id, status: "Approved" });
                         setConfirmOpen(true);
@@ -536,7 +584,7 @@ export default function SchedulingManagementAdmin() {
                       variant="secondary"
                       aria-label={`Decline ${row.client}`}
                       title={isPending ? "Decline" : "Only pending requests can be declined"}
-                      disabled={disabled || !isPending || status === "declined"}
+                      disabled={disabled || !isPending}
                       onClick={() => {
                         setConfirmAction({ id: row.id, status: "Declined" });
                         setConfirmOpen(true);
@@ -586,6 +634,7 @@ export default function SchedulingManagementAdmin() {
       schedulingId: row.schedulingId ?? row.id,
       clientId: row.clientId,
       clientName: row.client,
+      service: row.service || "Consultation",
       date: row.date && row.date !== "-" ? row.date : "",
       time: row.time && row.time !== "-" ? String(row.time).slice(0, 5) : "",
       status: row.status,
@@ -862,12 +911,12 @@ export default function SchedulingManagementAdmin() {
             <Button
               type="button"
               variant={String(confirmAction?.status).toLowerCase() === "approved" ? "success" : "danger"}
-              disabled={!!updatingId || !confirmAction}
+              disabled={!!updatingId || !confirmAction || !canConfirmDecision}
               onClick={async () => {
                 const action = confirmAction;
+                if (!action || !canConfirmDecision) return;
                 setConfirmOpen(false);
                 setConfirmAction(null);
-                if (!action) return;
                 await onUpdateStatus(action.id, action.status);
               }}
             >
@@ -877,9 +926,13 @@ export default function SchedulingManagementAdmin() {
         }
       >
         <p className="text-sm text-slate-700">
-          {String(confirmAction?.status).toLowerCase() === "approved"
-            ? "Approve this consultation request?"
-            : "Decline this consultation request?"}
+          {canConfirmDecision
+            ? String(confirmAction?.status).toLowerCase() === "approved"
+              ? "Approve this consultation request?"
+              : "Decline this consultation request?"
+            : `This consultation request has already been ${String(
+                normalizeStatus(confirmTargetRow?.status || "processed")
+              ).toLowerCase()} and can no longer be updated.`}
         </p>
       </Modal>
 
@@ -898,13 +951,21 @@ export default function SchedulingManagementAdmin() {
           ) : null}
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-4">
               <div>
                 <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Client
                 </div>
                 <div className="mt-1 text-slate-900">
                   {rescheduleTarget?.clientName || "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Service
+                </div>
+                <div className="mt-1 text-slate-900">
+                  {rescheduleTarget?.service || "Consultation"}
                 </div>
               </div>
               <div>

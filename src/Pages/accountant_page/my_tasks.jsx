@@ -13,13 +13,13 @@ import {
   parseStepCompletionTimestamps,
   parseStepRemarks,
   parseStepRemarkTimestamps,
-  setStepCompletionTimestamp,
   setStepRemark,
   setStepRemarkTimestamp,
 } from "../../utils/task_step_metadata";
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
 const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
+const STEP_PENDING_RE = /^\s*\[StepPending\]\s*([^\r\n]*)\s*$/i;
 const PROGRESS_RE = /^\s*\[Progress\]\s*(\d{1,3})\s*$/i;
 const ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
@@ -99,12 +99,12 @@ const parseTaskSteps = (descriptionRaw) => {
   }));
 };
 
-const parseCompletedStepNumbers = (descriptionRaw) => {
+const parseTaggedStepNumbers = (descriptionRaw, matcher) => {
   const lines = String(descriptionRaw || "").split(/\r?\n/);
   const set = new Set();
 
   for (const line of lines) {
-    const match = String(line || "").match(STEP_DONE_RE);
+    const match = String(line || "").match(matcher);
     if (!match) continue;
     const values = String(match[1] || "")
       .split(/[,\s]+/)
@@ -115,6 +115,9 @@ const parseCompletedStepNumbers = (descriptionRaw) => {
 
   return set;
 };
+
+const parseCompletedStepNumbers = (descriptionRaw) => parseTaggedStepNumbers(descriptionRaw, STEP_DONE_RE);
+const parsePendingStepNumbers = (descriptionRaw) => parseTaggedStepNumbers(descriptionRaw, STEP_PENDING_RE);
 
 const extractProgress = (descriptionRaw) => {
   const lines = String(descriptionRaw || "").split(/\r?\n/);
@@ -128,8 +131,8 @@ const extractProgress = (descriptionRaw) => {
   return 0;
 };
 
-const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
-  const numbers = Array.from(completedSet || [])
+const setTaggedStepNumbers = (descriptionRaw, matcher, tag, stepSet) => {
+  const numbers = Array.from(stepSet || [])
     .map((n) => parseInt(n, 10))
     .filter((n) => Number.isInteger(n) && n > 0)
     .sort((a, b) => a - b);
@@ -139,9 +142,9 @@ const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
   let written = false;
 
   for (const line of lines) {
-    if (STEP_DONE_RE.test(String(line || ""))) {
+    if (matcher.test(String(line || ""))) {
       if (!written && numbers.length > 0) {
-        nextLines.push(`[StepDone] ${numbers.join(",")}`);
+        nextLines.push(`[${tag}] ${numbers.join(",")}`);
         written = true;
       }
       continue;
@@ -153,11 +156,14 @@ const setCompletedStepNumbers = (descriptionRaw, completedSet) => {
     while (nextLines.length && !String(nextLines[nextLines.length - 1] || "").trim()) {
       nextLines.pop();
     }
-    nextLines.push(`[StepDone] ${numbers.join(",")}`);
+    nextLines.push(`[${tag}] ${numbers.join(",")}`);
   }
 
   return nextLines.join("\n").trim();
 };
+
+const setPendingStepNumbers = (descriptionRaw, pendingSet) =>
+  setTaggedStepNumbers(descriptionRaw, STEP_PENDING_RE, "StepPending", pendingSet);
 
 const setProgress = (descriptionRaw, progressRaw) => {
   const progress = Math.max(0, Math.min(100, parseInt(progressRaw, 10) || 0));
@@ -191,6 +197,21 @@ const roleCanCompleteStep = (stepAssignee, actorRole) => {
 
 const getAssignedStepsForRole = (steps, actorRole) =>
   (Array.isArray(steps) ? steps : []).filter((step) => roleCanCompleteStep(step?.assignee, actorRole));
+
+const getNextStepIndexForAccountant = (steps, doneSet, pendingSet) => {
+  const taskSteps = Array.isArray(steps) ? steps : [];
+  const completedSteps = doneSet instanceof Set ? doneSet : new Set(doneSet || []);
+  const pendingSteps = pendingSet instanceof Set ? pendingSet : new Set(pendingSet || []);
+
+  for (let i = 0; i < taskSteps.length; i++) {
+    const stepNumber = i + 1;
+    if (completedSteps.has(stepNumber)) continue;
+    if (pendingSteps.has(stepNumber)) continue;
+    return i;
+  }
+
+  return taskSteps.length;
+};
 
 const formatStepNumberLabel = (steps) => {
   const numbers = (Array.isArray(steps) ? steps : [])
@@ -291,7 +312,7 @@ const stripStepsFromPreview = (text) => {
 const cleanDescription = (desc) => {
   let d = String(desc || "");
   // Strip metadata lines (do NOT persist step state in DB description)
-  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Steps|Done|StepDone|Archived|SecretaryArchived)\]\s*.*$/gim, "");
+  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Steps|Done|StepDone|StepPending|Archived|SecretaryArchived)\]\s*.*$/gim, "");
   d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   d = d.replace(/\s*\[Done\]\s*/gi, " ");
   return d.trim();
@@ -395,9 +416,8 @@ export default function MyTasks({ user }) {
   const canCheckTaskSteps = hasFeatureActionAccess(effectiveUser, "work-update", "check-steps", permissions);
   const canViewTaskUpdateHistory = hasFeatureActionAccess(effectiveUser, "work-update", "history", permissions);
   const canEditTaskUpdates = hasFeatureActionAccess(effectiveUser, "work-update", "edit", permissions);
-  const canMarkTaskDone = hasFeatureActionAccess(effectiveUser, "work-update", "mark-done", permissions);
   const canDeclineTaskUpdates = hasFeatureActionAccess(effectiveUser, "work-update", "decline", permissions);
-  const canManageStepRemarks = canViewTaskUpdateHistory && canEditTaskUpdates;
+  const canManageStepRemarks = canViewTaskUpdateHistory && (canEditTaskUpdates || canCheckTaskSteps);
 
   useEffect(() => {
     let stop = false;
@@ -436,12 +456,16 @@ export default function MyTasks({ user }) {
     const status = String(task?.status || "").trim().toLowerCase();
     const progress = getProgress(task);
     const deadlineState = getTaskDeadlineState(task);
+    const pendingReviewCount = parsePendingStepNumbers(task?.description).size;
 
     if (status === "declined" || status === "cancelled") {
       return { label: "Declined", cls: "bg-rose-50 text-rose-700 border-rose-200" };
     }
     if (status === "completed" || status === "done") {
       return { label: "Completed", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+    }
+    if (pendingReviewCount > 0) {
+      return { label: "Pending Review", cls: "bg-amber-50 text-amber-700 border-amber-200" };
     }
     if (status === "overdue" || deadlineState.isOverdue) {
       return { label: "Overdue", cls: "bg-rose-50 text-rose-700 border-rose-200" };
@@ -525,6 +549,7 @@ export default function MyTasks({ user }) {
     const taskId = Number(task?.id || 0);
     if (!taskId || !isEditingStepRemark(taskId, stepNumber)) return;
     if (parseCompletedStepNumbers(task?.description).has(stepNumber)) return;
+    if (parsePendingStepNumbers(task?.description).has(stepNumber)) return;
 
     const nextRemark = String(stepRemarkEditor?.value || "");
     let updatedDesc = setStepRemark(String(task?.description || ""), stepNumber, nextRemark);
@@ -563,23 +588,22 @@ export default function MyTasks({ user }) {
     if (!steps.length) return;
 
     const doneSet = parseCompletedStepNumbers(task?.description);
-    const nextRequiredIndex = (() => {
-      for (let i = 0; i < steps.length; i++) if (!doneSet.has(i + 1)) return i;
-      return steps.length;
-    })();
+    const pendingSet = parsePendingStepNumbers(task?.description);
+    const nextRequiredIndex = getNextStepIndexForAccountant(steps, doneSet, pendingSet);
 
     if (index !== nextRequiredIndex) return;
 
     const step = steps[index];
     if (!step) return;
     if (!roleCanCompleteStep(step.assignee, "accountant")) return;
+    if (pendingSet.has(index + 1)) return;
 
     const confirmation = await Swal.fire({
-      title: `Complete Step ${index + 1}?`,
-      text: "Are you sure you want to check this step as completed?",
+      title: `Submit Step ${index + 1}?`,
+      text: "This will send the step to admin or secretary for approval.",
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Yes, complete it",
+      confirmButtonText: "Yes, submit it",
       cancelButtonText: "Cancel",
       confirmButtonColor: "#2563eb",
       cancelButtonColor: "#64748b",
@@ -588,11 +612,10 @@ export default function MyTasks({ user }) {
     });
     if (!confirmation.isConfirmed) return;
 
-    const nextDone = new Set(doneSet);
-    nextDone.add(index + 1);
-    let updatedDesc = setCompletedStepNumbers(String(task?.description || ""), nextDone);
-    updatedDesc = setStepCompletionTimestamp(updatedDesc, index + 1, createLocalStepTimestamp());
-    const nextProgress = Math.round((nextDone.size / steps.length) * 100);
+    const nextPending = new Set(pendingSet);
+    nextPending.add(index + 1);
+    let updatedDesc = setPendingStepNumbers(String(task?.description || ""), nextPending);
+    const nextProgress = Math.round((doneSet.size / steps.length) * 100);
     updatedDesc = setProgress(updatedDesc, nextProgress);
 
     try {
@@ -601,29 +624,6 @@ export default function MyTasks({ user }) {
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Failed to update progress");
       await refreshMine();
-    }
-  };
-
-  const markDone = async (task) => {
-    if (!canMarkTaskDone) return;
-    const id = task.id;
-    if (!id) return;
-
-    const p = getProgress(task);
-    if (p < 100) {
-      setError("Progress must be 100% before marking as Done.");
-      return;
-    }
-
-    const prevStatus = task.status;
-
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: "Done" } : t)));
-    try {
-      await api.post("task_update_status.php", { task_id: id, status: "Done" });
-      await refreshMine();
-    } catch (e) {
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: prevStatus } : t)));
-      setError(e?.response?.data?.message || e?.message || "Failed to update status");
     }
   };
 
@@ -770,23 +770,24 @@ export default function MyTasks({ user }) {
             const dueRaw = t.due_date || t.deadline || meta.deadline;
             const steps = parseTaskSteps(t.description);
             const doneSet = parseCompletedStepNumbers(t.description);
+            const pendingReviewSet = parsePendingStepNumbers(t.description);
             const taskStatus = String(t.status || "").toLowerCase();
             const deadlineState = getTaskDeadlineState(t);
             const isOverdue = taskStatus === "overdue" || deadlineState.isOverdue;
             const isTaskDone = ["done", "completed"].includes(taskStatus);
             const isTaskDeclined = taskStatus === "declined";
             const accountantSteps = getAssignedStepsForRole(steps, "accountant");
-            const pendingAccountantSteps = accountantSteps.filter((step) => !doneSet.has(step.number));
-            const nextRequiredStepNumber = (() => {
-              for (let i = 0; i < steps.length; i++) {
-                if (!doneSet.has(i + 1)) return i + 1;
-              }
-              return null;
-            })();
+            const pendingReviewAccountantSteps = accountantSteps.filter(
+              (step) => pendingReviewSet.has(step.number) && !doneSet.has(step.number)
+            );
+            const pendingAccountantSteps = accountantSteps.filter(
+              (step) => !doneSet.has(step.number) && !pendingReviewSet.has(step.number)
+            );
+            const nextRequiredStepIndex = getNextStepIndexForAccountant(steps, doneSet, pendingReviewSet);
+            const nextRequiredStepNumber = nextRequiredStepIndex < steps.length ? nextRequiredStepIndex + 1 : null;
             const hasCurrentAccountantStep = pendingAccountantSteps.some((step) => step.number === nextRequiredStepNumber);
             const taskKey = getTaskKey(t);
             const cardKey = taskKey || String(idx);
-            const canUseDoneAction = canMarkTaskDone && !isTaskDone && getProgress(t) >= 100;
             const canUseDeclineAction = canDeclineTaskUpdates && !isTaskDeclined && !isTaskDone;
 
             return (
@@ -870,6 +871,8 @@ export default function MyTasks({ user }) {
                     className={`mt-3 rounded-lg border px-3 py-2 ${
                       pendingAccountantSteps.length > 0
                         ? "border-emerald-200 bg-emerald-50/80"
+                        : pendingReviewAccountantSteps.length > 0
+                          ? "border-amber-200 bg-amber-50/80"
                         : "border-slate-200 bg-slate-50/80"
                     }`}
                   >
@@ -877,33 +880,51 @@ export default function MyTasks({ user }) {
                       <div className="min-w-0">
                         <div
                           className={`text-[11px] uppercase tracking-wide ${
-                            pendingAccountantSteps.length > 0 ? "text-emerald-700" : "text-slate-500"
+                            pendingAccountantSteps.length > 0
+                              ? "text-emerald-700"
+                              : pendingReviewAccountantSteps.length > 0
+                                ? "text-amber-700"
+                                : "text-slate-500"
                           }`}
                         >
                           Assigned To You
                         </div>
                         <div
                           className={`mt-1 text-sm font-semibold ${
-                            pendingAccountantSteps.length > 0 ? "text-emerald-950" : "text-slate-700"
+                            pendingAccountantSteps.length > 0
+                              ? "text-emerald-950"
+                              : pendingReviewAccountantSteps.length > 0
+                                ? "text-amber-950"
+                                : "text-slate-700"
                           }`}
                         >
                           {pendingAccountantSteps.length > 0
                             ? pendingAccountantSteps.length === 1
                               ? `${formatStepNumberLabel(pendingAccountantSteps)} is assigned to you`
                               : `${pendingAccountantSteps.length} steps are assigned to you`
+                            : pendingReviewAccountantSteps.length > 0
+                              ? pendingReviewAccountantSteps.length === 1
+                                ? `${formatStepNumberLabel(pendingReviewAccountantSteps)} is waiting for review`
+                                : `${pendingReviewAccountantSteps.length} steps are waiting for review`
                             : accountantSteps.length === 1
                               ? "Your assigned step is already completed"
                               : "Your assigned steps are already completed"}
                         </div>
                         <div
                           className={`mt-1 text-[11px] ${
-                            pendingAccountantSteps.length > 0 ? "text-emerald-700/90" : "text-slate-500"
+                            pendingAccountantSteps.length > 0
+                              ? "text-emerald-700/90"
+                              : pendingReviewAccountantSteps.length > 0
+                                ? "text-amber-700/90"
+                                : "text-slate-500"
                           }`}
                         >
                           {pendingAccountantSteps.length > 0
                             ? hasCurrentAccountantStep
                               ? "Ready for your update now."
                               : `${formatStepNumberLabel(pendingAccountantSteps)} will open after earlier steps are done.`
+                            : pendingReviewAccountantSteps.length > 0
+                              ? "Submitted to admin or secretary for approval."
                             : `${formatStepNumberLabel(accountantSteps)} completed.`}
                         </div>
                       </div>
@@ -912,6 +933,8 @@ export default function MyTasks({ user }) {
                         className={`inline-flex h-10 min-w-[2.5rem] shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold ${
                           pendingAccountantSteps.length > 0
                             ? "bg-emerald-600 text-white shadow-sm"
+                            : pendingReviewAccountantSteps.length > 0
+                              ? "bg-amber-500 text-white shadow-sm"
                             : "border border-slate-200 bg-white text-slate-600"
                         }`}
                         title={
@@ -919,12 +942,20 @@ export default function MyTasks({ user }) {
                             ? `${pendingAccountantSteps.length} pending accountant-assigned ${
                                 pendingAccountantSteps.length === 1 ? "step" : "steps"
                               }`
+                            : pendingReviewAccountantSteps.length > 0
+                              ? `${pendingReviewAccountantSteps.length} submitted ${
+                                  pendingReviewAccountantSteps.length === 1 ? "step" : "steps"
+                                } waiting for review`
                             : `${accountantSteps.length} accountant-assigned ${accountantSteps.length === 1 ? "step" : "steps"}`
                         }
                       >
                         {pendingAccountantSteps.length > 1
                           ? pendingAccountantSteps.length
-                          : pendingAccountantSteps[0]?.number || accountantSteps[0]?.number}
+                          : pendingAccountantSteps[0]?.number ||
+                            (pendingReviewAccountantSteps.length > 1
+                              ? pendingReviewAccountantSteps.length
+                              : pendingReviewAccountantSteps[0]?.number) ||
+                            accountantSteps[0]?.number}
                       </span>
                     </div>
                   </div>
@@ -953,10 +984,18 @@ export default function MyTasks({ user }) {
                       {accountantSteps.length > 0 && (
                         <span
                           className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
-                            pendingAccountantSteps.length > 0 ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
+                            pendingAccountantSteps.length > 0
+                              ? "bg-emerald-600 text-white"
+                              : pendingReviewAccountantSteps.length > 0
+                                ? "bg-amber-500 text-white"
+                                : "bg-slate-200 text-slate-600"
                           }`}
                         >
-                          {pendingAccountantSteps.length > 0 ? pendingAccountantSteps.length : accountantSteps.length}
+                          {pendingAccountantSteps.length > 0
+                            ? pendingAccountantSteps.length
+                            : pendingReviewAccountantSteps.length > 0
+                              ? pendingReviewAccountantSteps.length
+                              : accountantSteps.length}
                         </span>
                       )}
                     </button>
@@ -981,21 +1020,6 @@ export default function MyTasks({ user }) {
                           }
                         >
                           {isTaskDeclined ? "Cancelled" : "Cancel"}
-                        </button>
-                      ) : null}
-                      {canMarkTaskDone ? (
-                        <button
-                          type="button"
-                          onClick={() => markDone(t)}
-                          disabled={!canUseDoneAction}
-                          className={`rounded-md px-2 py-1 text-[11px] font-medium border ${
-                            isTaskDone
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 cursor-not-allowed"
-                              : "border-slate-300 text-slate-600 hover:bg-slate-50"
-                          } ${!canUseDoneAction ? "opacity-60 cursor-not-allowed" : ""}`}
-                          title={isTaskDone ? "Already Done" : (getProgress(t) < 100 ? "Progress must be 100% to mark Done" : "Mark as Done")}
-                        >
-                          Done
                         </button>
                       ) : null}
                     </div>
@@ -1107,13 +1131,11 @@ export default function MyTasks({ user }) {
                     }
 
                     const doneSet = parseCompletedStepNumbers(liveTask?.description);
+                    const pendingReviewSet = parsePendingStepNumbers(liveTask?.description);
                     const completionTimestamps = parseStepCompletionTimestamps(liveTask?.description);
                     const stepRemarks = parseStepRemarks(liveTask?.description);
                     const stepRemarkTimestamps = parseStepRemarkTimestamps(liveTask?.description);
-                    const nextRequiredIndex = (() => {
-                      for (let i = 0; i < steps.length; i++) if (!doneSet.has(i + 1)) return i;
-                      return steps.length;
-                    })();
+                    const nextRequiredIndex = getNextStepIndexForAccountant(steps, doneSet, pendingReviewSet);
 
                     const taskLocked = ["done", "completed"].includes(String(liveTask?.status || "").toLowerCase());
 
@@ -1121,7 +1143,7 @@ export default function MyTasks({ user }) {
                       <div className="space-y-3">
                         <div className="text-xs text-slate-500">
                           {canCheckTaskSteps
-                            ? "Complete each step in order. You can only complete steps assigned to Accountant."
+                            ? "Check your current accountant step to submit it for admin or secretary approval. Once submitted, you can keep moving to your next accountant step while it is under review."
                             : "Step completion is disabled for your role. You can review the task details here."}
                         </div>
 
@@ -1129,12 +1151,18 @@ export default function MyTasks({ user }) {
                           {steps.map((step, i) => {
                             const stepNumber = i + 1;
                             const done = doneSet.has(stepNumber);
+                            const pendingReview = pendingReviewSet.has(stepNumber) && !done;
                             const canCompleteByOrder = i === nextRequiredIndex;
                             const isAssignedToAccountant = roleCanCompleteStep(step.assignee, "accountant");
                             const canComplete =
-                              canCheckTaskSteps && !taskLocked && !done && canCompleteByOrder && isAssignedToAccountant;
+                              canCheckTaskSteps &&
+                              !taskLocked &&
+                              !done &&
+                              !pendingReview &&
+                              canCompleteByOrder &&
+                              isAssignedToAccountant;
                             const canEditRemark =
-                              canManageStepRemarks && !taskLocked && !done && isAssignedToAccountant;
+                              canManageStepRemarks && !taskLocked && !done && !pendingReview && isAssignedToAccountant;
                             const stepRemark = canViewTaskUpdateHistory ? String(stepRemarks[stepNumber] || "").trim() : "";
                             const completionLabel = canViewTaskUpdateHistory
                               ? formatStepDateTime(completionTimestamps[stepNumber])
@@ -1147,25 +1175,39 @@ export default function MyTasks({ user }) {
                             return (
                               <div
                                 key={`step-${stepsTask.id}-${i}`}
-                                className={`flex items-start gap-3 rounded-xl border px-3 py-2 transition-colors ${done ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 bg-white"}`}
+                                className={`flex items-start gap-3 rounded-xl border px-3 py-2 transition-colors ${
+                                  done
+                                    ? "border-emerald-200 bg-emerald-50/40"
+                                    : pendingReview
+                                      ? "border-amber-200 bg-amber-50/70"
+                                      : "border-slate-200 bg-white"
+                                }`}
                               >
                                 <div className="pt-0.5">
                                   <input
                                     type="checkbox"
                                     checked={done}
-                                    disabled={taskLocked || done || !canComplete}
+                                    disabled={taskLocked || done || pendingReview || !canComplete}
                                     onChange={(e) => {
                                       if (e.target.checked) updateStep(liveTask, i, "done");
                                     }}
-                                    className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 transition-opacity ${done ? "opacity-60" : "opacity-100"}`}
+                                    className={`h-4 w-4 rounded border-slate-300 focus:ring-indigo-500/30 transition-opacity ${
+                                      done
+                                        ? "text-emerald-600 opacity-60"
+                                        : pendingReview
+                                          ? "text-amber-500 opacity-100"
+                                          : "text-indigo-600 opacity-100"
+                                    }`}
                                     aria-label={`Step ${stepNumber}`}
                                     title={
                                       !canCheckTaskSteps
                                         ? "Step completion is disabled for your role"
                                         : done
                                           ? "Step already completed"
+                                          : pendingReview
+                                            ? "Step submitted and waiting for review"
                                           : canComplete
-                                            ? `Mark Step ${stepNumber} as completed`
+                                            ? `Submit Step ${stepNumber} for approval`
                                             : !isAssignedToAccountant
                                               ? "Only accountant-assigned steps can be completed"
                                               : "This step will unlock after earlier steps are done"
@@ -1181,6 +1223,8 @@ export default function MyTasks({ user }) {
                                     </div>
                                     {done ? (
                                       <span className="text-[11px] font-medium text-emerald-700">Completed</span>
+                                    ) : pendingReview ? (
+                                      <span className="text-[11px] font-medium text-amber-700">Pending Review</span>
                                     ) : canComplete ? (
                                       <span className="text-[11px] font-medium text-indigo-700">Current</span>
                                     ) : !canCheckTaskSteps && isAssignedToAccountant ? (
@@ -1193,7 +1237,9 @@ export default function MyTasks({ user }) {
                                   </div>
 
                                   <div
-                                    className={`mt-0.5 text-sm leading-5 transition-colors ${done ? "line-through text-slate-400" : "text-slate-800"}`}
+                                    className={`mt-0.5 text-sm leading-5 transition-colors ${
+                                      done ? "line-through text-slate-400" : pendingReview ? "text-amber-950" : "text-slate-800"
+                                    }`}
                                     style={done ? { textDecorationThickness: "2px" } : undefined}
                                   >
                                     {step.text}
@@ -1202,6 +1248,10 @@ export default function MyTasks({ user }) {
                                   {done && completionLabel ? (
                                     <div className="mt-2 text-[11px] font-medium text-emerald-700">
                                       Completed on {completionLabel}
+                                    </div>
+                                  ) : pendingReview ? (
+                                    <div className="mt-2 text-[11px] font-medium text-amber-700">
+                                      Waiting for admin or secretary approval.
                                     </div>
                                   ) : null}
 
@@ -1232,6 +1282,8 @@ export default function MyTasks({ user }) {
                                             ? (stepRemark ? "Edit remark" : "Add remark")
                                             : done
                                               ? "Completed steps cannot add remarks"
+                                              : pendingReview
+                                                ? "Submitted steps cannot add remarks until reviewed"
                                               : "Only accountant-assigned steps can add remarks"
                                         }
                                         className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
