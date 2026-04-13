@@ -337,7 +337,7 @@ async function readBlobErrorMessage(error, fallbackMessage) {
       if (parsed?.message) {
         return parsed.message;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   return error?.response?.data?.message || error?.message || fallbackMessage;
@@ -427,10 +427,11 @@ function formatAuditLocation(value, ipAddress) {
 
 export default function AdminSettings() {
   const { user, login } = useAuth();
-  const [showSecurity, setShowSecurity] = React.useState(false);
-  const [showBackup, setShowBackup] = React.useState(false);
-  const [showSystem, setShowSystem] = React.useState(false);
-  const [showAudit, setShowAudit] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState("security");
+  const showSecurity = activeTab === "security";
+  const showBackup = activeTab === "backup";
+  const showSystem = activeTab === "system";
+  const showAudit = activeTab === "audit";
   const [security, setSecurity] = React.useState(() => ({
     ...DEFAULT_SECURITY_SETTINGS,
     ...(user?.security_settings || {}),
@@ -898,9 +899,8 @@ export default function AdminSettings() {
       const response = await saveSecuritySettings(payload);
       const savedSettings = response?.data?.settings || payload;
       const timeoutChanged = savedSettings.sessionTimeoutMinutes !== savedSecurity.sessionTimeoutMinutes;
-      const timeoutLabel = `${savedSettings.sessionTimeoutMinutes} minute${
-        savedSettings.sessionTimeoutMinutes === 1 ? "" : "s"
-      }`;
+      const timeoutLabel = `${savedSettings.sessionTimeoutMinutes} minute${savedSettings.sessionTimeoutMinutes === 1 ? "" : "s"
+        }`;
 
       setSecurity(savedSettings);
       setSavedSecurity(savedSettings);
@@ -1159,7 +1159,7 @@ export default function AdminSettings() {
       const frequencyLabel = getBackupScheduleFrequencyLabel(nextSchedule.frequency);
       const message = nextSchedule.enabled
         ? response?.data?.message ||
-          `${frequencyLabel} automatic backup scheduled for ${formatDateTime(nextSchedule.scheduled_for)}.`
+        `${frequencyLabel} automatic backup scheduled for ${formatDateTime(nextSchedule.scheduled_for)}.`
         : response?.data?.message || "Automatic backup schedule cleared.";
       setBackupStatus({ type: "success", text: message });
 
@@ -1384,7 +1384,7 @@ export default function AdminSettings() {
         </svg>
       ),
       action: "Manage",
-      onClick: () => setShowSecurity(true),
+      onClick: () => setActiveTab("security"),
     },
     {
       key: "backup",
@@ -1397,7 +1397,7 @@ export default function AdminSettings() {
         </svg>
       ),
       action: "Open",
-      onClick: () => setShowBackup(true),
+      onClick: () => setActiveTab("backup"),
     },
     {
       key: "system",
@@ -1415,7 +1415,7 @@ export default function AdminSettings() {
         </svg>
       ),
       action: "Configure",
-      onClick: () => setShowSystem(true),
+      onClick: () => setActiveTab("system"),
     },
     {
       key: "audit",
@@ -1428,7 +1428,7 @@ export default function AdminSettings() {
         </svg>
       ),
       action: "View",
-      onClick: () => setShowAudit(true),
+      onClick: () => setActiveTab("audit"),
     },
   ];
 
@@ -1439,301 +1439,258 @@ export default function AdminSettings() {
         <p className="mt-1 text-sm text-slate-500">Administration and configuration</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <div
-            key={card.key}
-            className="flex flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-700">{card.title}</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{card.desc}</p>
-              </div>
-              <div className={`grid h-9 w-9 place-items-center rounded-full ${card.iconBg}`} aria-hidden>
-                {card.icon}
-              </div>
-            </div>
-
-            <div className="mt-4 border-t border-slate-200 pt-3">
+      <div className="mb-6 overflow-x-auto">
+        <div className="inline-flex min-w-full sm:min-w-0 sm:flex-none rounded-lg bg-slate-100 p-1">
+          <nav className="flex flex-1 gap-1" aria-label="Tabs">
+            {cards.map((card) => (
               <button
+                key={card.key}
                 type="button"
                 onClick={card.onClick}
-                className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${activeTab === card.key
+                  ? "bg-white text-slate-800 shadow-sm ring-1 ring-black/5"
+                  : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
+                  }`}
               >
-                {card.action}
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                <div
+                  className={`flex h-4 w-4 items-center justify-center ${activeTab === card.key ? "text-indigo-600" : "text-slate-400"
+                    }`}
+                  aria-hidden
+                >
+                  {card.icon}
+                </div>
+                <span className="whitespace-nowrap">{card.title}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        {showSecurity ? (
+          <div className="flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-base font-semibold text-slate-800">Security Settings</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Save the password, expiry, timeout, lockout, and login verification rules used by the system.
+              </p>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <StatusBanner type={securityStatus.type}>{securityStatus.text}</StatusBanner>
+
+              {securityLoading ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Loading security settings...
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {SECURITY_FIELDS.map((field) => (
+                    <div
+                      key={field.key}
+                      className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start"
+                    >
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-800">{field.label}</label>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{field.helper}</p>
+                      </div>
+
+                      <div>
+                        <input
+                          type="number"
+                          min={field.min}
+                          max={field.max}
+                          step={1}
+                          value={security[field.key]}
+                          onChange={updateSecurity(field.key)}
+                          className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${securityErrors[field.key]
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                        />
+                        {securityErrors[field.key] ? (
+                          <p className="mt-1 text-xs text-rose-600">{securityErrors[field.key]}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+
+                  <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/60 px-4 py-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">Disable Login Verification</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Turns off the math verification challenge on the public login page. Leave unchecked to keep
+                        verification required.
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={!security.loginVerificationEnabled}
+                      onChange={updateLoginVerificationToggle}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-4">
+              <button
+                type="button"
+                onClick={handleSaveSecurity}
+                disabled={securityLoading || securitySaving}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {securitySaving ? "Saving..." : "Save Settings"}
               </button>
             </div>
           </div>
-        ))}
-      </div>
+        ) : null}
 
-      {showSecurity ? (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowSecurity(false)} />
-          <div className="relative z-10 grid h-full w-full place-items-center p-4">
-            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800">Security Settings</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Save the password, expiry, timeout, lockout, and login verification rules used by the system.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowSecurity(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Close"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-                <StatusBanner type={securityStatus.type}>{securityStatus.text}</StatusBanner>
-
-                {securityLoading ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                    Loading security settings...
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {SECURITY_FIELDS.map((field) => (
-                      <div
-                        key={field.key}
-                        className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start"
-                      >
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-800">{field.label}</label>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">{field.helper}</p>
-                        </div>
-
-                        <div>
-                          <input
-                            type="number"
-                            min={field.min}
-                            max={field.max}
-                            step={1}
-                            value={security[field.key]}
-                            onChange={updateSecurity(field.key)}
-                            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              securityErrors[field.key]
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                          />
-                          {securityErrors[field.key] ? (
-                            <p className="mt-1 text-xs text-rose-600">{securityErrors[field.key]}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-
-                    <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/60 px-4 py-4">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-800">Disable Login Verification</div>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Turns off the math verification challenge on the public login page. Leave unchecked to keep
-                          verification required.
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={!security.loginVerificationEnabled}
-                        onChange={updateLoginVerificationToggle}
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
-                <button
-                  type="button"
-                  onClick={() => setShowSecurity(false)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveSecurity}
-                  disabled={securityLoading || securitySaving}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {securitySaving ? "Saving..." : "Save Settings"}
-                </button>
-              </div>
+        {showBackup ? (
+          <div className="flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-base font-semibold text-slate-800">Backup & Data</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Create full SQL backups, export live tables, and manage stored backup files.
+              </p>
             </div>
-          </div>
-        </div>
-      ) : null}
+            <div className="space-y-5 p-5">
+              <StatusBanner type={backupStatus.type}>{backupStatus.text}</StatusBanner>
 
-      {showBackup ? (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowBackup(false)} />
-          <div className="relative z-10 grid h-full w-full place-items-center p-4">
-            <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800">Backup & Data</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Create full SQL backups, export live tables, and manage stored backup files.
-                  </p>
+              {backupLoading ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Loading backup and export tools...
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowBackup(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Close"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-                <StatusBanner type={backupStatus.type}>{backupStatus.text}</StatusBanner>
-
-                {backupLoading ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                    Loading backup and export tools...
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Database</div>
-                        <div className="mt-2 text-lg font-semibold text-slate-800">
-                          {backupSummary.database_name || "Unknown"}
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Size: {formatBytes(backupSummary.database_size_bytes)}
-                        </p>
+              ) : (
+                <div className="space-y-5">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Database</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-800">
+                        {backupSummary.database_name || "Unknown"}
                       </div>
-
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Tables</div>
-                        <div className="mt-2 text-lg font-semibold text-slate-800">{backupSummary.table_count || 0}</div>
-                        <p className="mt-1 text-xs text-slate-500">Available for per-table export.</p>
-                      </div>
-
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Approx. Rows</div>
-                        <div className="mt-2 text-lg font-semibold text-slate-800">
-                          {Number(backupSummary.approx_rows || 0).toLocaleString()}
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">Based on MySQL table statistics.</p>
-                      </div>
-
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Backup Storage</div>
-                        <div className="mt-2 text-lg font-semibold text-slate-800">
-                          {formatBytes(backupSummary.backup_storage_bytes)}
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {backupSummary.backup_count || 0} stored backup
-                          {Number(backupSummary.backup_count || 0) === 1 ? "" : "s"}
-                        </p>
-                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Size: {formatBytes(backupSummary.database_size_bytes)}
+                      </p>
                     </div>
 
-                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                      <div className="space-y-4">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                            <div>
-                              <h4 className="text-sm font-semibold text-slate-800">Create Full SQL Backup</h4>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                Generates a restorable `.sql` snapshot of the current database and stores it in backup
-                                history.
-                              </p>
-                              <p className="mt-3 text-xs text-slate-500">
-                                Last backup:{" "}
-                                {backupSummary.last_backup_at
-                                  ? `${formatDateTime(backupSummary.last_backup_at)}${backupSummary.last_backup_name ? ` (${backupSummary.last_backup_name})` : ""}`
-                                  : "No backups created yet."}
-                              </p>
-                            </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Tables</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-800">{backupSummary.table_count || 0}</div>
+                      <p className="mt-1 text-xs text-slate-500">Available for per-table export.</p>
+                    </div>
 
-                            <button
-                              type="button"
-                              onClick={handleCreateBackup}
-                              disabled={backupCreating}
-                              className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              {backupCreating ? "Creating..." : "Create Backup"}
-                            </button>
-                          </div>
-                        </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Approx. Rows</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-800">
+                        {Number(backupSummary.approx_rows || 0).toLocaleString()}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">Based on MySQL table statistics.</p>
+                    </div>
 
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                          <div className="mb-4">
-                            <h4 className="text-sm font-semibold text-slate-800">Schedule Automatic Backup</h4>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Backup Storage</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-800">
+                        {formatBytes(backupSummary.backup_storage_bytes)}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {backupSummary.backup_count || 0} stored backup
+                        {Number(backupSummary.backup_count || 0) === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-slate-800">Create Full SQL Backup</h4>
                             <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Choose when automatic SQL backups should run. The app checks for due schedules about once
-                              a minute while users are active.
+                              Generates a restorable `.sql` snapshot of the current database and stores it in backup
+                              history.
+                            </p>
+                            <p className="mt-3 text-xs text-slate-500">
+                              Last backup:{" "}
+                              {backupSummary.last_backup_at
+                                ? `${formatDateTime(backupSummary.last_backup_at)}${backupSummary.last_backup_name ? ` (${backupSummary.last_backup_name})` : ""}`
+                                : "No backups created yet."}
                             </p>
                           </div>
 
-                          <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
-                            <input
-                              type="checkbox"
-                              checked={backupScheduleEnabled}
-                              onChange={(event) => {
-                                setBackupScheduleEnabled(event.target.checked);
-                              }}
+                          <button
+                            type="button"
+                            onClick={handleCreateBackup}
+                            disabled={backupCreating}
+                            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {backupCreating ? "Creating..." : "Create Backup"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-slate-800">Schedule Automatic Backup</h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Choose when automatic SQL backups should run. The app checks for due schedules about once
+                            a minute while users are active.
+                          </p>
+                        </div>
+
+                        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={backupScheduleEnabled}
+                            onChange={(event) => {
+                              setBackupScheduleEnabled(event.target.checked);
+                            }}
+                            disabled={backupScheduleSaving}
+                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-slate-800">Enable automatic backup</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              When enabled, the next backup will be created automatically at the chosen time.
+                            </p>
+                          </div>
+                        </label>
+
+                        <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+                          <div className="w-full sm:w-48">
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Repeat
+                            </label>
+                            <select
+                              value={backupScheduleFrequency}
+                              onChange={(event) => setBackupScheduleFrequency(event.target.value)}
                               disabled={backupScheduleSaving}
-                              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {BACKUP_SCHEDULE_FREQUENCY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="w-full sm:flex-1 sm:min-w-[240px]">
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Backup date and time
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={backupScheduledForInput}
+                              min={toDateTimeLocalInput(new Date(Date.now() + 60 * 1000))}
+                              onChange={(event) => setBackupScheduledForInput(event.target.value)}
+                              disabled={backupScheduleSaving}
+                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
                             />
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium text-slate-800">Enable automatic backup</div>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                When enabled, the next backup will be created automatically at the chosen time.
-                              </p>
-                            </div>
-                          </label>
+                          </div>
 
-                          <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto_auto] md:items-end">
-                            <div>
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Repeat
-                              </label>
-                              <select
-                                value={backupScheduleFrequency}
-                                onChange={(event) => setBackupScheduleFrequency(event.target.value)}
-                                disabled={backupScheduleSaving}
-                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {BACKUP_SCHEDULE_FREQUENCY_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Backup date and time
-                              </label>
-                              <input
-                                type="datetime-local"
-                                value={backupScheduledForInput}
-                                min={toDateTimeLocalInput(new Date(Date.now() + 60 * 1000))}
-                                onChange={(event) => setBackupScheduledForInput(event.target.value)}
-                                disabled={backupScheduleSaving}
-                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
-                              />
-                            </div>
-
+                          <div className="flex w-full gap-2 sm:w-auto">
                             <button
                               type="button"
                               onClick={() =>
@@ -1744,7 +1701,7 @@ export default function AdminSettings() {
                                 )
                               }
                               disabled={backupScheduleSaving}
-                              className="inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-md bg-amber-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               {backupScheduleSaving ? "Saving..." : "Save Schedule"}
                             </button>
@@ -1753,788 +1710,728 @@ export default function AdminSettings() {
                               type="button"
                               onClick={() => void handleSaveBackupSchedule(false, "", backupScheduleFrequency)}
                               disabled={backupScheduleSaving}
-                              className="inline-flex items-center justify-center rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               Clear
                             </button>
                           </div>
+                        </div>
 
-                          <p className="mt-3 text-xs leading-5 text-slate-500">
-                            {getBackupScheduleFrequencyHelper(backupScheduleFrequency)}
+                        <p className="mt-3 text-xs leading-5 text-slate-500">
+                          {getBackupScheduleFrequencyHelper(backupScheduleFrequency)}
+                        </p>
+
+                        <div className="mt-4 space-y-2 text-xs text-slate-500">
+                          <p>
+                            Repeat:{" "}
+                            <span className="font-medium text-slate-700">
+                              {backupSchedule.enabled
+                                ? getBackupScheduleFrequencyLabel(backupSchedule.frequency)
+                                : "Not scheduled"}
+                            </span>
                           </p>
-
-                          <div className="mt-4 space-y-2 text-xs text-slate-500">
-                            <p>
-                              Repeat:{" "}
-                              <span className="font-medium text-slate-700">
-                                {backupSchedule.enabled
-                                  ? getBackupScheduleFrequencyLabel(backupSchedule.frequency)
-                                  : "Not scheduled"}
-                              </span>
-                            </p>
-                            <p>
-                              Next automatic backup:{" "}
-                              <span className="font-medium text-slate-700">
-                                {backupSchedule.enabled && backupSchedule.scheduled_for
-                                  ? formatDateTime(backupSchedule.scheduled_for)
-                                  : "Not scheduled"}
-                              </span>
-                            </p>
-                            <p>
-                              Last automatic attempt:{" "}
-                              <span className="font-medium text-slate-700">
-                                {backupSchedule.last_attempt_at
-                                  ? formatDateTime(backupSchedule.last_attempt_at)
-                                  : "No automatic backup has run yet."}
-                              </span>
-                            </p>
-                          </div>
-
-                          {backupSchedule.last_attempt_status === "error" && backupSchedule.last_attempt_message ? (
-                            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
-                              <div>{backupSchedule.last_attempt_message}</div>
-                            </div>
-                          ) : null}
+                          <p>
+                            Next automatic backup:{" "}
+                            <span className="font-medium text-slate-700">
+                              {backupSchedule.enabled && backupSchedule.scheduled_for
+                                ? formatDateTime(backupSchedule.scheduled_for)
+                                : "Not scheduled"}
+                            </span>
+                          </p>
+                          <p>
+                            Last automatic attempt:{" "}
+                            <span className="font-medium text-slate-700">
+                              {backupSchedule.last_attempt_at
+                                ? formatDateTime(backupSchedule.last_attempt_at)
+                                : "No automatic backup has run yet."}
+                            </span>
+                          </p>
                         </div>
 
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                          <div className="mb-4">
-                            <h4 className="text-sm font-semibold text-slate-800">Export Live Table Data</h4>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Export a single database table in CSV, JSON, or import-ready SQL format.
-                            </p>
+                        {backupSchedule.last_attempt_status === "error" && backupSchedule.last_attempt_message ? (
+                          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
+                            <div>{backupSchedule.last_attempt_message}</div>
                           </div>
-
-                          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto] md:items-end">
-                            <div>
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Table
-                              </label>
-                              <select
-                                value={backupExportTable}
-                                onChange={(event) => setBackupExportTable(event.target.value)}
-                                disabled={backupTables.length === 0 || backupExporting}
-                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {backupTables.length === 0 ? <option value="">No tables available</option> : null}
-                                {backupTables.map((table) => (
-                                  <option key={table.name} value={table.name}>
-                                    {table.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Format
-                              </label>
-                              <select
-                                value={backupExportFormat}
-                                onChange={(event) => setBackupExportFormat(event.target.value)}
-                                disabled={backupExporting}
-                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {BACKUP_EXPORT_FORMAT_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={handleExportTable}
-                              disabled={!backupExportTable || backupExporting}
-                              className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              {backupExporting ? "Exporting..." : "Export Table"}
-                            </button>
-                          </div>
-                        </div>
+                        ) : null}
                       </div>
 
-                      <div className="space-y-4">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                          <div className="mb-4">
-                            <h4 className="text-sm font-semibold text-slate-800">Backup Lifecycle</h4>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Remove older backup files to keep storage tidy. The newest 3 backups are always kept.
-                            </p>
-                          </div>
-
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                            <div className="min-w-0 flex-1">
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Delete backups older than
-                              </label>
-                              <select
-                                value={backupCleanupDays}
-                                onChange={(event) => setBackupCleanupDays(Number(event.target.value))}
-                                disabled={backupCleaning}
-                                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {BACKUP_RETENTION_OPTIONS.map((days) => (
-                                  <option key={days} value={days}>
-                                    {days} days
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={handleCleanupBackups}
-                              disabled={backupCleaning || backupFiles.length === 0}
-                              className="inline-flex items-center justify-center rounded-md border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              {backupCleaning ? "Cleaning..." : "Clean Up"}
-                            </button>
-                          </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-slate-800">Export Live Table Data</h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Export a single database table in CSV, JSON, or import-ready SQL format.
+                          </p>
                         </div>
 
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                          <div className="mb-4 flex items-center justify-between gap-3">
-                            <div>
-                              <h4 className="text-sm font-semibold text-slate-800">Recent Backups</h4>
-                              <p className="mt-1 text-xs text-slate-500">
-                                Download or remove stored SQL snapshots. The newest files stay at the top and the list
-                                scrolls when there are many backups.
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setBackupRefreshKey((value) => value + 1)}
-                              disabled={backupLoading}
-                              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto] md:items-end">
+                          <div>
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Table
+                            </label>
+                            <select
+                              value={backupExportTable}
+                              onChange={(event) => setBackupExportTable(event.target.value)}
+                              disabled={backupTables.length === 0 || backupExporting}
+                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
                             >
-                              Refresh
-                            </button>
-                          </div>
-
-                          {backupFiles.length === 0 ? (
-                            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
-                              No backup files stored yet.
-                            </div>
-                          ) : (
-                            <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
-                              {backupFiles.map((backup) => (
-                                <div
-                                  key={backup.name}
-                                  className="rounded-lg border border-slate-200 bg-white px-4 py-3"
-                                >
-                                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                    <div className="min-w-0">
-                                      <div className="truncate text-sm font-medium text-slate-800">{backup.name}</div>
-                                      <p className="mt-1 text-xs text-slate-500">
-                                        {formatDateTime(backup.created_at)} {" • "} {formatBytes(backup.size_bytes)}
-                                      </p>
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDownloadBackup(backup.name)}
-                                        disabled={backupDownloading === backup.name}
-                                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        {backupDownloading === backup.name ? "Downloading..." : "Download"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDeleteBackup(backup.name)}
-                                        disabled={backupDeleting === backup.name}
-                                        className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        {backupDeleting === backup.name ? "Deleting..." : "Delete"}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
+                              {backupTables.length === 0 ? <option value="">No tables available</option> : null}
+                              {backupTables.map((table) => (
+                                <option key={table.name} value={table.name}>
+                                  {table.name}
+                                </option>
                               ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-slate-800">Table Catalog</h4>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Quick visibility into the tables currently available in the database and their estimated size.
-                        </p>
-                      </div>
-
-                      {backupTables.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
-                          No tables were detected in the selected database.
-                        </div>
-                      ) : (
-                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                          <div className="max-h-[30vh] overflow-auto">
-                            <table className="min-w-full table-fixed text-sm">
-                              <thead className="bg-slate-50 text-slate-600">
-                                <tr>
-                                  <th className="px-3 py-2 text-left font-medium">Table</th>
-                                  <th className="w-32 px-3 py-2 text-left font-medium">Engine</th>
-                                  <th className="w-36 px-3 py-2 text-right font-medium">Approx. Rows</th>
-                                  <th className="w-36 px-3 py-2 text-right font-medium">Size</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-200">
-                                {backupTables.map((table) => (
-                                  <tr key={table.name}>
-                                    <td className="px-3 py-2 text-slate-800">{table.name}</td>
-                                    <td className="px-3 py-2 text-slate-600">{table.engine || "-"}</td>
-                                    <td className="px-3 py-2 text-right text-slate-700">
-                                      {Number(table.rows || 0).toLocaleString()}
-                                    </td>
-                                    <td className="px-3 py-2 text-right text-slate-700">
-                                      {formatBytes(table.size_bytes)}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                            </select>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
-                <button
-                  type="button"
-                  onClick={() => setShowBackup(false)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
-      {showSystem ? (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowSystem(false)} />
-          <div className="relative z-10 grid h-full w-full place-items-center p-4">
-            <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800">System Configuration</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Manage branding, public workflow access, support contact details, and SMTP delivery.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowSystem(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Close"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="flex-1 space-y-5 overflow-y-auto p-5">
-                <StatusBanner type={systemStatus.type}>{systemStatus.text}</StatusBanner>
-
-                {systemLoading ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                    Loading system configuration...
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-4">
-                      {systemSummaryCards.map((card) => (
-                        <div
-                          key={card.key}
-                          className={`rounded-lg border px-4 py-3 ${card.className}`}
-                        >
-                          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{card.label}</p>
-                          <p className="mt-2 text-base font-semibold">{card.value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-slate-800">General Preferences</h4>
-                        <p className="mt-1 text-xs text-slate-500">
-                          These values are reused in client emails, login links, public notices, and paused-workflow messages.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Company Name</label>
-                          <input
-                            type="text"
-                            value={system.companyName}
-                            onChange={updateSystemText("companyName")}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.companyName
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="Guibone Accounting Services (GAS)"
-                          />
-                          <p className="mt-1 text-xs text-slate-500">Shown as the sender name in outgoing emails.</p>
-                          {systemErrors.companyName ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.companyName}</p>
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Frontend URL</label>
-                          <input
-                            type="url"
-                            value={system.appBaseUrl}
-                            onChange={updateSystemText("appBaseUrl")}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.appBaseUrl
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="http://localhost:3000"
-                          />
-                          <p className="mt-1 text-xs text-slate-500">
-                            Used for the login button inside approval emails. Leave blank to auto-detect.
-                          </p>
-                          {systemErrors.appBaseUrl ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.appBaseUrl}</p>
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Support Email</label>
-                          <input
-                            type="email"
-                            value={system.supportEmail}
-                            onChange={updateSystemText("supportEmail")}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.supportEmail
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="support@example.com"
-                          />
-                          <p className="mt-1 text-xs text-slate-500">
-                            Used in paused workflow messages and as the reply-to address for outgoing emails.
-                          </p>
-                          {systemErrors.supportEmail ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.supportEmail}</p>
-                          ) : null}
-                        </div>
-
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-slate-700">Portal Notice</label>
-                          <textarea
-                            value={system.systemNotice}
-                            onChange={updateSystemText("systemNotice")}
-                            rows={3}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.systemNotice
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="Example: Registration approvals may take 1-2 business days this week."
-                          />
-                          <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-500">
-                            <span>Shown on public and client booking pages when you need to announce an update.</span>
-                            <span>{String(system.systemNotice || "").trim().length}/500</span>
-                          </div>
-                          {systemErrors.systemNotice ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.systemNotice}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-slate-800">Client Workflow Controls</h4>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Pause public sign-up or booking flows without changing routes or touching code.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
                           <div>
-                            <div className="text-sm font-medium text-slate-800">Allow Client Sign-up</div>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Controls the public registration form and self-service account creation.
-                            </p>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={!!system.allowClientSelfSignup}
-                            onChange={updateSystemToggle("allowClientSelfSignup")}
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                          />
-                        </label>
-
-                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                          <div>
-                            <div className="text-sm font-medium text-slate-800">Allow Appointments</div>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Lets clients submit service appointment requests from their dashboard.
-                            </p>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={!!system.allowClientAppointments}
-                            onChange={updateSystemToggle("allowClientAppointments")}
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                          />
-                        </label>
-
-                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                          <div>
-                            <div className="text-sm font-medium text-slate-800">Allow Consultations</div>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Controls consultation requests and client-side consultation rescheduling.
-                            </p>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={!!system.allowClientConsultations}
-                            onChange={updateSystemToggle("allowClientConsultations")}
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-slate-800">Notifications</h4>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Control task reminder timing and the automatic emails sent when client registrations are approved or rejected.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                          <label className="block text-sm font-medium text-slate-700">Task Reminder Interval</label>
-                          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Hours
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={24}
-                                step={1}
-                                value={system.taskReminderIntervalHours}
-                                onChange={updateSystemReminderInterval("taskReminderIntervalHours")}
-                                className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                                  systemErrors.taskReminderIntervalHours
-                                    ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                                }`}
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                                Minutes
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={59}
-                                step={1}
-                                value={system.taskReminderIntervalMinutes}
-                                onChange={updateSystemReminderInterval("taskReminderIntervalMinutes")}
-                                className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                                  systemErrors.taskReminderIntervalMinutes
-                                    ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                    : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                                }`}
-                              />
-                            </div>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">
-                            Controls how often task reminder notifications repeat for due tomorrow, due today, and overdue
-                            tasks. For quick testing, set Hours to 0 and Minutes to 2.
-                          </p>
-                          {systemErrors.taskReminderIntervalHours || systemErrors.taskReminderIntervalMinutes ? (
-                            <p className="mt-1 text-xs text-rose-600">
-                              {systemErrors.taskReminderIntervalHours || systemErrors.taskReminderIntervalMinutes}
-                            </p>
-                          ) : null}
-                        </div>
-
-                        <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                          <div>
-                            <div className="text-sm font-medium text-slate-800">Send Client Status Emails</div>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                              Uses the SMTP settings below for approval and rejection emails. Password reset still uses the
-                              same SMTP credentials.
-                            </p>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={!!system.sendClientStatusEmails}
-                            onChange={updateSystemToggle("sendClientStatusEmails")}
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-slate-800">Email (SMTP)</h4>
-                        <p className="mt-1 text-xs text-slate-500">
-                          These credentials are used by the forgot-password flow and any enabled client status emails.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">SMTP Host</label>
-                          <input
-                            type="text"
-                            value={system.smtpHost}
-                            onChange={updateSystemText("smtpHost")}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.smtpHost
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="smtp.gmail.com"
-                          />
-                          {systemErrors.smtpHost ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpHost}</p>
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">SMTP Port</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={65535}
-                            step={1}
-                            value={system.smtpPort}
-                            onChange={updateSystemPort}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.smtpPort
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                          />
-                          {systemErrors.smtpPort ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpPort}</p>
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">SMTP Username</label>
-                          <input
-                            type="text"
-                            value={system.smtpUsername}
-                            onChange={updateSystemText("smtpUsername")}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.smtpUsername
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="your-email@example.com"
-                          />
-                          {systemErrors.smtpUsername ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpUsername}</p>
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">SMTP Password</label>
-                          <input
-                            type="password"
-                            value={system.smtpPassword}
-                            onChange={updateSystemText("smtpPassword")}
-                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                              systemErrors.smtpPassword
-                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                            }`}
-                            placeholder="App password or SMTP password"
-                          />
-                          <p className="mt-1 text-xs text-slate-500">
-                            Use an app password if your provider requires it.
-                          </p>
-                          {systemErrors.smtpPassword ? (
-                            <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpPassword}</p>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-4">
-                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                          <div className="w-full md:max-w-sm">
-                            <label className="block text-sm font-medium text-slate-700">Send test email to</label>
-                            <input
-                              type="email"
-                              value={systemTestRecipient}
-                              onChange={updateSystemTestRecipient}
-                              className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${
-                                systemErrors.recipientEmail
-                                  ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
-                                  : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
-                              }`}
-                              placeholder={String(user?.email ?? "").trim() || "admin@example.com"}
-                            />
-                            <p className="mt-1 text-xs text-slate-500">
-                              Uses the current form values, so you can test SMTP before saving.
-                            </p>
-                            {systemErrors.recipientEmail ? (
-                              <p className="mt-1 text-xs text-rose-600">{systemErrors.recipientEmail}</p>
-                            ) : null}
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Format
+                            </label>
+                            <select
+                              value={backupExportFormat}
+                              onChange={(event) => setBackupExportFormat(event.target.value)}
+                              disabled={backupExporting}
+                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {BACKUP_EXPORT_FORMAT_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
 
                           <button
                             type="button"
-                            onClick={handleSendSystemTestEmail}
-                            disabled={systemLoading || systemSaving || systemTestSending}
-                            className="inline-flex items-center justify-center rounded-md border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
+                            onClick={handleExportTable}
+                            disabled={!backupExportTable || backupExporting}
+                            className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                           >
-                            {systemTestSending ? "Sending test..." : "Send Test Email"}
+                            {backupExporting ? "Exporting..." : "Export Table"}
                           </button>
                         </div>
                       </div>
                     </div>
+
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-slate-800">Backup Lifecycle</h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Remove older backup files to keep storage tidy. The newest 3 backups are always kept.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <div className="min-w-0 flex-1">
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Delete backups older than
+                            </label>
+                            <select
+                              value={backupCleanupDays}
+                              onChange={(event) => setBackupCleanupDays(Number(event.target.value))}
+                              disabled={backupCleaning}
+                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {BACKUP_RETENTION_OPTIONS.map((days) => (
+                                <option key={days} value={days}>
+                                  {days} days
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleCleanupBackups}
+                            disabled={backupCleaning || backupFiles.length === 0}
+                            className="inline-flex items-center justify-center rounded-md border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {backupCleaning ? "Cleaning..." : "Clean Up"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <div>
+                            <h4 className="text-sm font-semibold text-slate-800">Recent Backups</h4>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Download or remove stored SQL snapshots. The newest files stay at the top and the list
+                              scrolls when there are many backups.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setBackupRefreshKey((value) => value + 1)}
+                            disabled={backupLoading}
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            Refresh
+                          </button>
+                        </div>
+
+                        {backupFiles.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                            No backup files stored yet.
+                          </div>
+                        ) : (
+                          <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                            {backupFiles.map((backup) => (
+                              <div
+                                key={backup.name}
+                                className="rounded-lg border border-slate-200 bg-white px-4 py-3"
+                              >
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-slate-800">{backup.name}</div>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {formatDateTime(backup.created_at)} {" • "} {formatBytes(backup.size_bytes)}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDownloadBackup(backup.name)}
+                                      disabled={backupDownloading === backup.name}
+                                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      {backupDownloading === backup.name ? "Downloading..." : "Download"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDeleteBackup(backup.name)}
+                                      disabled={backupDeleting === backup.name}
+                                      className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      {backupDeleting === backup.name ? "Deleting..." : "Delete"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
-                <button
-                  type="button"
-                  onClick={() => setShowSystem(false)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveSystem}
-                  disabled={systemLoading || systemSaving || systemTestSending}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {systemSaving ? "Saving..." : "Save Configuration"}
-                </button>
-              </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-slate-800">Table Catalog</h4>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Quick visibility into the tables currently available in the database and their estimated size.
+                      </p>
+                    </div>
+
+                    {backupTables.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                        No tables were detected in the selected database.
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        <div className="max-h-[30vh] overflow-auto">
+                          <table className="min-w-full table-fixed text-sm">
+                            <thead className="bg-slate-50 text-slate-600">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-medium">Table</th>
+                                <th className="w-32 px-3 py-2 text-left font-medium">Engine</th>
+                                <th className="w-36 px-3 py-2 text-right font-medium">Approx. Rows</th>
+                                <th className="w-36 px-3 py-2 text-right font-medium">Size</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {backupTables.map((table) => (
+                                <tr key={table.name}>
+                                  <td className="px-3 py-2 text-slate-800">{table.name}</td>
+                                  <td className="px-3 py-2 text-slate-600">{table.engine || "-"}</td>
+                                  <td className="px-3 py-2 text-right text-slate-700">
+                                    {Number(table.rows || 0).toLocaleString()}
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-slate-700">
+                                    {formatBytes(table.size_bytes)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {showAudit ? (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowAudit(false)} />
-          <div className="relative z-10 grid h-full w-full place-items-center p-4">
-            <div className="w-full max-w-6xl rounded-xl border border-slate-200 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800">Audit Logs</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Review login activity, security updates, and other tracked system events.
-                  </p>
+        {showSystem ? (
+          <div className="flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-base font-semibold text-slate-800">System Configuration</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Manage branding, public workflow access, support contact details, and SMTP delivery.
+              </p>
+            </div>
+            <div className="flex-1 space-y-5 p-5">
+              <StatusBanner type={systemStatus.type}>{systemStatus.text}</StatusBanner>
+
+              {systemLoading ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Loading system configuration...
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAudit(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Close"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-4">
+                    {systemSummaryCards.map((card) => (
+                      <div
+                        key={card.key}
+                        className={`rounded-lg border px-4 py-3 ${card.className}`}
+                      >
+                        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{card.label}</p>
+                        <p className="mt-2 text-base font-semibold">{card.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-slate-800">General Preferences</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        These values are reused in client emails, login links, public notices, and paused-workflow messages.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Company Name</label>
+                        <input
+                          type="text"
+                          value={system.companyName}
+                          onChange={updateSystemText("companyName")}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.companyName
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="Guibone Accounting Services (GAS)"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">Shown as the sender name in outgoing emails.</p>
+                        {systemErrors.companyName ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.companyName}</p>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Frontend URL</label>
+                        <input
+                          type="url"
+                          value={system.appBaseUrl}
+                          onChange={updateSystemText("appBaseUrl")}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.appBaseUrl
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="http://localhost:3000"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Used for the login button inside approval emails. Leave blank to auto-detect.
+                        </p>
+                        {systemErrors.appBaseUrl ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.appBaseUrl}</p>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Support Email</label>
+                        <input
+                          type="email"
+                          value={system.supportEmail}
+                          onChange={updateSystemText("supportEmail")}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.supportEmail
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="support@example.com"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Used in paused workflow messages and as the reply-to address for outgoing emails.
+                        </p>
+                        {systemErrors.supportEmail ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.supportEmail}</p>
+                        ) : null}
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700">Portal Notice</label>
+                        <textarea
+                          value={system.systemNotice}
+                          onChange={updateSystemText("systemNotice")}
+                          rows={3}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.systemNotice
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="Example: Registration approvals may take 1-2 business days this week."
+                        />
+                        <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-500">
+                          <span>Shown on public and client booking pages when you need to announce an update.</span>
+                          <span>{String(system.systemNotice || "").trim().length}/500</span>
+                        </div>
+                        {systemErrors.systemNotice ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.systemNotice}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-slate-800">Client Workflow Controls</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Pause public sign-up or booking flows without changing routes or touching code.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">Allow Client Sign-up</div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Controls the public registration form and self-service account creation.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!system.allowClientSelfSignup}
+                          onChange={updateSystemToggle("allowClientSelfSignup")}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                        />
+                      </label>
+
+                      <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">Allow Appointments</div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Lets clients submit service appointment requests from their dashboard.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!system.allowClientAppointments}
+                          onChange={updateSystemToggle("allowClientAppointments")}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                        />
+                      </label>
+
+                      <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">Allow Consultations</div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Controls consultation requests and client-side consultation rescheduling.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!system.allowClientConsultations}
+                          onChange={updateSystemToggle("allowClientConsultations")}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-slate-800">Notifications</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Control task reminder timing and the automatic emails sent when client registrations are approved or rejected.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                        <label className="block text-sm font-medium text-slate-700">Task Reminder Interval</label>
+                        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Hours
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={24}
+                              step={1}
+                              value={system.taskReminderIntervalHours}
+                              onChange={updateSystemReminderInterval("taskReminderIntervalHours")}
+                              className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.taskReminderIntervalHours
+                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                                }`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Minutes
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={59}
+                              step={1}
+                              value={system.taskReminderIntervalMinutes}
+                              onChange={updateSystemReminderInterval("taskReminderIntervalMinutes")}
+                              className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.taskReminderIntervalMinutes
+                                ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                                : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                                }`}
+                            />
+                          </div>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Controls how often task reminder notifications repeat for due tomorrow, due today, and overdue
+                          tasks. For quick testing, set Hours to 0 and Minutes to 2.
+                        </p>
+                        {systemErrors.taskReminderIntervalHours || systemErrors.taskReminderIntervalMinutes ? (
+                          <p className="mt-1 text-xs text-rose-600">
+                            {systemErrors.taskReminderIntervalHours || systemErrors.taskReminderIntervalMinutes}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <label className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">Send Client Status Emails</div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Uses the SMTP settings below for approval and rejection emails. Password reset still uses the
+                            same SMTP credentials.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!system.sendClientStatusEmails}
+                          onChange={updateSystemToggle("sendClientStatusEmails")}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-slate-800">Email (SMTP)</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        These credentials are used by the forgot-password flow and any enabled client status emails.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">SMTP Host</label>
+                        <input
+                          type="text"
+                          value={system.smtpHost}
+                          onChange={updateSystemText("smtpHost")}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.smtpHost
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="smtp.gmail.com"
+                        />
+                        {systemErrors.smtpHost ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpHost}</p>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">SMTP Port</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={65535}
+                          step={1}
+                          value={system.smtpPort}
+                          onChange={updateSystemPort}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.smtpPort
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                        />
+                        {systemErrors.smtpPort ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpPort}</p>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">SMTP Username</label>
+                        <input
+                          type="text"
+                          value={system.smtpUsername}
+                          onChange={updateSystemText("smtpUsername")}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.smtpUsername
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="your-email@example.com"
+                        />
+                        {systemErrors.smtpUsername ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpUsername}</p>
+                        ) : null}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">SMTP Password</label>
+                        <input
+                          type="password"
+                          value={system.smtpPassword}
+                          onChange={updateSystemText("smtpPassword")}
+                          className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.smtpPassword
+                            ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                            : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                            }`}
+                          placeholder="App password or SMTP password"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Use an app password if your provider requires it.
+                        </p>
+                        {systemErrors.smtpPassword ? (
+                          <p className="mt-1 text-xs text-rose-600">{systemErrors.smtpPassword}</p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-4">
+                      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                        <div className="w-full md:max-w-sm">
+                          <label className="block text-sm font-medium text-slate-700">Send test email to</label>
+                          <input
+                            type="email"
+                            value={systemTestRecipient}
+                            onChange={updateSystemTestRecipient}
+                            className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:ring-4 ${systemErrors.recipientEmail
+                              ? "border-rose-300 focus:border-rose-500 focus:ring-rose-500/15"
+                              : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15"
+                              }`}
+                            placeholder={String(user?.email ?? "").trim() || "admin@example.com"}
+                          />
+                          <p className="mt-1 text-xs text-slate-500">
+                            Uses the current form values, so you can test SMTP before saving.
+                          </p>
+                          {systemErrors.recipientEmail ? (
+                            <p className="mt-1 text-xs text-rose-600">{systemErrors.recipientEmail}</p>
+                          ) : null}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSendSystemTestEmail}
+                          disabled={systemLoading || systemSaving || systemTestSending}
+                          className="inline-flex items-center justify-center rounded-md border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {systemTestSending ? "Sending test..." : "Send Test Email"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-4">
+              <button
+                type="button"
+                onClick={handleSaveSystem}
+                disabled={systemLoading || systemSaving || systemTestSending}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {systemSaving ? "Saving..." : "Save Configuration"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showAudit ? (
+          <div className="flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-base font-semibold text-slate-800">Audit Logs</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Review login activity, security updates, and other tracked system events.
+              </p>
+            </div>
+            <div className="p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-slate-600">
+                  {auditLoading
+                    ? "Loading audit activity..."
+                    : `${auditMeta.total} log entr${auditMeta.total === 1 ? "y" : "ies"} found`}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    value={auditSearch}
+                    onChange={(event) => {
+                      setAuditSearch(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    placeholder="Search user, action, device..."
+                    className="w-56 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
+                  />
+                  <select
+                    value={auditRange}
+                    onChange={(event) => {
+                      setAuditRange(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
+                  >
+                    {AUDIT_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={auditPerPage}
+                    onChange={(event) => {
+                      setAuditPerPage(Number(event.target.value));
+                      setAuditPage(1);
+                    }}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
+                  >
+                    {AUDIT_PER_PAGE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}/page
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setAuditRefreshKey((value) => value + 1)}
+                    disabled={auditLoading}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
-              <div className="p-5">
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm text-slate-600">
-                    {auditLoading
-                      ? "Loading audit activity..."
-                      : `${auditMeta.total} log entr${auditMeta.total === 1 ? "y" : "ies"} found`}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <input
-                      type="text"
-                      value={auditSearch}
-                      onChange={(event) => {
-                        setAuditSearch(event.target.value);
-                        setAuditPage(1);
-                      }}
-                      placeholder="Search user, action, device..."
-                      className="w-56 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-                    />
-                    <select
-                      value={auditRange}
-                      onChange={(event) => {
-                        setAuditRange(event.target.value);
-                        setAuditPage(1);
-                      }}
-                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-                    >
-                      {AUDIT_RANGE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={auditPerPage}
-                      onChange={(event) => {
-                        setAuditPerPage(Number(event.target.value));
-                        setAuditPage(1);
-                      }}
-                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-                    >
-                      {AUDIT_PER_PAGE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option} / page
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setAuditRefreshKey((value) => value + 1)}
-                      disabled={auditLoading}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      Refresh
-                    </button>
-                  </div>
+
+              {auditError ? (
+                <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+                  {auditError}
                 </div>
+              ) : null}
 
-                {auditError ? (
-                  <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-                    {auditError}
-                  </div>
-                ) : null}
-
-                {auditLoading && auditLogs.length === 0 ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                    Loading audit logs...
-                  </div>
-                ) : auditLogs.length === 0 ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                    No audit logs found for the selected filters.
-                  </div>
-                ) : (
-                  <div className="overflow-hidden rounded-lg border border-slate-200">
-                    <div className="max-h-[55vh] overflow-auto">
+              {auditLoading && auditLogs.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Loading audit logs...
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  No audit logs found for the selected filters.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-slate-200">
+                  <div className="max-h-[60vh] overflow-auto">
                     <table className="min-w-full table-fixed text-sm">
                       <thead className="bg-slate-50 text-slate-600">
                         <tr>
@@ -2567,7 +2464,7 @@ export default function AdminSettings() {
                                 {log.action || "-"}
                               </span>
                             </td>
-                            <td className="px-3 py-2 align-middle font-mono text-xs text-slate-600">
+                            <td className="px-3 py-2 align-middle font-mono text-xs text-slate-600 break-all whitespace-normal">
                               {formatAuditIpAddress(log.ip_address)}
                             </td>
                             <td className="px-3 py-2 align-middle text-slate-600">
@@ -2580,54 +2477,44 @@ export default function AdminSettings() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs text-slate-600">
+                      {auditMeta.total > 0
+                        ? `Showing ${(auditMeta.page - 1) * auditMeta.per_page + 1}-${Math.min(
+                          auditMeta.page * auditMeta.per_page,
+                          auditMeta.total
+                        )} of ${auditMeta.total}`
+                        : "Showing 0 of 0"}
                     </div>
-                    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAuditPage((current) => Math.max(1, current - 1))}
+                        disabled={auditLoading || auditMeta.page <= 1}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Previous
+                      </button>
                       <div className="text-xs text-slate-600">
-                        {auditMeta.total > 0
-                          ? `Showing ${(auditMeta.page - 1) * auditMeta.per_page + 1}-${Math.min(
-                              auditMeta.page * auditMeta.per_page,
-                              auditMeta.total
-                            )} of ${auditMeta.total}`
-                          : "Showing 0 of 0"}
+                        Page {auditMeta.page} of {auditMeta.total_pages}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setAuditPage((current) => Math.max(1, current - 1))}
-                          disabled={auditLoading || auditMeta.page <= 1}
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Previous
-                        </button>
-                        <div className="text-xs text-slate-600">
-                          Page {auditMeta.page} of {auditMeta.total_pages}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setAuditPage((current) => Math.min(auditMeta.total_pages, current + 1))}
-                          disabled={auditLoading || auditMeta.page >= auditMeta.total_pages}
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Next
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAuditPage((current) => Math.min(auditMeta.total_pages, current + 1))}
+                        disabled={auditLoading || auditMeta.page >= auditMeta.total_pages}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Next
+                      </button>
                     </div>
                   </div>
-                )}
-              </div>
-              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAudit(false)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
-                >
-                  Close
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }
