@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { LoaderCircle, MapPin } from "lucide-react";
@@ -11,7 +11,8 @@ import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { appLogo } from "../../assets/branding";
 import DarkModeToggle from "../../components/darkmode/DarkModeToggle";
 import Footer from "../../components/footer/footer";
-import { getHomePathForRole, readStoredLoginState } from "../../context/AuthContext";
+import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
+import { getHomePathForRole } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
@@ -184,7 +185,7 @@ function MobileMenuButton({ open, onClick, isDarkMode }) {
 
 function SectionHeader({ eyebrow, title, description, align = "left", isDarkMode }) {
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
@@ -536,10 +537,9 @@ export default function LandingPage() {
   const [activeSection, setActiveSection] = useState(sectionIds[0]);
   const [contactForm, setContactForm] = useState(initialContactForm);
   const [submitting, setSubmitting] = useState(false);
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const { isDarkMode } = useTheme();
-  const storedLoginState = useMemo(() => readStoredLoginState(), []);
-  const redirectRoleId = getUserRole(user) ?? storedLoginState.roleId;
+  const redirectRoleId = getUserRole(user);
 
   const closeMenu = () => {
     setMenuOpen(false);
@@ -639,7 +639,15 @@ export default function LandingPage() {
     }
   };
 
-  if ((user || storedLoginState.isLoggedIn) && redirectRoleId) {
+  if (!isAuthReady) {
+    return (
+      <div className="mx-auto min-h-screen max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+        <RouteLoadingPanel />
+      </div>
+    );
+  }
+
+  if (user && redirectRoleId) {
     return <Navigate to={getHomePathForRole(redirectRoleId)} replace />;
   }
 
@@ -775,13 +783,13 @@ export default function LandingPage() {
                   >
                     Sign in
                   </Link>
-                <Link
-                  to="/sign-up"
-                  onClick={closeMenu}
-                  className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-emerald-700"
-                >
-                  Sign up
-                </Link>
+                  <Link
+                    to="/sign-up"
+                    onClick={closeMenu}
+                    className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  >
+                    Sign up
+                  </Link>
                 </div>
               </div>
             </div>
@@ -807,7 +815,7 @@ export default function LandingPage() {
                   Welcome to Guibone Accounting Services
                 </div>
 
-                <motion.h1 
+                <motion.h1
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6 }}
@@ -819,7 +827,7 @@ export default function LandingPage() {
                   </span>
                 </motion.h1>
 
-                <motion.p 
+                <motion.p
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.1 }}
@@ -828,7 +836,7 @@ export default function LandingPage() {
                   A centralized platform to manage client records, tasks, documents, and appointments—designed for clear progress visibility and role-based access.
                 </motion.p>
 
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}

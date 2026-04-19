@@ -295,7 +295,7 @@ function normalizeSchedulingRow(row) {
 function useSessionUser() {
   return useMemo(() => {
     try {
-      const raw = localStorage.getItem("session:user");
+      const raw = sessionStorage.getItem("session:user");
       return raw ? JSON.parse(raw) : null;
     } catch (_) {
       return null;
@@ -968,7 +968,7 @@ export default function Calendar() {
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
-      <style dangerouslySetInnerHTML={{ __html: calendarStyles }} />
+      <style>{calendarStyles}</style>
 
       {/* Header */}
       <div className="flex items-start sm:items-center justify-between gap-3">

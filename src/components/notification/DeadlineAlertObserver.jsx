@@ -4,9 +4,9 @@ import { useNotification } from "../../hooks/useNotification";
 import {
   DEADLINE_ALERT_SESSION_STORAGE_KEY,
   DEADLINE_REMINDER_SESSION_STORAGE_KEY,
-  LOGIN_SESSION_STORAGE_KEY,
+  readSharedLoginSessionKey,
 } from "../../context/AuthContext";
-import { showAlertDialog, showInfoToast } from "../../utils/feedback";
+import { showAlertDialog } from "../../utils/feedback";
 import { ROLE_IDS } from "../../utils/helpers";
 import {
   api,
@@ -34,7 +34,7 @@ function pluralizeTask(count) {
   return count === 1 ? "task" : "tasks";
 }
 
-function buildSoonToastMessage(count) {
+function buildSoonAlertMessage(count) {
   const taskLabel = pluralizeTask(count);
   const pronoun = count === 1 ? "it" : "them";
   return `\uD83D\uDCC5 You have ${count} ${taskLabel} due tomorrow. Make sure to complete ${pronoun} before the deadline.`;
@@ -57,17 +57,9 @@ function buildPendingReminderMessage(count) {
   return `\uD83D\uDD14 Reminder: You have ${count} pending ${taskLabel}. Please complete ${count === 1 ? "it" : "them"}.`;
 }
 
-function readLoginSessionKey() {
-  try {
-    return String(sessionStorage.getItem(LOGIN_SESSION_STORAGE_KEY) || "").trim();
-  } catch (_) {
-    return "";
-  }
-}
-
 function readShownDeadlineState() {
   try {
-    const raw = sessionStorage.getItem(DEADLINE_ALERT_SESSION_STORAGE_KEY);
+    const raw = localStorage.getItem(DEADLINE_ALERT_SESSION_STORAGE_KEY);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
@@ -89,7 +81,7 @@ function readShownDeadlineState() {
 
 function persistShownDeadlineState(userKey, loginSessionKey, ids) {
   try {
-    sessionStorage.setItem(
+    localStorage.setItem(
       DEADLINE_ALERT_SESSION_STORAGE_KEY,
       JSON.stringify({
         userKey,
@@ -102,7 +94,7 @@ function persistShownDeadlineState(userKey, loginSessionKey, ids) {
 
 function readReminderState() {
   try {
-    const raw = sessionStorage.getItem(DEADLINE_REMINDER_SESSION_STORAGE_KEY);
+    const raw = localStorage.getItem(DEADLINE_REMINDER_SESSION_STORAGE_KEY);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
@@ -121,7 +113,7 @@ function readReminderState() {
 
 function persistReminderState(userKey, loginSessionKey, lastShownAt) {
   try {
-    sessionStorage.setItem(
+    localStorage.setItem(
       DEADLINE_REMINDER_SESSION_STORAGE_KEY,
       JSON.stringify({
         userKey,
@@ -168,7 +160,7 @@ export default function DeadlineAlertObserver() {
 
   useEffect(() => {
     const nextUserKey = String(userId || "");
-    const nextLoginSessionKey = readLoginSessionKey();
+    const nextLoginSessionKey = readSharedLoginSessionKey();
     const nextScopeKey = `${nextUserKey}::${nextLoginSessionKey}`;
     if (scopeKeyRef.current === nextScopeKey) return;
 
@@ -243,7 +235,7 @@ export default function DeadlineAlertObserver() {
   useEffect(() => {
     if (!isAuthReady) return;
     if (![ROLE_IDS.ADMIN, ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT].includes(role)) return;
-    const loginSessionKey = readLoginSessionKey();
+    const loginSessionKey = readSharedLoginSessionKey();
     const currentUserKey = String(userId || "").trim();
     if (!loginSessionKey || !currentUserKey) return;
     let active = true;
@@ -289,18 +281,24 @@ export default function DeadlineAlertObserver() {
     });
 
     if (soonNotifications.length) {
-      showInfoToast({
-        title: buildSoonToastMessage(soonNotifications.length),
-        duration: 5000,
-        id: `deadline-soon-${userId || "user"}`,
+      void showAlertDialog({
+        icon: "info",
+        title: "Upcoming Task Alert",
+        html: `<div style="padding:4px 0;line-height:1.6;color:inherit;">${buildSoonAlertMessage(
+          soonNotifications.length
+        )}</div>`,
+        confirmButtonText: "OK",
       });
     }
 
     if (todayNotifications.length) {
-      showInfoToast({
+      void showAlertDialog({
+        icon: "warning",
         title: "Today's Task Alert",
-        description: buildTodayAlertMessage(todayNotifications.length),
-        duration: 5000,
+        html: `<div style="padding:4px 0;line-height:1.6;color:inherit;">${buildTodayAlertMessage(
+          todayNotifications.length
+        )}</div>`,
+        confirmButtonText: "OK",
       });
     }
 
@@ -392,7 +390,7 @@ export default function DeadlineAlertObserver() {
     if (![ROLE_IDS.ADMIN, ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT].includes(role)) return;
 
     const currentUserKey = String(userId || "").trim();
-    const loginSessionKey = readLoginSessionKey();
+    const loginSessionKey = readSharedLoginSessionKey();
     if (!currentUserKey || !loginSessionKey) return;
 
     const pendingCount = reminderTaskCount;

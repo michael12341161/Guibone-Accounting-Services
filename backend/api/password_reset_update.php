@@ -68,7 +68,7 @@ try {
     ]);
   }
 
-  $hash = hash('sha256', (string)$newPassword);
+  $hash = password_hash((string)$newPassword, PASSWORD_DEFAULT);
 
   // Update user password
   $updUser = $conn->prepare(

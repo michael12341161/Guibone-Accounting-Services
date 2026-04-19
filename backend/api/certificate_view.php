@@ -210,6 +210,5 @@ try {
     certificate_view_respond(500, [
         'success' => false,
         'message' => 'Server error',
-        'error' => $e->getMessage(),
     ]);
 }

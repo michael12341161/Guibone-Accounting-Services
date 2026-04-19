@@ -221,7 +221,9 @@ export default function ClientBusinessStatusPage() {
               if (!canOpenDocuments) {
                 return;
               }
-              navigate(`${documentsBasePath}/documents?client_id=${row.id}`);
+              navigate(`${documentsBasePath}/documents`, {
+                state: { selectedClientId: String(row.id || "") },
+              });
             }}
           >
             <FileText className="h-4 w-4" />

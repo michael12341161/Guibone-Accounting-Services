@@ -2,6 +2,7 @@ import {
   Award,
   Building2,
   CalendarCheck,
+  CalendarDays,
   Clock3,
   FileText,
   LayoutDashboard,
@@ -19,6 +20,7 @@ export const clientBreadcrumbConfig = {
     "/client/businesses": { label: "Business", icon: Building2 },
     "/client/documents": { label: "Documents", icon: FileText },
     "/client/certificate": { label: "My Certificate", icon: Award },
+    "/client/calendar": { label: "Calendar", icon: CalendarDays },
     "/client/messaging": { label: "Messaging", icon: MessageCircleMore },
     "/client/work-progress": {
       label: "Work Progress",

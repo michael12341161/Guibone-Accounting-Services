@@ -39,11 +39,9 @@ export default function NotificationBell({
     );
     if (!ids.length) return;
 
-    for (const id of ids) {
-      await markNotificationRead(id);
-    }
+    await markNotificationRead(ids.length > 1 ? ids : ids[0]);
 
-    if (ids.length > 1 && typeof refreshNotifications === "function") {
+    if (typeof refreshNotifications === "function") {
       await refreshNotifications();
     }
   }

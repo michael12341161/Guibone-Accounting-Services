@@ -112,8 +112,15 @@ try {
     }
 
     $stored = (string)$user['Password'];
-    $enteredHash = hash('sha256', (string)$password);
-    $isValid = hash_equals($stored, $enteredHash);
+    // Support both bcrypt and legacy SHA-256 hashes for backward compatibility.
+    // Legacy SHA-256 hashes are exactly 64 hex characters.
+    $isLegacySha256 = (bool)preg_match('/^[a-f0-9]{64}$/i', $stored);
+    if ($isLegacySha256) {
+        $enteredHash = hash('sha256', (string)$password);
+        $isValid = hash_equals($stored, $enteredHash);
+    } else {
+        $isValid = password_verify((string)$password, $stored);
+    }
 
     if (!$isValid) {
         $failedAttempts = isset($user['Failed_login_attempts']) ? (int)$user['Failed_login_attempts'] : 0;
@@ -165,6 +172,15 @@ try {
          WHERE User_id = :id'
     );
     $resetFailedLoginStmt->execute([':id' => $userId]);
+
+    // Auto-migrate legacy SHA-256 hash to bcrypt on successful login.
+    if ($isLegacySha256) {
+        $bcryptHash = password_hash((string)$password, PASSWORD_DEFAULT);
+        $migrateStmt = $conn->prepare(
+            'UPDATE user SET Password = :p WHERE User_id = :id'
+        );
+        $migrateStmt->execute([':p' => $bcryptHash, ':id' => $userId]);
+    }
 
     $roleId = isset($user['Role_ID']) ? (int)$user['Role_ID'] : 0;
     $approvalStatus = null;
@@ -262,6 +278,7 @@ try {
         'message' => 'Login successful',
     ]);
 } catch (Throwable $e) {
+    error_log('Login error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Server error']);
 }

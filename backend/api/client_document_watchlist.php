@@ -193,5 +193,6 @@ try {
         'documents_by_client' => $documentsByClient,
     ]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('client_document_watchlist error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

@@ -361,5 +361,6 @@ try {
         ],
     ]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('appointment_create error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

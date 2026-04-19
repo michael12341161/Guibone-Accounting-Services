@@ -663,5 +663,6 @@ try {
     if (isset($conn) && $conn instanceof PDO && $conn->inTransaction()) {
         $conn->rollBack();
     }
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('task_create error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

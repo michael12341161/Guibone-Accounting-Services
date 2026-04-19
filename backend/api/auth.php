@@ -34,6 +34,18 @@ function monitoring_is_allowed_origin(string $origin): bool
         return false;
     }
 
+    // Check configurable whitelist first (comma-separated env var for production).
+    $allowedOrigins = getenv('ALLOWED_ORIGINS') ?: '';
+    if ($allowedOrigins !== '') {
+        $whitelist = array_map('trim', explode(',', $allowedOrigins));
+        if (in_array($origin, $whitelist, true)) {
+            return true;
+        }
+        // If a whitelist is configured, only allow whitelisted origins.
+        return false;
+    }
+
+    // Development fallback: allow any localhost origin.
     $parts = parse_url($origin);
     if (!is_array($parts)) {
         return false;
@@ -129,6 +141,10 @@ function monitoring_auth_respond(int $code, array $payload): void
 
 function monitoring_destroy_session(): void
 {
+    if (function_exists('monitoring_clear_auth_cookie')) {
+        monitoring_clear_auth_cookie();
+    }
+
     if (session_status() !== PHP_SESSION_ACTIVE) {
         return;
     }
@@ -155,6 +171,164 @@ function monitoring_normalize_session_timeout_minutes($value): int
 {
     $timeout = (int)$value;
     return $timeout > 0 ? $timeout : 30;
+}
+
+function monitoring_request_activity_mode(): string
+{
+    $mode = strtolower(trim((string)($_SERVER['HTTP_X_MONITORING_ACTIVITY'] ?? 'active')));
+    return $mode === 'passive' ? 'passive' : 'active';
+}
+
+function monitoring_request_refreshes_session_activity(): bool
+{
+    return monitoring_request_activity_mode() !== 'passive';
+}
+
+function monitoring_auth_settings_connection(): ?PDO
+{
+    static $attempted = false;
+    static $connection = null;
+
+    if ($attempted) {
+        return $connection instanceof PDO ? $connection : null;
+    }
+
+    $attempted = true;
+
+    try {
+        $host = getenv('DB_HOST') ?: 'localhost';
+        $database = getenv('DB_NAME') ?: 'dbmonitoring';
+        $username = getenv('DB_USER') ?: 'root';
+        $password = getenv('DB_PASS') ?: '';
+
+        $connection = new PDO(
+            "mysql:host={$host};dbname={$database};charset=utf8mb4",
+            $username,
+            $password,
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            ]
+        );
+    } catch (Throwable $__) {
+        $connection = null;
+    }
+
+    return $connection instanceof PDO ? $connection : null;
+}
+
+function monitoring_read_current_security_settings(): ?array
+{
+    static $loaded = false;
+    static $settings = null;
+
+    if ($loaded) {
+        return is_array($settings) ? $settings : null;
+    }
+
+    $loaded = true;
+
+    if (
+        !function_exists('monitoring_security_setting_definitions')
+        || !function_exists('monitoring_default_security_settings')
+    ) {
+        return null;
+    }
+
+    try {
+        $conn = monitoring_auth_settings_connection();
+        if (!$conn) {
+            return null;
+        }
+
+        if (function_exists('monitoring_ensure_settings_table')) {
+            monitoring_ensure_settings_table($conn);
+        }
+
+        $definitions = monitoring_security_setting_definitions();
+        $settings = monitoring_default_security_settings();
+        $dbKeys = array_map(static function (array $definition): string {
+            return (string)($definition['db_key'] ?? '');
+        }, array_values($definitions));
+        $dbKeys = array_values(array_filter($dbKeys, static function (string $dbKey): bool {
+            return $dbKey !== '';
+        }));
+
+        if (!empty($dbKeys)) {
+            $placeholders = implode(',', array_fill(0, count($dbKeys), '?'));
+            $stmt = $conn->prepare(
+                "SELECT setting_key, setting_value
+                 FROM settings
+                 WHERE setting_key IN ({$placeholders})"
+            );
+
+            foreach ($dbKeys as $index => $dbKey) {
+                $stmt->bindValue($index + 1, $dbKey, PDO::PARAM_STR);
+            }
+
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            foreach ($definitions as $frontendKey => $definition) {
+                $dbKey = (string)($definition['db_key'] ?? '');
+                if ($dbKey === '') {
+                    continue;
+                }
+
+                foreach ($rows as $row) {
+                    if (($row['setting_key'] ?? '') !== $dbKey) {
+                        continue;
+                    }
+
+                    $type = strtolower((string)($definition['type'] ?? 'int'));
+                    $value = $type === 'bool'
+                        ? (function_exists('monitoring_parse_bool_setting')
+                            ? monitoring_parse_bool_setting($row['setting_value'] ?? null)
+                            : null)
+                        : (function_exists('monitoring_parse_int_setting')
+                            ? monitoring_parse_int_setting($row['setting_value'] ?? null)
+                            : null);
+                    if ($value === null) {
+                        continue;
+                    }
+
+                    $validator = $definition['validator'] ?? null;
+                    if (is_callable($validator) && $validator($value) === null) {
+                        $settings[$frontendKey] = $value;
+                    }
+                    break;
+                }
+            }
+        }
+    } catch (Throwable $__) {
+        $settings = null;
+    }
+
+    return is_array($settings) ? $settings : null;
+}
+
+function monitoring_refresh_auth_user_security_settings(array $user, bool $persistSession = true): array
+{
+    $settings = monitoring_read_current_security_settings();
+    if (!is_array($settings)) {
+        return $user;
+    }
+
+    $user['security_settings'] = $settings;
+    $user['session_timeout_minutes'] = monitoring_normalize_session_timeout_minutes(
+        $settings['sessionTimeoutMinutes'] ?? null
+    );
+
+    if (
+        $persistSession
+        && session_status() === PHP_SESSION_ACTIVE
+        && isset($_SESSION[MONITORING_SESSION_KEY])
+        && is_array($_SESSION[MONITORING_SESSION_KEY])
+    ) {
+        $_SESSION[MONITORING_SESSION_KEY]['security_settings'] = $settings;
+        $_SESSION[MONITORING_SESSION_KEY]['session_timeout_minutes'] = $user['session_timeout_minutes'];
+    }
+
+    return $user;
 }
 
 function monitoring_prepare_session_user(array $user): array

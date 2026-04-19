@@ -78,5 +78,6 @@ try {
         'document_types' => $documentTypes,
     ]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('client_form_options error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

@@ -191,11 +191,32 @@ try {
         respond(400, ['success' => false, 'message' => 'File too large. Max 10MB']);
     }
 
-    $originalName = (string)($file['name'] ?? '');
+    $originalName = basename((string)($file['name'] ?? ''));
     $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
     $allowedExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'webp'];
     if (!in_array($ext, $allowedExt, true)) {
-        respond(400, ['success' => false, 'message' => 'Invalid file type. Allowed: ' . implode(', ', $allowedExt)]);
+        respond(400, ['success' => false, 'message' => 'Invalid file extension. Allowed: ' . implode(', ', $allowedExt)]);
+    }
+
+    // Verify true MIME type instead of just extension spoofing
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    $allowedMimes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/csv',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
+    ];
+    if (!in_array($mimeType, $allowedMimes, true)) {
+         respond(400, ['success' => false, 'message' => 'Invalid or spoofed file content type.']);
     }
 
     $safeBase = preg_replace('/[^a-zA-Z0-9_-]+/', '_', pathinfo($originalName, PATHINFO_FILENAME));
@@ -366,5 +387,6 @@ try {
     if (isset($destPath) && is_string($destPath) && $destPath !== '' && file_exists($destPath)) {
         @unlink($destPath);
     }
-    respond(500, ['success' => false, 'message' => $e->getMessage()]);
+    error_log('client_upload_document error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

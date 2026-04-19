@@ -133,6 +133,7 @@ export default function ForgotPasswordForm({
             value={email}
             onChange={onEmailChange}
             placeholder="you@example.com"
+            autoComplete="username"
             required
           />
 
@@ -222,6 +223,7 @@ export default function ForgotPasswordForm({
                 {showNewPassword ? <EyeIcon /> : <EyeOffIcon />}
               </button>
             }
+            autoComplete="new-password"
             required
           />
 
@@ -245,6 +247,7 @@ export default function ForgotPasswordForm({
                 {showConfirmPassword ? <EyeIcon /> : <EyeOffIcon />}
               </button>
             }
+            autoComplete="new-password"
             required
           />
 

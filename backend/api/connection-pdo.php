@@ -1,16 +1,18 @@
 <?php
-    $servername = "localhost";
-    $dbusername = "root";
-    $dbpassword = "";
-    $dbname = "dbmonitoring";
+    $servername = getenv('DB_HOST') ?: "localhost";
+    $dbusername = getenv('DB_USER') ?: "root";
+    $dbpassword = getenv('DB_PASS') ?: "";
+    $dbname = getenv('DB_NAME') ?: "dbmonitoring";
 
     try {
         $conn = new PDO("mysql:host=$servername;dbname=$dbname", $dbusername, $dbpassword);
         // set the PDO error mode to exception
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        //echo "Connected successfully";
     } catch(PDOException $e) {
-        echo "Connection failed: " . $e->getMessage();
+        error_log('Database connection failed: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
+        exit;
     }
 
     if (!function_exists('monitoring_schema_quote_identifier')) {

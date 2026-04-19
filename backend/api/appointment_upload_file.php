@@ -179,6 +179,7 @@ try {
     'original_name' => $originalName,
   ]);
 } catch (Throwable $e) {
+  error_log('appointment_upload_file error: ' . $e->getMessage());
   http_response_code(500);
-  echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+  echo json_encode(['success' => false, 'message' => 'Server error']);
 }

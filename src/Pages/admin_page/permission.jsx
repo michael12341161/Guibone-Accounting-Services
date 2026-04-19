@@ -10,20 +10,13 @@ import {
 } from "../../utils/module_permissions";
 
 const ROLE_COLUMNS = [
-  { key: "admin", label: "Admin", description: "Full access across the system." },
   { key: "secretary", label: "Secretary", description: "Office workflow and scheduling access." },
   { key: "accountant", label: "Accountant", description: "Task and finance access." },
   { key: "client", label: "Client", description: "Client portal access." },
+  { key: "admin", label: "Admin", description: "Full access across the system." },
 ];
 
-const HIDDEN_FEATURE_KEYS = new Set(["my-tasks", "invoices"]);
-
-const VISIBLE_FEATURE_SECTIONS = FEATURE_SECTIONS
-  .map((section) => ({
-    ...section,
-    features: section.features.filter((feature) => !HIDDEN_FEATURE_KEYS.has(feature.key)),
-  }))
-  .filter((section) => section.features.length > 0);
+const VISIBLE_FEATURE_SECTIONS = FEATURE_SECTIONS;
 const ROLE_EDITING_STORAGE_KEY = "monitoring:permission-role-editing-states";
 
 function createRoleEditingStates() {
@@ -61,6 +54,35 @@ function loadRoleEditingStates() {
   } catch (_) {
     return createRoleEditingStates();
   }
+}
+
+function applyBulkRoleAccess(base, roleKey, enabled) {
+  const next = { ...base };
+
+  for (const section of FEATURE_SECTIONS) {
+    for (const feature of section.features) {
+      const defaultFeaturePermissions = createFeaturePermissions(feature);
+      const featurePermissions = next[feature.key] || defaultFeaturePermissions;
+      const merged = {
+        ...featurePermissions,
+        [roleKey]: enabled,
+      };
+
+      if (Array.isArray(feature.actions) && feature.actions.length > 0) {
+        merged.actions = { ...(featurePermissions.actions || {}) };
+        for (const action of feature.actions) {
+          merged.actions[action.key] = {
+            ...(merged.actions[action.key] || defaultFeaturePermissions.actions?.[action.key]),
+            [roleKey]: enabled,
+          };
+        }
+      }
+
+      next[feature.key] = merged;
+    }
+  }
+
+  return next;
 }
 
 function countEnabledPermissionsForRole(permissions, roleKey) {
@@ -168,6 +190,15 @@ export default function PermissionsPage() {
     }));
   };
 
+  const setAllPermissionsForRole = (roleKey, enabled) => {
+    setDraftPermissions((current) => {
+      if (!current) {
+        return current;
+      }
+      return applyBulkRoleAccess(current, roleKey, enabled);
+    });
+  };
+
   const toggleActionPermission = (featureKey, actionKey, roleKey) => {
     const featureDefinition = getFeatureDefinition(featureKey);
     const actionDefinition = featureDefinition?.actions?.find((action) => action.key === actionKey);
@@ -264,12 +295,13 @@ export default function PermissionsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Permissions</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Use the cards to allow or restrict access for Admin, Secretary, Accountant, and Client.
+            Each card controls one role: checked items match what that role can open in the app (including sidebar links).
+            Use Enable all on a card to turn on every module for that role, then Save.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="flex flex-col gap-6">
         {ROLE_COLUMNS.map((role) => {
           const enabledCount = countEnabledPermissionsForRole(currentPermissions, role.key);
           const isRoleEditingEnabled = roleEditingStates[role.key] !== false;
@@ -290,6 +322,22 @@ export default function PermissionsPage() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
                         type="button"
+                        disabled={!isRoleEditingEnabled}
+                        onClick={() => setAllPermissionsForRole(role.key, true)}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Enable all
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!isRoleEditingEnabled}
+                        onClick={() => setAllPermissionsForRole(role.key, false)}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Clear all
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => toggleRoleEditing(role.key)}
                         className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                           isRoleEditingEnabled
@@ -297,11 +345,11 @@ export default function PermissionsPage() {
                             : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                         }`}
                       >
-                        {isRoleEditingEnabled ? "Disable" : "Enable"}
+                        {isRoleEditingEnabled ? "Lock edits" : "Unlock edits"}
                       </button>
                       <button
                         type="button"
-                        disabled={savingRole === role.label}
+                        disabled={!isRoleEditingEnabled || savingRole === role.label}
                         onClick={() => handleSavePermissions(role.label)}
                         className="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                       >
@@ -312,9 +360,12 @@ export default function PermissionsPage() {
                 </div>
               </div>
 
-              <div className="max-h-[72vh] space-y-5 overflow-y-auto p-5">
+              <div 
+                className="grid items-start gap-6 p-5"
+                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
+              >
                 {VISIBLE_FEATURE_SECTIONS.map((section) => (
-                  <div key={section.label}>
+                  <div key={section.label} className="min-h-0 min-w-0">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">{section.label}</div>
 
                     <div className="mt-3 space-y-2">
@@ -340,7 +391,7 @@ export default function PermissionsPage() {
                                 }`}
                               />
 
-                              <div className="min-w-0 flex-1">
+                              <div className="min-h-0 min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
                                   {hasActions ? (
                                     <button
@@ -374,7 +425,7 @@ export default function PermissionsPage() {
                                 {hasActions && isExpanded ? (
                                   <div
                                     id={`${detailKey}-actions`}
-                                    className="mt-3 rounded-lg border border-dashed border-slate-200 bg-white p-3"
+                                    className="mt-3 max-h-[min(60vh,24rem)] min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-lg border border-dashed border-slate-200 bg-white p-3 pr-2 [-webkit-overflow-scrolling:touch]"
                                   >
                                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                                       {feature.label} Actions

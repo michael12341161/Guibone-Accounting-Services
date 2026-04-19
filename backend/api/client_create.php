@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/module_permission_store.php';
 require_once __DIR__ . '/document_helpers.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/status_helpers.php';
@@ -1512,12 +1513,25 @@ try {
         $barangay = $barangay !== '' ? $barangay : null;
         $streetAddress = $streetAddress !== '' ? $streetAddress : null;
         $tin = isset($data['tin_no']) ? trim((string)$data['tin_no']) : null;
-        $statusId = isset($data['status_id']) && ctype_digit((string)$data['status_id']) ? (int)$data['status_id'] : 1;
+        $currentStatusId = isset($currentClient['status_id']) && ctype_digit((string)$currentClient['status_id'])
+            ? (int)$currentClient['status_id']
+            : 1;
+        $statusId = isset($data['status_id']) && ctype_digit((string)$data['status_id'])
+            ? (int)$data['status_id']
+            : $currentStatusId;
 
         if (!$staffCanManageClient) {
             $statusId = isset($currentClient['status_id']) && ctype_digit((string)$currentClient['status_id'])
                 ? (int)$currentClient['status_id']
                 : null;
+        } elseif ($statusId !== $currentStatusId) {
+            $roleId = (int)($sessionUser['role_id'] ?? 0);
+            if (
+                $roleId !== MONITORING_ROLE_ADMIN
+                && !monitoring_module_permissions_is_role_allowed($conn, 'client-management', 'account-status', $roleId)
+            ) {
+                $statusId = $currentStatusId;
+            }
         }
 
         if ($first === '' || $last === '') {
@@ -1801,7 +1815,7 @@ try {
         }
 
         $plain = $rawUserPassword;
-        $passwordHash = hash('sha256', (string)$plain);
+        $passwordHash = password_hash((string)$plain, PASSWORD_DEFAULT);
         $loginUsernameForEmail = $trimmedEmail;
         $loginPasswordForEmail = $plain;
 
@@ -1865,5 +1879,6 @@ try {
     if ($constraintMessage !== null) {
         respond(409, ['success' => false, 'message' => $constraintMessage]);
     }
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('client_create error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock3, Eye, FileText, Search, Upload } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardHeader } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
@@ -30,6 +30,26 @@ const WATCHLIST_DOCUMENT_TYPES = [
   { id: 6, name: "sec" },
   { id: 7, name: "lgu" },
 ];
+
+function normalizeClientId(value) {
+  return String(value || "").trim();
+}
+
+function buildDocumentLocationState(currentState, selectedClientId) {
+  const baseState = currentState && typeof currentState === "object" ? currentState : {};
+  const nextClientId = normalizeClientId(selectedClientId);
+
+  if (!nextClientId) {
+    const nextState = { ...baseState };
+    delete nextState.selectedClientId;
+    return nextState;
+  }
+
+  return {
+    ...baseState,
+    selectedClientId: nextClientId,
+  };
+}
 
 function fullName(client) {
   return joinPersonName([client?.first_name, client?.middle_name, client?.last_name]) || "-";
@@ -118,8 +138,23 @@ const NEAR_EXPIRY_DAYS = 30;
 export default function DocumentAdminPage() {
   const { user } = useAuth();
   const { permissions } = useModulePermissions();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedClientId = searchParams.get("client_id");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const locationState = useMemo(
+    () => (location.state && typeof location.state === "object" ? location.state : {}),
+    [location.state]
+  );
+  const searchClientId = useMemo(
+    () => normalizeClientId(new URLSearchParams(location.search).get("client_id")),
+    [location.search]
+  );
+  const cleanSearch = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("client_id");
+    const nextSearch = params.toString();
+    return nextSearch ? `?${nextSearch}` : "";
+  }, [location.search]);
+  const requestedClientId = normalizeClientId(locationState.selectedClientId || searchClientId);
   const [clients, setClients] = useState([]);
   const [documentTypes, setDocumentTypes] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -250,6 +285,23 @@ export default function DocumentAdminPage() {
       window.clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (!searchClientId) {
+      return;
+    }
+
+    navigate(
+      {
+        pathname: location.pathname,
+        search: cleanSearch,
+      },
+      {
+        replace: true,
+        state: buildDocumentLocationState(locationState, locationState.selectedClientId || searchClientId),
+      }
+    );
+  }, [cleanSearch, location.pathname, locationState, navigate, searchClientId]);
 
   useEffect(() => {
     if (!clients.length) {
@@ -515,13 +567,22 @@ export default function DocumentAdminPage() {
   );
 
   function handleClientSelect(clientId) {
-    const nextClientId = String(clientId || "").trim();
+    const nextClientId = normalizeClientId(clientId);
     setSelectedClientId(nextClientId || null);
     setPendingFiles({});
     setPendingDurationDays({});
     setSuccess("");
     setError("");
-    setSearchParams(nextClientId ? { client_id: nextClientId } : {}, { replace: true });
+    navigate(
+      {
+        pathname: location.pathname,
+        search: cleanSearch,
+      },
+      {
+        replace: true,
+        state: buildDocumentLocationState(locationState, nextClientId),
+      }
+    );
   }
 
   const watchlistStatusLabel =

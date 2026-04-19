@@ -24,8 +24,27 @@ try {
         respond(400, ['success' => false, 'message' => 'Invalid JSON payload']);
     }
 
-    $notificationId = (int)($data['notification_id'] ?? $data['notifications_ID'] ?? $data['id'] ?? 0);
-    if ($notificationId <= 0) {
+    $rawNotificationIds = [];
+    if (isset($data['notification_ids']) && is_array($data['notification_ids'])) {
+        $rawNotificationIds = $data['notification_ids'];
+    } elseif (isset($data['notificationIds']) && is_array($data['notificationIds'])) {
+        $rawNotificationIds = $data['notificationIds'];
+    } else {
+        $rawNotificationIds = [
+            $data['notification_id'] ?? $data['notifications_ID'] ?? $data['id'] ?? 0,
+        ];
+    }
+
+    $notificationIds = [];
+    foreach ($rawNotificationIds as $value) {
+        $notificationId = (int)$value;
+        if ($notificationId > 0) {
+            $notificationIds[$notificationId] = true;
+        }
+    }
+    $notificationIds = array_values(array_map('intval', array_keys($notificationIds)));
+
+    if (empty($notificationIds)) {
         respond(422, ['success' => false, 'message' => 'notification_id is required']);
     }
 
@@ -34,16 +53,21 @@ try {
         respond(401, ['success' => false, 'message' => 'Authentication is required.']);
     }
 
+    $placeholders = [];
+    $params = [':uid' => $userId];
+    foreach ($notificationIds as $index => $notificationId) {
+        $placeholder = ':nid_' . $index;
+        $placeholders[] = $placeholder;
+        $params[$placeholder] = $notificationId;
+    }
+
     $stmt = $conn->prepare(
         'UPDATE notifications
          SET is_read = 1
-         WHERE notifications_ID = :nid
-           AND user_id = :uid'
+         WHERE user_id = :uid
+           AND notifications_ID IN (' . implode(', ', $placeholders) . ')'
     );
-    $stmt->execute([
-        ':nid' => $notificationId,
-        ':uid' => $userId,
-    ]);
+    $stmt->execute($params);
 
     $countStmt = $conn->prepare(
         'SELECT COUNT(*)
@@ -57,8 +81,10 @@ try {
     respond(200, [
         'success' => true,
         'updated' => $stmt->rowCount() > 0,
+        'updated_ids' => $notificationIds,
         'unread_count' => $unreadCount,
     ]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('notification_mark_read error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

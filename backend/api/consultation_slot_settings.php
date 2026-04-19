@@ -160,5 +160,6 @@ try {
         'slots' => $savedSlots,
     ]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('consultation_slot_settings error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

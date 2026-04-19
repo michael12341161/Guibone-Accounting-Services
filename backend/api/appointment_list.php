@@ -390,5 +390,6 @@ try {
 
     respond(200, ['success' => true, 'appointments' => $appointments]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('appointment_list error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

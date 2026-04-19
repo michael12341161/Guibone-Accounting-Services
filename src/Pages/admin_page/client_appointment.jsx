@@ -144,6 +144,24 @@ function collectAttachmentEntries(row, description) {
   return Array.from(map.values());
 }
 
+function resolveRowAttachments(row) {
+  if (!row) return [];
+  const fromRow = Array.isArray(row.attachments) ? row.attachments : [];
+  if (fromRow.length > 0) return fromRow;
+  if (row.attachmentPath) {
+    return [
+      {
+        path: row.attachmentPath,
+        filename:
+          row.attachmentFilename ||
+          String(row.attachmentPath).split("/").pop() ||
+          "Uploaded file",
+      },
+    ];
+  }
+  return [];
+}
+
 function readMetaLines(text, key) {
   const source = String(text || "");
   const escaped = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -235,7 +253,13 @@ function formatActionBy(row) {
   const status = normalizeAppointmentDecisionStatus(row?.statusRaw || row?.status);
   if (!status || status === "pending") return "-";
 
-  const display = String(row?.actionBy || "").trim();
+  const display = String(row?.actionBy || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  const tokens = display ? display.split(" ") : [];
+  if (tokens.length > 1 && new Set(tokens.map((token) => token.toLowerCase())).size === 1) {
+    return tokens[0];
+  }
   return display || "-";
 }
 
@@ -552,21 +576,7 @@ export default function AdminAppointmentManagement() {
   };
 
   const activeAttachments = useMemo(() => {
-    if (!activeFileRow) return [];
-    const fromRow = Array.isArray(activeFileRow.attachments) ? activeFileRow.attachments : [];
-    if (fromRow.length > 0) return fromRow;
-    if (activeFileRow.attachmentPath) {
-      return [
-        {
-          path: activeFileRow.attachmentPath,
-          filename:
-            activeFileRow.attachmentFilename ||
-            String(activeFileRow.attachmentPath).split("/").pop() ||
-            "Uploaded file",
-        },
-      ];
-    }
-    return [];
+    return resolveRowAttachments(activeFileRow);
   }, [activeFileRow]);
 
   const activeProcessingDocuments = useMemo(() => {
@@ -574,6 +584,10 @@ export default function AdminAppointmentManagement() {
     return Array.isArray(activeDocumentRow.processingDocuments)
       ? activeDocumentRow.processingDocuments
       : [];
+  }, [activeDocumentRow]);
+
+  const activeDocumentAttachments = useMemo(() => {
+    return resolveRowAttachments(activeDocumentRow);
   }, [activeDocumentRow]);
 
   const declineTargetRow = useMemo(
@@ -622,7 +636,6 @@ export default function AdminAppointmentManagement() {
         const isPending = statusLower === "pending";
         const approveDisabled = disabled || !isPending;
         const declineDisabled = disabled || !isPending;
-        const hasProcessingDocuments = Array.isArray(row.processingDocuments) && row.processingDocuments.length > 0;
         return (
           <div className="flex items-center justify-end gap-1">
             <IconButton
@@ -657,18 +670,12 @@ export default function AdminAppointmentManagement() {
               type="button"
               size="sm"
               variant="secondary"
-              title={
-                !canViewAppointmentFiles
-                  ? "Request access"
-                  : hasProcessingDocuments
-                    ? "View Docs"
-                    : "No processing documents selected"
-              }
-              disabled={disabled || !hasProcessingDocuments}
-              aria-disabled={disabled || !canViewAppointmentFiles || !hasProcessingDocuments}
+              title={!canViewAppointmentFiles ? "Request access" : "View Docs"}
+              disabled={disabled}
+              aria-disabled={disabled || !canViewAppointmentFiles}
               className={!canViewAppointmentFiles ? "cursor-not-allowed opacity-60" : ""}
               onClick={() => {
-                if (disabled || !hasProcessingDocuments) return;
+                if (disabled) return;
                 if (!canViewAppointmentFiles) {
                   void promptAppointmentAccess();
                   return;
@@ -880,8 +887,8 @@ export default function AdminAppointmentManagement() {
       <Modal
         open={documentModalOpen}
         onClose={closeDocumentCard}
-        title="Documents To Process"
-        description="Review the documents this client wants processed."
+        title="Client Documents"
+        description="Review the requested processing documents and uploaded files for this appointment."
         size="sm"
         footer={
           <>
@@ -906,6 +913,78 @@ export default function AdminAppointmentManagement() {
             </div>
           </div>
 
+          {activeDocumentAttachments.length > 0 ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-emerald-700">
+                Uploaded Files ({activeDocumentAttachments.length})
+              </div>
+              <div className="mt-2 space-y-2">
+                {activeDocumentAttachments.map((item, idx) => {
+                  const filePath = String(item?.path || "").trim();
+                  const fileName =
+                    String(item?.filename || "").trim() ||
+                    String(filePath).split("/").pop() ||
+                    `Uploaded file ${idx + 1}`;
+                  const openUrl = toOpenFileUrl(filePath, fileName);
+                  const previewUrl = toAppointmentFileUrl(filePath, {
+                    disposition: "inline",
+                    filename: fileName,
+                  });
+                  const downloadUrl = toAppointmentFileUrl(filePath, {
+                    disposition: "attachment",
+                    filename: fileName,
+                  });
+                  const showImagePreview = isImageAttachment(filePath, fileName);
+
+                  return (
+                    <div
+                      key={`${filePath}-${idx}`}
+                      className="rounded-md border border-emerald-200/80 bg-white/80 px-3 py-2"
+                    >
+                      <div className="break-all text-sm font-medium text-emerald-800">
+                        {fileName}
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-xs">
+                        <a
+                          href={openUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-indigo-700 underline"
+                        >
+                          Open file
+                        </a>
+                        <a
+                          href={downloadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-slate-700 underline"
+                        >
+                          Download
+                        </a>
+                      </div>
+                      {showImagePreview ? (
+                        <a
+                          href={openUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 block overflow-hidden rounded-md border border-emerald-200/70 bg-white"
+                          title={`Preview ${fileName}`}
+                        >
+                          <img
+                            src={previewUrl}
+                            alt={fileName}
+                            loading="lazy"
+                            className="max-h-64 w-full object-contain"
+                          />
+                        </a>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           {activeProcessingDocuments.length > 0 ? (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
               <div className="text-[11px] uppercase tracking-wide text-indigo-700">
@@ -922,11 +1001,13 @@ export default function AdminAppointmentManagement() {
                 ))}
               </div>
             </div>
-          ) : (
+          ) : null}
+
+          {activeDocumentAttachments.length === 0 && activeProcessingDocuments.length === 0 ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-              No processing documents were selected for this appointment.
+              No uploaded files or processing documents were found for this appointment.
             </div>
-          )}
+          ) : null}
         </div>
       </Modal>
 

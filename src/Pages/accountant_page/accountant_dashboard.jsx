@@ -51,7 +51,7 @@ export default function AccountantDashboard({ user, onLogout }) {
 
   const persistedUser = (() => {
     try {
-      const raw = localStorage.getItem("session:user");
+      const raw = sessionStorage.getItem("session:user");
       return raw ? JSON.parse(raw) : null;
     } catch (_) {
       return null;
@@ -70,6 +70,7 @@ export default function AccountantDashboard({ user, onLogout }) {
     () => resolveNavKey(location.pathname, accountantNavItems, "/accountant"),
     [location.pathname]
   );
+  const isUserManagementPage = currentKey === "users" || currentKey === "permissions";
   const canViewDashboard = hasModuleAccess(user, "dashboard", permissions);
 
   useEffect(() => {
@@ -147,18 +148,41 @@ export default function AccountantDashboard({ user, onLogout }) {
 
   return (
     <AccountantLayout user={user} onLogout={onLogout}>
-      {currentKey !== "my-tasks" &&
-        currentKey !== "calendar" &&
-        (currentKey !== "dashboard" || canViewDashboard) && (
-        currentKey === "dashboard" ? (
+      {!isUserManagementPage && !location.pathname.startsWith("/accountant/settings") && (
+        currentKey === "dashboard" && canViewDashboard ? (
           <DashboardHero user={effectiveUser} />
-        ) : (
+        ) : currentKey !== "dashboard" ? (
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-slate-800">
-              {currentKey.charAt(0).toUpperCase() + currentKey.slice(1)}
+              {(() => {
+                const hideTitle = [
+                  "client-management",
+                  "documents",
+                  "certificate",
+                  "certificate-menu",
+                  "certificate-view",
+                  "edit-certificate",
+                  "business-status",
+                  "client-list",
+                  "new-client-management",
+                  "appointments",
+                  "scheduling",
+                  "tasks",
+                  "work-update",
+                  "reports",
+                  "task-management",
+                  "messaging",
+                  "calendar",
+                  "settings",
+                ];
+                if (hideTitle.includes(currentKey)) {
+                  return "";
+                }
+                return currentKey.charAt(0).toUpperCase() + currentKey.slice(1);
+              })()}
             </h1>
           </div>
-        )
+        ) : null
       )}
 
       <Outlet />
@@ -222,7 +246,7 @@ export default function AccountantDashboard({ user, onLogout }) {
             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card compact>
                 <CardHeader>
-                  <CardTitle>Task Status Breakdown</CardTitle>
+                  <CardTitle>Total Works</CardTitle>
                   <CardDescription>Distribution of your assigned tasks</CardDescription>
                 </CardHeader>
                 <CardContent>

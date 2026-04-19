@@ -637,6 +637,7 @@ export default function ClientManagement() {
 
   const canViewClientManagement = hasFeatureActionAccess(user, "client-management", "view", permissions);
   const canEditClientManagement = hasFeatureActionAccess(user, "client-management", "edit", permissions);
+  const canSetClientAccountStatus = hasFeatureActionAccess(user, "client-management", "account-status", permissions);
   const canAddNewClient = hasFeatureActionAccess(user, "client-management", "add-new-client", permissions);
   const canViewClientLocation = hasFeatureActionAccess(user, "client-management", "location", permissions);
   const canUploadRequiredDocuments = hasFeatureActionAccess(user, "client-management", "file-upload", permissions);
@@ -1301,8 +1302,8 @@ export default function ClientManagement() {
 
   const toggleClientStatus = useCallback(async (client) => {
     if (!client?.id) return;
-    if (!canEditClientManagement) {
-      setError("You do not have permission to edit client records.");
+    if (!canSetClientAccountStatus) {
+      setError("You do not have permission to change client account status.");
       return;
     }
 
@@ -1389,7 +1390,7 @@ export default function ClientManagement() {
     } finally {
       setStatusActionClientId(null);
     }
-  }, [canEditClientManagement]);
+  }, [canSetClientAccountStatus]);
 
   const businessTypeOptions = useMemo(() => {
     return buildBusinessTypeOptions(businessTypes, clients);
@@ -1516,24 +1517,24 @@ export default function ClientManagement() {
           <button
             type="button"
             onClick={() => {
-              if (canEditClientManagement) {
+              if (canSetClientAccountStatus) {
                 void toggleClientStatus(row.raw);
                 return;
               }
               void promptClientManagementAccess();
             }}
-            disabled={canEditClientManagement && statusActionClientId === row.raw?.id}
-            aria-disabled={!canEditClientManagement}
+            disabled={canSetClientAccountStatus && statusActionClientId === row.raw?.id}
+            aria-disabled={!canSetClientAccountStatus}
             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(
               value
             )} hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-              canEditClientManagement
+              canSetClientAccountStatus
                 ? statusActionClientId === row.raw?.id
                   ? "cursor-wait opacity-70"
                   : ""
                 : "cursor-not-allowed opacity-60"
             }`}
-            title={canEditClientManagement ? "Click to change status" : "Request access"}
+            title={canSetClientAccountStatus ? "Click to change status" : "Request access"}
           >
             {value}
           </button>
@@ -1613,6 +1614,7 @@ export default function ClientManagement() {
     ],
     [
       canEditClientManagement,
+      canSetClientAccountStatus,
       canViewClientLocation,
       canViewClientManagement,
       isAdminUser,

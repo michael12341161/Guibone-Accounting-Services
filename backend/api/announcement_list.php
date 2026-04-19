@@ -23,5 +23,6 @@ try {
 
     respond(200, ['success' => true, 'announcements' => $rows]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('announcement_list error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

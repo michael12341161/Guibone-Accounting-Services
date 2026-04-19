@@ -5,6 +5,7 @@ import { api, fetchAvailableServices } from "../../services/api";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
+import { useWorkspacePrefix } from "../../hooks/useWorkspacePrefix";
 import { useErrorToast } from "../../utils/feedback";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
 import {
@@ -453,17 +454,20 @@ const parseSteps = (descRaw) => {
 
 export default function AdminWorkUpdate() {
   const { user } = useAuth();
+  const workspacePrefix = useWorkspacePrefix();
   const { permissions } = useModulePermissions();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useErrorToast(error);
   const canCheckTaskSteps = hasFeatureActionAccess(user, "work-update", "check-steps", permissions);
+  const canApproveSubmittedSteps = hasFeatureActionAccess(user, "work-update", "approve", permissions);
   const canViewTaskUpdateHistory = hasFeatureActionAccess(user, "work-update", "history", permissions);
   const canEditTaskUpdates = hasFeatureActionAccess(user, "work-update", "edit", permissions);
   const canMarkTaskDone = hasFeatureActionAccess(user, "work-update", "mark-done", permissions);
   const canDeclineTaskUpdates = hasFeatureActionAccess(user, "work-update", "decline", permissions);
-  const canManageStepRemarks = canViewTaskUpdateHistory && canEditTaskUpdates;
+  const canAddStepRemarks = hasFeatureActionAccess(user, "work-update", "remarks", permissions);
+  const canManageStepRemarks = canAddStepRemarks;
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -600,7 +604,7 @@ export default function AdminWorkUpdate() {
   };
 
   const approveStep = async (task, index) => {
-    if (!canCheckTaskSteps) return;
+    if (!canApproveSubmittedSteps) return;
     const id = task?.id;
     if (!id) return;
 
@@ -1033,7 +1037,7 @@ export default function AdminWorkUpdate() {
           </div>
           {canViewTaskUpdateHistory ? (
             <Link
-              to="/admin/work-update/history"
+              to={`${workspacePrefix}/work-update/history`}
               className="inline-flex shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
             >
               History
@@ -1428,7 +1432,7 @@ export default function AdminWorkUpdate() {
                                 !pendingReview &&
                                 canCompleteByOrder &&
                                 isAssignedToOwner;
-                              const canApprove = canCheckTaskSteps && !taskLocked && !done && pendingReview;
+                              const canApprove = canApproveSubmittedSteps && !taskLocked && !done && pendingReview;
                               const canEditRemark =
                                 canManageStepRemarks && !taskLocked && !done && !pendingReview && isAssignedToOwner;
                               const stepRemark = canViewTaskUpdateHistory ? String(stepRemarks[stepNumber] || "").trim() : "";

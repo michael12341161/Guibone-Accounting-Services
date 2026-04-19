@@ -19,9 +19,12 @@ export default function TaskClientAppointmentsPage() {
   const [error, setError] = useState("");
   useErrorToast(error);
 
-  const tasksPath = location.pathname.startsWith("/admin")
-    ? "/admin/tasks"
-    : "/secretary/tasks";
+  const tasksPath = (() => {
+    const p = location.pathname || "";
+    if (p.startsWith("/admin")) return "/admin/tasks";
+    if (p.startsWith("/accountant")) return "/accountant/tasks";
+    return "/secretary/tasks";
+  })();
 
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);

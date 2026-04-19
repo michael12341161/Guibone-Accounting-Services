@@ -2400,7 +2400,7 @@ export default function AdminSettings() {
                   >
                     {AUDIT_PER_PAGE_OPTIONS.map((option) => (
                       <option key={option} value={option}>
-                        {option}/page
+                        {option} / page
                       </option>
                     ))}
                   </select>

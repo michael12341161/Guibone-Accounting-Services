@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -201,6 +201,7 @@ export default function UserManagement() {
   const { permissions } = useModulePermissions();
   const canViewUsers = hasFeatureActionAccess(user, "user-management", "view", permissions);
   const canEditUsers = hasFeatureActionAccess(user, "user-management", "edit", permissions);
+  const canSetUserAccountStatus = hasFeatureActionAccess(user, "user-management", "account-status", permissions);
   const canAddUsers = hasFeatureActionAccess(user, "user-management", "add-user", permissions);
   const canManageUsers = canEditUsers || canAddUsers;
   const userManagementDescription = canManageUsers
@@ -522,10 +523,10 @@ export default function UserManagement() {
 
   const roleOptions = ["All", "Accountant", "Secretary"];
 
-  const toggleUserStatus = async (targetUser) => {
+  const toggleUserStatus = useCallback(async (targetUser) => {
     if (!targetUser?.id) return;
-    if (!canEditUsers) {
-      setError("You do not have permission to edit users.");
+    if (!canSetUserAccountStatus) {
+      setError("You do not have permission to change user account status.");
       return;
     }
 
@@ -592,7 +593,7 @@ export default function UserManagement() {
     } finally {
       setStatusActionUserId(null);
     }
-  };
+  }, [canSetUserAccountStatus]);
 
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -674,7 +675,7 @@ export default function UserManagement() {
       header: "Status",
       width: "10%",
       render: (value, row) =>
-        canEditUsers ? (
+        canSetUserAccountStatus ? (
           <button
             type="button"
             onClick={() => {

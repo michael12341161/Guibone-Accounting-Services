@@ -232,7 +232,7 @@ try {
     );
     $ins->execute([
         ':u' => $username,
-        ':p' => hash('sha256', $password),
+        ':p' => password_hash($password, PASSWORD_DEFAULT),
         ':r' => $roleId,
         ':employment_status_id' => $employmentStatusId,
         ':e' => $email,
@@ -354,5 +354,6 @@ try {
     if (isset($conn) && $conn instanceof PDO && $conn->inTransaction()) {
         $conn->rollBack();
     }
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('user_create error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

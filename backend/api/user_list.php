@@ -355,5 +355,6 @@ try {
 
     respond(200, ['success' => true, 'users' => $users]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('user_list error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

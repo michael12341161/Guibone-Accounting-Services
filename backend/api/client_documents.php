@@ -152,5 +152,6 @@ try {
 
     respond(200, ['success' => true, 'documents' => $rows]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('client_documents error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

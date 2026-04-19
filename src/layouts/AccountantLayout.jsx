@@ -1,5 +1,25 @@
 import React, { useMemo, useState } from "react";
-import { CalendarDays, KeyRound, LayoutDashboard, ListTodo, LogOut, MessageCircleMore, Settings, UserRound } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CalendarCheck,
+  CalendarClock,
+  CalendarDays,
+  ClipboardList,
+  FilePenLine,
+  FileText,
+  KeyRound,
+  LayoutDashboard,
+  ListTodo,
+  LogOut,
+  MessageCircleMore,
+  Settings,
+  ShieldCheck,
+  UserCog,
+  UserPlus,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
@@ -34,12 +54,111 @@ export const accountantNavItems = [
     accessKey: "dashboard",
   },
   {
-    key: "my-tasks",
-    label: "My Tasks",
-    to: "/accountant/my-tasks",
-    icon: <ListTodo {...sidebarIconProps} />,
+    key: "client-management",
+    label: "Client List",
+    icon: <Users {...sidebarIconProps} />,
+    sectionLabel: "Client Management",
+    accessKey: "client-management",
+    children: [
+      {
+        key: "client-list",
+        label: "Clients",
+        to: "/accountant/client-management",
+        icon: <Users {...sidebarIconProps} />,
+        accessKey: "client-management",
+      },
+      {
+        key: "new-client-management",
+        label: "New Client",
+        to: "/accountant/new-client-management",
+        icon: <UserPlus {...sidebarIconProps} />,
+        accessKey: "new-client-management",
+      },
+      {
+        key: "documents",
+        label: "Documents",
+        to: "/accountant/documents",
+        icon: <FileText {...sidebarIconProps} />,
+        accessKey: "documents",
+      },
+      {
+        key: "business-status",
+        label: "Business Status",
+        to: "/accountant/business-status",
+        icon: <Building2 {...sidebarIconProps} />,
+        accessKey: "business-status",
+      },
+    ],
+  },
+  {
+    key: "certificate-menu",
+    label: "Certificate Template",
+    icon: <FilePenLine {...sidebarIconProps} />,
+    sectionLabel: "Certificate",
+    accessKey: "certificate",
+    children: [
+      {
+        key: "certificate-view",
+        label: "Certificate",
+        to: "/accountant/certificate",
+        end: true,
+        icon: <FileText {...sidebarIconProps} />,
+        accessKey: "certificate",
+      },
+      {
+        key: "edit-certificate",
+        label: "Edit Certificate",
+        to: "/accountant/certificate/edit",
+        icon: <FilePenLine {...sidebarIconProps} />,
+        accessKey: "edit-certificate",
+      },
+    ],
+  },
+  {
+    key: "appointments",
+    label: "Appointments",
+    to: "/accountant/appointments",
+    icon: <CalendarCheck {...sidebarIconProps} />,
+    sectionLabel: "Concerns & Services",
+    accessKey: "appointments",
+  },
+  {
+    key: "scheduling",
+    label: "Consultation",
+    to: "/accountant/scheduling",
+    icon: <CalendarClock {...sidebarIconProps} />,
+    accessKey: "scheduling",
+  },
+  {
+    key: "task-management",
+    label: "Task Management",
+    icon: <ClipboardList {...sidebarIconProps} />,
     sectionLabel: "Workspace",
-    accessKey: "work-update",
+    accessKey: "tasks",
+    children: [
+      {
+        key: "tasks",
+        label: "Tasks",
+        to: "/accountant/tasks",
+        icon: <ClipboardList {...sidebarIconProps} />,
+        accessKey: "tasks",
+      },
+      {
+        key: "work-update",
+        label: "My Tasks",
+        to: "/accountant/work-update",
+        icon: <ListTodo {...sidebarIconProps} />,
+        accessKey: "work-update",
+      },
+    ],
+  },
+  {
+    key: "messaging",
+    label: "Messaging",
+    to: "/accountant/messaging",
+    icon: <MessageCircleMore {...sidebarIconProps} />,
+    sectionLabel: "Communication",
+    accessKey: "messaging",
   },
   {
     key: "calendar",
@@ -50,12 +169,35 @@ export const accountantNavItems = [
     accessKey: "calendar",
   },
   {
-    key: "messaging",
-    label: "Messaging",
-    to: "/accountant/messaging",
-    icon: <MessageCircleMore {...sidebarIconProps} />,
-    sectionLabel: "Communication",
-    accessKey: "messaging",
+    key: "reports",
+    label: "Reports",
+    to: "/accountant/reports",
+    icon: <BarChart3 {...sidebarIconProps} />,
+    sectionLabel: "Insights",
+    accessKey: "reports",
+  },
+  {
+    key: "user-management",
+    label: "User Management",
+    icon: <UserCog {...sidebarIconProps} />,
+    sectionLabel: "System Users",
+    accessKey: "user-management",
+    children: [
+      {
+        key: "users",
+        label: "Users",
+        to: "/accountant/users",
+        icon: <Users {...sidebarIconProps} />,
+        accessKey: "user-management",
+      },
+      {
+        key: "permissions",
+        label: "Permissions",
+        to: "/accountant/permissions",
+        icon: <ShieldCheck {...sidebarIconProps} />,
+        accessKey: "permissions",
+      },
+    ],
   },
   {
     key: "settings",
@@ -83,7 +225,7 @@ export default function AccountantLayout({ user, onLogout, children }) {
 
     const helperText = buildPendingTaskAttentionMessage(pendingTaskAttentionCount);
     return filteredItems.map((item) =>
-      item?.key === "my-tasks"
+      item?.key === "task-management"
         ? {
             ...item,
             badgeCount: pendingTaskAttentionCount,

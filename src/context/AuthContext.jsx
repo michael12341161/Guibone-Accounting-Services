@@ -4,12 +4,14 @@ import {
   api,
   clearStoredAuthToken,
   DEFAULT_SECURITY_SETTINGS,
+  MONITORING_AUTH_USER_SYNC_EVENT,
   getStoredAuthToken,
   MONITORING_AUTH_INVALID_EVENT,
   MONITORING_SCHEDULED_BACKUP_EVENT,
   MONITORING_SESSION_EXPIRED_MESSAGE,
   normalizeBackupSchedule,
   processScheduledDatabaseBackup,
+  recordUserInteraction,
   normalizeSecuritySettings,
 } from "../services/api";
 import { getUserRole, hasRole as userHasRole, ROLE_IDS, formatDateTime } from "../utils/helpers";
@@ -24,7 +26,13 @@ export const LOGIN_SESSION_STORAGE_KEY = "monitoring:login-session-id";
 export const DEADLINE_ALERT_SESSION_STORAGE_KEY = "monitoring:deadline-alerts";
 export const DEADLINE_REMINDER_SESSION_STORAGE_KEY = "monitoring:deadline-reminder";
 export const AUTH_NOTICE_SESSION_STORAGE_KEY = "monitoring:auth-notice";
+const AUTH_SYNC_STORAGE_KEY = "monitoring:auth-sync";
+const AUTH_SYNC_LOGOUT_TYPE = "logout";
 const ONE_MINUTE_MS = 60 * 1000;
+const MIN_SERVER_HEARTBEAT_MS = 15 * 1000;
+/** Background tabs throttle long timers; poll against a wall-clock deadline while hidden. */
+const HIDDEN_IDLE_CHECK_MS = 1000;
+const MAX_TIMEOUT_DELAY_MS = 2147483647;
 
 const ROLE_HOME_PATHS = {
   1: "/admin",
@@ -78,6 +86,36 @@ function normalizeSessionUser(user) {
     ...user,
     security_settings: normalizeSecuritySettings(user.security_settings),
   };
+}
+
+function buildComparableSessionUser(user) {
+  const normalizedUser = normalizeSessionUser(user);
+  if (!normalizedUser) {
+    return null;
+  }
+
+  return {
+    id: normalizedUser.id ?? null,
+    username: normalizedUser.username ?? "",
+    role_id: normalizedUser.role_id ?? null,
+    client_id: normalizedUser.client_id ?? null,
+    email: normalizedUser.email ?? null,
+    first_name: normalizedUser.first_name ?? null,
+    middle_name: normalizedUser.middle_name ?? null,
+    last_name: normalizedUser.last_name ?? null,
+    profile_image: normalizedUser.profile_image ?? null,
+    password_changed_at: normalizedUser.password_changed_at ?? null,
+    password_expires_at: normalizedUser.password_expires_at ?? null,
+    password_days_until_expiry: normalizedUser.password_days_until_expiry ?? null,
+    registration_source: normalizedUser.registration_source ?? null,
+    approval_status: normalizedUser.approval_status ?? null,
+    security_settings: normalizeSecuritySettings(normalizedUser.security_settings),
+    impersonation: normalizedUser.impersonation ?? null,
+  };
+}
+
+function areSessionUsersEquivalent(leftUser, rightUser) {
+  return JSON.stringify(buildComparableSessionUser(leftUser)) === JSON.stringify(buildComparableSessionUser(rightUser));
 }
 
 function shouldWarnOnLogout(roleId) {
@@ -134,23 +172,18 @@ async function confirmLogoutWithUrgentTasks(roleId) {
 
 function readSessionUser() {
   try {
-    const raw = localStorage.getItem(SESSION_USER_KEY);
+    const raw = sessionStorage.getItem(SESSION_USER_KEY);
     return raw ? normalizeSessionUser(JSON.parse(raw)) : null;
   } catch (_) {
     return null;
   }
 }
 
-function shouldVerifyStoredSession() {
-  const storedState = readStoredLoginState();
-  return storedState.isLoggedIn || Boolean(getStoredAuthToken());
-}
-
 export function readStoredLoginState() {
   try {
-    const isLoggedIn = localStorage.getItem(LOGIN_STATE_KEY) === "true";
-    const roleIdRaw = localStorage.getItem(USER_ROLE_KEY);
-    const userIdRaw = localStorage.getItem(USER_ID_KEY);
+    const isLoggedIn = sessionStorage.getItem(LOGIN_STATE_KEY) === "true";
+    const roleIdRaw = sessionStorage.getItem(USER_ROLE_KEY);
+    const userIdRaw = sessionStorage.getItem(USER_ID_KEY);
     const roleId = roleIdRaw === null ? null : Number(roleIdRaw);
     const userId = userIdRaw === null ? null : Number(userIdRaw);
 
@@ -219,30 +252,114 @@ function persistStoredAuth(user) {
     return;
   }
 
-  localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
-  localStorage.setItem(LOGIN_STATE_KEY, "true");
-  localStorage.setItem(USER_ROLE_KEY, String(user.role_id ?? ""));
-  localStorage.setItem(USER_ID_KEY, String(user.id ?? ""));
+  sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
+  sessionStorage.setItem(LOGIN_STATE_KEY, "true");
+  sessionStorage.setItem(USER_ROLE_KEY, String(user.role_id ?? ""));
+  sessionStorage.setItem(USER_ID_KEY, String(user.id ?? ""));
+}
+
+export function readSharedLoginSessionKey() {
+  try {
+    const localValue = String(localStorage.getItem(LOGIN_SESSION_STORAGE_KEY) || "").trim();
+    if (localValue) {
+      return localValue;
+    }
+  } catch (_) {}
+
+  try {
+    return String(sessionStorage.getItem(LOGIN_SESSION_STORAGE_KEY) || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function persistSharedLoginSessionKey(value) {
+  const normalizedValue = String(value || "").trim();
+  if (!normalizedValue) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(LOGIN_SESSION_STORAGE_KEY, normalizedValue);
+  } catch (_) {}
+
+  try {
+    sessionStorage.setItem(LOGIN_SESSION_STORAGE_KEY, normalizedValue);
+  } catch (_) {}
+}
+
+function clearSharedLoginSessionKey() {
+  try {
+    localStorage.removeItem(LOGIN_SESSION_STORAGE_KEY);
+  } catch (_) {}
+
+  try {
+    sessionStorage.removeItem(LOGIN_SESSION_STORAGE_KEY);
+  } catch (_) {}
 }
 
 function startLoginSession(user) {
   try {
     const userId = user?.id ?? user?.user_id ?? user?.User_ID ?? "";
-    sessionStorage.setItem(LOGIN_SESSION_STORAGE_KEY, `${String(userId || "user")}:${Date.now()}`);
+    persistSharedLoginSessionKey(`${String(userId || "user")}:${Date.now()}`);
     sessionStorage.removeItem(DEADLINE_ALERT_SESSION_STORAGE_KEY);
     sessionStorage.removeItem(DEADLINE_REMINDER_SESSION_STORAGE_KEY);
   } catch (_) {}
 }
 
+function ensureLoginSession(user) {
+  try {
+    const userId = String(user?.id ?? user?.user_id ?? user?.User_ID ?? "user").trim() || "user";
+    const currentSessionKey = readSharedLoginSessionKey();
+    if (currentSessionKey.startsWith(`${userId}:`)) {
+      try {
+        sessionStorage.setItem(LOGIN_SESSION_STORAGE_KEY, currentSessionKey);
+      } catch (_) {}
+      return;
+    }
+
+    startLoginSession(user);
+  } catch (_) {}
+}
+
+function broadcastAuthSync(type, details = {}) {
+  try {
+    localStorage.setItem(
+      AUTH_SYNC_STORAGE_KEY,
+      JSON.stringify({
+        type,
+        ...details,
+        timestamp: Date.now(),
+      })
+    );
+  } catch (_) {}
+}
+
+function readAuthSyncPayload(rawValue) {
+  try {
+    const parsed = JSON.parse(String(rawValue || "").trim());
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return {
+      type: String(parsed.type || "").trim(),
+      showSessionExpiredNotice: parsed.showSessionExpiredNotice === true,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 function clearStoredAuth() {
-  localStorage.removeItem(SESSION_USER_KEY);
-  localStorage.removeItem(LOGIN_STATE_KEY);
-  localStorage.removeItem(USER_ROLE_KEY);
-  localStorage.removeItem(USER_ID_KEY);
+  sessionStorage.removeItem(SESSION_USER_KEY);
+  sessionStorage.removeItem(LOGIN_STATE_KEY);
+  sessionStorage.removeItem(USER_ROLE_KEY);
+  sessionStorage.removeItem(USER_ID_KEY);
   clearStoredAuthToken();
 
   try {
-    sessionStorage.removeItem(LOGIN_SESSION_STORAGE_KEY);
+    clearSharedLoginSessionKey();
     sessionStorage.removeItem(DEADLINE_ALERT_SESSION_STORAGE_KEY);
     sessionStorage.removeItem(DEADLINE_REMINDER_SESSION_STORAGE_KEY);
   } catch (_) {}
@@ -254,9 +371,13 @@ export function getHomePathForRole(roleId) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readSessionUser());
-  const [isAuthReady, setIsAuthReady] = useState(() => !shouldVerifyStoredSession());
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const sessionWarningVisibleRef = React.useRef(false);
   const clearActiveClientAuthRef = React.useRef(null);
+  /** When true, ignore JWT header user sync (prevents re-login from stale in-flight responses after logout/timeout). */
+  const blockJwtUserSyncRef = React.useRef(false);
+  const userRef = React.useRef(user);
+  const lastServerHeartbeatAtRef = React.useRef(0);
   const activeUserId = user?.id ?? null;
   const currentUserRoleId = getUserRole(user);
   const sessionTimeoutMinutes = Math.max(
@@ -264,9 +385,24 @@ export function AuthProvider({ children }) {
     Number(user?.security_settings?.sessionTimeoutMinutes || DEFAULT_SECURITY_SETTINGS.sessionTimeoutMinutes)
   );
 
-  clearActiveClientAuthRef.current = ({ showSessionExpiredNotice = false } = {}) => {
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  clearActiveClientAuthRef.current = ({
+    showSessionExpiredNotice = false,
+    broadcastLogout = false,
+    skipRemoteLogout = false,
+  } = {}) => {
     const hadStoredSession = readStoredLoginState().isLoggedIn || Boolean(getStoredAuthToken());
     const hadAuthenticatedUser = Boolean(user?.id || user?.username || activeUserId !== null);
+
+    if (hadAuthenticatedUser || hadStoredSession) {
+      blockJwtUserSyncRef.current = true;
+      if (!skipRemoteLogout) {
+        void api.post("logout.php").catch(() => null);
+      }
+    }
 
     if (showSessionExpiredNotice && (hadAuthenticatedUser || hadStoredSession)) {
       queueAuthNotice(MONITORING_SESSION_EXPIRED_MESSAGE, "warning");
@@ -282,7 +418,12 @@ export function AuthProvider({ children }) {
 
     try {
       clearStoredAuth();
+      lastServerHeartbeatAtRef.current = 0;
     } catch (_) {}
+
+    if (broadcastLogout) {
+      broadcastAuthSync(AUTH_SYNC_LOGOUT_TYPE, { showSessionExpiredNotice });
+    }
   };
 
   const clearActiveClientAuth = React.useCallback((options = {}) => {
@@ -297,15 +438,22 @@ export function AuthProvider({ children }) {
       void Swal.close();
     }
 
+    if (normalizedUser) {
+      blockJwtUserSyncRef.current = false;
+    }
+
     setUser(normalizedUser);
     setIsAuthReady(true);
 
     try {
       if (normalizedUser) {
+        recordUserInteraction();
         persistStoredAuth(normalizedUser);
         startLoginSession(normalizedUser);
+        lastServerHeartbeatAtRef.current = Date.now();
       } else {
         clearStoredAuth();
+        lastServerHeartbeatAtRef.current = 0;
       }
     } catch (_) {}
   };
@@ -317,8 +465,8 @@ export function AuthProvider({ children }) {
       return false;
     }
 
-    void api.post("logout.php").catch(() => {});
-    clearActiveClientAuth();
+    await api.post("logout.php").catch(() => null);
+    clearActiveClientAuth({ broadcastLogout: true, skipRemoteLogout: true });
     return true;
   };
 
@@ -329,22 +477,34 @@ export function AuthProvider({ children }) {
 
     const timeoutMs = sessionTimeoutMinutes * 60 * 1000;
     const warningWindowMs = getSessionWarningWindowMs(timeoutMs);
+    const serverHeartbeatMs = MIN_SERVER_HEARTBEAT_MS;
     const events = ["click", "mousedown", "mousemove", "keydown", "scroll", "touchstart"];
-    let timeoutId = null;
-    let warningId = null;
+    let idleTimerId = null;
+    let warningTimerId = null;
+    let heartbeatTimerId = null;
     let active = true;
     let warningVisible = false;
     let sessionCleared = false;
+    let heartbeatInFlight = false;
+    let idleDeadlineMs = 0;
+    let warningDeadlineMs = 0;
 
-    const clearTimers = () => {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-        timeoutId = null;
+    const clearLogoutTimers = () => {
+      if (idleTimerId !== null) {
+        window.clearTimeout(idleTimerId);
+        idleTimerId = null;
       }
 
-      if (warningId !== null) {
-        window.clearTimeout(warningId);
-        warningId = null;
+      if (warningTimerId !== null) {
+        window.clearTimeout(warningTimerId);
+        warningTimerId = null;
+      }
+    };
+
+    const clearHeartbeatTimer = () => {
+      if (heartbeatTimerId !== null) {
+        window.clearTimeout(heartbeatTimerId);
+        heartbeatTimerId = null;
       }
     };
 
@@ -355,8 +515,168 @@ export function AuthProvider({ children }) {
 
       sessionCleared = true;
       warningVisible = false;
-      clearTimers();
+      clearLogoutTimers();
+      clearHeartbeatTimer();
       clearActiveClientAuth({ showSessionExpiredNotice: true });
+    };
+
+    const sendServerHeartbeat = () => {
+      if (!active || sessionCleared || heartbeatInFlight) {
+        return;
+      }
+
+      clearHeartbeatTimer();
+
+      heartbeatInFlight = true;
+      lastServerHeartbeatAtRef.current = Date.now();
+
+      void api
+        .get("session_status.php", { monitoringActivity: "active" })
+        .then((response) => {
+          if (!response?.data?.authenticated) {
+            clearActiveClientAuth({ showSessionExpiredNotice: true });
+          }
+        })
+        .catch(() => null)
+        .finally(() => {
+          heartbeatInFlight = false;
+        });
+    };
+
+    const refreshServerSession = ({ force = false } = {}) => {
+      if (!active || sessionCleared) {
+        return;
+      }
+
+      const now = Date.now();
+      const remainingHeartbeatDelayMs = serverHeartbeatMs - (now - lastServerHeartbeatAtRef.current);
+
+      if (force || remainingHeartbeatDelayMs <= 0) {
+        sendServerHeartbeat();
+        return;
+      }
+
+      if (heartbeatInFlight || heartbeatTimerId !== null) {
+        return;
+      }
+
+      heartbeatTimerId = window.setTimeout(() => {
+        heartbeatTimerId = null;
+        sendServerHeartbeat();
+      }, remainingHeartbeatDelayMs);
+    };
+
+    const armIdleTimer = () => {
+      if (!active || sessionCleared) {
+        return;
+      }
+
+      if (idleTimerId !== null) {
+        window.clearTimeout(idleTimerId);
+        idleTimerId = null;
+      }
+
+      const remainingMs = idleDeadlineMs - Date.now();
+      if (remainingMs <= 0) {
+        clearSession();
+        return;
+      }
+
+      const delayMs = Math.min(remainingMs, MAX_TIMEOUT_DELAY_MS);
+
+      if (typeof document !== "undefined" && document.hidden) {
+        idleTimerId = window.setTimeout(() => {
+          idleTimerId = null;
+          armIdleTimer();
+        }, Math.min(delayMs, HIDDEN_IDLE_CHECK_MS));
+      } else {
+        idleTimerId = window.setTimeout(() => {
+          idleTimerId = null;
+          clearSession();
+        }, delayMs);
+      }
+    };
+
+    const fireSessionWarning = () => {
+      if (!active || sessionCleared || warningVisible) {
+        return;
+      }
+
+      warningVisible = true;
+      sessionWarningVisibleRef.current = true;
+
+      void Swal.fire({
+        title: "Session Expiring Soon",
+        html: `<p>Your session will expire in ${formatSessionWarningLabel(
+          warningWindowMs
+        )} due to inactivity.</p><p>Click "Stay Logged In" to continue.</p>`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Stay Logged In",
+        cancelButtonText: "Logout",
+        reverseButtons: true,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        confirmButtonColor: "#2563eb",
+        cancelButtonColor: "#dc2626",
+      }).then((result) => {
+        warningVisible = false;
+        sessionWarningVisibleRef.current = false;
+
+        if (!active || sessionCleared) {
+          return;
+        }
+
+        if (result.isConfirmed) {
+          recordUserInteraction();
+          refreshServerSession({ force: true });
+          resetTimer();
+          return;
+        }
+
+        clearSession();
+      });
+    };
+
+    const armWarningTimer = () => {
+      if (!active || sessionCleared || warningWindowMs === null) {
+        return;
+      }
+
+      if (warningTimerId !== null) {
+        window.clearTimeout(warningTimerId);
+        warningTimerId = null;
+      }
+
+      const remainingMs = warningDeadlineMs - Date.now();
+      if (remainingMs <= 0) {
+        fireSessionWarning();
+        return;
+      }
+
+      const delayMs = Math.min(remainingMs, MAX_TIMEOUT_DELAY_MS);
+
+      if (typeof document !== "undefined" && document.hidden) {
+        warningTimerId = window.setTimeout(() => {
+          warningTimerId = null;
+          armWarningTimer();
+        }, Math.min(delayMs, HIDDEN_IDLE_CHECK_MS));
+      } else {
+        warningTimerId = window.setTimeout(() => {
+          warningTimerId = null;
+          fireSessionWarning();
+        }, delayMs);
+      }
+    };
+
+    const onVisibilityOrPageShow = () => {
+      if (!active || sessionCleared) {
+        return;
+      }
+      armIdleTimer();
+      if (warningWindowMs !== null && !warningVisible) {
+        armWarningTimer();
+      }
     };
 
     const resetTimer = () => {
@@ -364,49 +684,16 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      clearTimers();
-      timeoutId = window.setTimeout(clearSession, timeoutMs);
-
+      const now = Date.now();
+      idleDeadlineMs = now + timeoutMs;
       if (warningWindowMs !== null) {
-        const warningDelayMs = timeoutMs - warningWindowMs;
-        warningId = window.setTimeout(() => {
-          if (!active || sessionCleared || warningVisible) {
-            return;
-          }
+        warningDeadlineMs = idleDeadlineMs - warningWindowMs;
+      }
 
-          warningVisible = true;
-          sessionWarningVisibleRef.current = true;
-
-          void Swal.fire({
-            title: "Session Expiring Soon",
-            html: `<p>Your session will expire in ${formatSessionWarningLabel(
-              warningWindowMs
-            )} due to inactivity.</p><p>Click "Stay Logged In" to continue.</p>`,
-            icon: "warning",
-            showCancelButton: true,
-            confirmButtonText: "Stay Logged In",
-            cancelButtonText: "Logout",
-            reverseButtons: true,
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            confirmButtonColor: "#2563eb",
-            cancelButtonColor: "#dc2626",
-          }).then((result) => {
-            warningVisible = false;
-            sessionWarningVisibleRef.current = false;
-
-            if (!active || sessionCleared) {
-              return;
-            }
-
-            if (result.isConfirmed) {
-              resetTimer();
-              return;
-            }
-
-            clearSession();
-          });
-        }, warningDelayMs);
+      clearLogoutTimers();
+      armIdleTimer();
+      if (warningWindowMs !== null) {
+        armWarningTimer();
       }
     };
 
@@ -415,6 +702,8 @@ export function AuthProvider({ children }) {
         return;
       }
 
+      recordUserInteraction();
+      refreshServerSession();
       resetTimer();
     };
 
@@ -422,12 +711,17 @@ export function AuthProvider({ children }) {
       window.addEventListener(eventName, handleActivity, { passive: true });
     });
     window.addEventListener("focus", handleActivity);
+    document.addEventListener("visibilitychange", onVisibilityOrPageShow);
+    window.addEventListener("pageshow", onVisibilityOrPageShow);
     resetTimer();
 
     return () => {
       active = false;
       warningVisible = false;
-      clearTimers();
+      clearLogoutTimers();
+      clearHeartbeatTimer();
+      document.removeEventListener("visibilitychange", onVisibilityOrPageShow);
+      window.removeEventListener("pageshow", onVisibilityOrPageShow);
       if (sessionWarningVisibleRef.current) {
         sessionWarningVisibleRef.current = false;
         void Swal.close();
@@ -441,11 +735,6 @@ export function AuthProvider({ children }) {
   }, [activeUserId, clearActiveClientAuth, sessionTimeoutMinutes]);
 
   useEffect(() => {
-    if (!shouldVerifyStoredSession()) {
-      setIsAuthReady(true);
-      return undefined;
-    }
-
     let active = true;
 
     const syncSession = async () => {
@@ -463,6 +752,7 @@ export function AuthProvider({ children }) {
 
         setUser(nextUser);
         persistStoredAuth(nextUser);
+        ensureLoginSession(nextUser);
       } catch (error) {
         if (!active) {
           return;
@@ -574,7 +864,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const handleAuthInvalid = () => {
-      clearActiveClientAuth({ showSessionExpiredNotice: true });
+      clearActiveClientAuth({ showSessionExpiredNotice: true, broadcastLogout: true });
     };
 
     window.addEventListener(MONITORING_AUTH_INVALID_EVENT, handleAuthInvalid);
@@ -585,7 +875,52 @@ export function AuthProvider({ children }) {
   }, [clearActiveClientAuth]);
 
   useEffect(() => {
+    const handleAuthUserSync = (event) => {
+      if (blockJwtUserSyncRef.current) {
+        return;
+      }
+
+      const nextUser = normalizeSessionUser(event?.detail?.user);
+      if (!nextUser) {
+        return;
+      }
+
+      if (areSessionUsersEquivalent(userRef.current, nextUser)) {
+        if (!isAuthReady) {
+          setIsAuthReady(true);
+        }
+        return;
+      }
+
+      setUser(nextUser);
+      setIsAuthReady(true);
+
+      try {
+        persistStoredAuth(nextUser);
+        ensureLoginSession(nextUser);
+      } catch (_) {}
+    };
+
+    window.addEventListener(MONITORING_AUTH_USER_SYNC_EVENT, handleAuthUserSync);
+
+    return () => {
+      window.removeEventListener(MONITORING_AUTH_USER_SYNC_EVENT, handleAuthUserSync);
+    };
+  }, [isAuthReady]);
+
+  useEffect(() => {
     const handleStorage = (event) => {
+      if (event?.key === AUTH_SYNC_STORAGE_KEY) {
+        const payload = readAuthSyncPayload(event.newValue);
+        if (payload?.type === AUTH_SYNC_LOGOUT_TYPE) {
+          clearActiveClientAuth({
+            showSessionExpiredNotice: payload.showSessionExpiredNotice,
+            broadcastLogout: false,
+          });
+        }
+        return;
+      }
+
       if (
         event.key !== null &&
         event.key !== SESSION_USER_KEY &&
@@ -605,7 +940,7 @@ export function AuthProvider({ children }) {
     return () => {
       window.removeEventListener("storage", handleStorage);
     };
-  }, []);
+  }, [clearActiveClientAuth]);
 
   const hasRole = (roleId) => userHasRole(user, roleId);
 

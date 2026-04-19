@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 04, 2026 at 05:13 PM
+-- Generation Time: Apr 19, 2026 at 09:37 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -150,7 +150,13 @@ INSERT INTO `audit_logs` (`audit_logs_ID`, `user_id`, `action`, `ip_address`, `l
 (72, 21, 'Failed login attempt', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:20'),
 (73, 21, 'Failed login attempt', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:29'),
 (74, 21, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-02 12:15:36'),
-(75, 1, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-04 14:20:07');
+(75, 1, 'Login successful', '202.61.110.253', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 146.0.0.0', 'Windows 11', '2026-04-04 14:20:07'),
+(76, 1, 'Module permissions updated', '2001:fd8:c7b9:5200:ddc7:5275:cd4b:3c09', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 07:06:06'),
+(77, 1, 'Module permissions updated', '2001:fd8:c7b9:5200:ddc7:5275:cd4b:3c09', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 07:16:07'),
+(78, 1, 'Module permissions updated', '2001:fd8:c7b9:5200:ddc7:5275:cd4b:3c09', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 07:16:51'),
+(79, 1, 'Module permissions updated', '2001:fd8:c7b9:5200:ddc7:5275:cd4b:3c09', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 07:17:16'),
+(80, 1, 'Module permissions updated', '2001:fd8:c7b9:5200:ddc7:5275:cd4b:3c09', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 07:34:13'),
+(81, 1, 'Module permissions updated', '2001:fd8:c7b9:5200:ddc7:5275:cd4b:3c09', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 07:34:35');
 
 -- --------------------------------------------------------
 
@@ -327,14 +333,6 @@ CREATE TABLE `client_services` (
   `Status_ID` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `client_services`
---
-
-INSERT INTO `client_services` (`Client_services_ID`, `Client_ID`, `Services_type_Id`, `Name`, `created_by`, `User_ID`, `Steps`, `Date`, `Status_ID`) VALUES
-(11, 11, 3, 'Book Keeping', 1, 22, '[Progress] 100\n[Priority] Low\nStep 1 (Secretary): Collect bookkeeping documents, receipts, and supporting files from the client.\nStep 2 (Accountant): Record and categorize the transactions for the covered period.\nStep 3 (Accountant): Reconcile the bank records and subsidiary ledgers.\nStep 4 (Accountant): Prepare the bookkeeping summary and draft reports.\nStep 5 (Owner): Review the reports and confirm the bookkeeping output.\n[Deadline] 2026-04-16\n[CreatedAt] 2026-04-02T01:56:07+02:00\n[StepDone] 1,2,3,4,5\n[StepCompletedAt 1] 2026-04-02T07:56:35+08:00\n[StepCompletedAt 2] 2026-04-02T07:56:41+08:00\n[StepCompletedAt 3] 2026-04-02T07:56:43+08:00\n[StepCompletedAt 4] 2026-04-02T07:56:46+08:00\n[StepCompletedAt 5] 2026-04-02T07:56:55+08:00\n[Done]', '2026-04-16', 12),
-(12, 13, 3, 'Book Keeping', 1, 22, '[Progress] 20\n[Priority] Medium\nStep 1 (Secretary): Collect bookkeeping documents, receipts, and supporting files from the client.\nStep 2 (Accountant): Record and categorize the transactions for the covered period.\nStep 3 (Accountant): Reconcile the bank records and subsidiary ledgers.\nStep 4 (Accountant): Prepare the bookkeeping summary and draft reports.\nStep 5 (Owner): Review the reports and confirm the bookkeeping output.\n[Deadline] 2026-04-16\n[CreatedAt] 2026-04-02T02:22:14+02:00\n[StepDone] 1\n[StepCompletedAt 1] 2026-04-02T09:00:40+08:00', '2026-04-16', 11);
-
 -- --------------------------------------------------------
 
 --
@@ -374,12 +372,12 @@ CREATE TABLE `documents` (
 -- Dumping data for table `documents`
 --
 
-INSERT INTO `documents` (`Documents_ID`, `appointment_id`, `Client_ID`, `Document_type_ID`, `filename`, `filepath`, `uploaded_at`) VALUES
-(12, NULL, 10, 1, 'PSA Birth Certificate.png', 'uploads/client_files/client_10_doc_1_759e16efe2673fb7_PSA_Birth_Certificate.png', '2026-03-20 13:25:13'),
-(13, NULL, 10, 2, 'PSA Birth Certificate.png', 'uploads/client_files/client_10_doc_2_c2b3a9b936fbb0ff_PSA_Birth_Certificate.png', '2026-03-20 13:25:13'),
-(14, NULL, 11, 1, 'ezgif-frame-022.png', 'uploads/client_files/client_11_doc_1_a7bf995b2a09968f_ezgif-frame-022.png', '2026-03-20 14:22:53'),
-(15, NULL, 11, 2, 'ezgif-frame-022.png', 'uploads/client_files/client_11_doc_2_0595ab585a6bb0a1_ezgif-frame-022.png', '2026-03-20 14:22:53'),
-(16, NULL, 11, 4, 'ezgif-frame-023.png', 'uploads/client_files/client_11_doc_4_c8ad7a842d622883_ezgif-frame-023.png', '2026-03-20 14:22:53');
+INSERT INTO `documents` (`Documents_ID`, `appointment_id`, `Client_ID`, `Document_type_ID`, `Status_id`, `filename`, `filepath`, `duration_days`, `expiration_date`, `uploaded_at`) VALUES
+(12, NULL, 10, 1, NULL, 'PSA Birth Certificate.png', 'uploads/client_files/client_10_doc_1_759e16efe2673fb7_PSA_Birth_Certificate.png', NULL, NULL, '2026-03-20 13:25:13'),
+(13, NULL, 10, 2, NULL, 'PSA Birth Certificate.png', 'uploads/client_files/client_10_doc_2_c2b3a9b936fbb0ff_PSA_Birth_Certificate.png', NULL, NULL, '2026-03-20 13:25:13'),
+(14, NULL, 11, 1, NULL, 'ezgif-frame-022.png', 'uploads/client_files/client_11_doc_1_a7bf995b2a09968f_ezgif-frame-022.png', NULL, NULL, '2026-03-20 14:22:53'),
+(15, NULL, 11, 2, NULL, 'ezgif-frame-022.png', 'uploads/client_files/client_11_doc_2_0595ab585a6bb0a1_ezgif-frame-022.png', NULL, NULL, '2026-03-20 14:22:53'),
+(16, NULL, 11, 4, NULL, 'ezgif-frame-023.png', 'uploads/client_files/client_11_doc_4_c8ad7a842d622883_ezgif-frame-023.png', NULL, NULL, '2026-03-20 14:22:53');
 
 -- --------------------------------------------------------
 
@@ -478,7 +476,94 @@ INSERT INTO `notifications` (`notifications_ID`, `user_id`, `sender_id`, `type`,
 (16, 24, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-04-01 23:56:07'),
 (17, 22, 1, 'task', 'Secretary admin assigned you a task for client Francis G. Alaba.', 0, '2026-04-01 23:56:07'),
 (18, 26, 1, 'task', 'Secretary admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-04-02 00:22:14'),
-(19, 22, 1, 'task', 'Secretary admin assigned you a task for client Jose P. Castro.', 0, '2026-04-02 00:22:14');
+(19, 22, 1, 'task', 'Secretary admin assigned you a task for client Jose P. Castro.', 0, '2026-04-02 00:22:14'),
+(20, 1, NULL, 'task_deadline_overdue:12:2026-04-16', 'Your task is overdue.\nTask: Book Keeping\nClient: Jose P. Castro\nDeadline: April 16, 2026\nAssigned to: Roberth Namoc', 0, '2026-04-19 07:02:49'),
+(21, 1, NULL, 'task_deadline_overdue:12:2026-04-16', 'Your task is overdue.\nTask: Book Keeping\nClient: Jose P. Castro\nDeadline: April 16, 2026\nAssigned to: Roberth Namoc', 0, '2026-04-19 07:02:49'),
+(22, 21, NULL, 'task_deadline_overdue:12:2026-04-16', 'Your task is overdue.\nTask: Book Keeping\nClient: Jose P. Castro\nDeadline: April 16, 2026\nAssigned to: Roberth Namoc', 0, '2026-04-19 07:02:49'),
+(23, 22, NULL, 'task_deadline_overdue:12:2026-04-16', 'Your task is overdue.\nTask: Book Keeping\nClient: Jose P. Castro\nDeadline: April 16, 2026\nAssigned to: Roberth Namoc', 0, '2026-04-19 07:02:49'),
+(24, 22, 1, 'module_permission_granted', 'Work Update Access Granted: Admin admin granted you access to Work Update.', 0, '2026-04-19 07:06:07'),
+(25, 24, 1, 'task', 'Admin admin created a task for you. Accountant Roberth Namoc will handle the service.', 0, '2026-04-19 07:10:43'),
+(26, 22, 1, 'task', 'Admin admin assigned you a task for client Francis G. Alaba.', 0, '2026-04-19 07:10:43'),
+(27, 22, 1, 'module_permission_granted', 'Work Update Access Granted: Admin admin granted you access to Work Update.', 0, '2026-04-19 07:16:52'),
+(28, 22, 1, 'module_permission_revoked', 'Work Update Access Removed: Admin admin removed your access to Work Update.', 0, '2026-04-19 07:17:16'),
+(29, 22, 1, 'module_permission_revoked', 'User Management Access Removed: Admin admin removed your access to User Management.', 0, '2026-04-19 07:34:13'),
+(30, 22, 1, 'module_permission_revoked', 'Reports Access Removed: Admin admin removed your access to Reports.', 0, '2026-04-19 07:34:36');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `permissions`
+--
+
+CREATE TABLE `permissions` (
+  `permission_id` int(11) NOT NULL,
+  `module_key` varchar(100) NOT NULL,
+  `action_key` varchar(100) NOT NULL DEFAULT '',
+  `permission_name` varchar(191) NOT NULL,
+  `User_ID` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `permissions`
+--
+
+INSERT INTO `permissions` (`permission_id`, `module_key`, `action_key`, `permission_name`, `User_ID`) VALUES
+(1, 'dashboard', '', 'dashboard', NULL),
+(2, 'user-management', '', 'user-management', 1),
+(3, 'user-management', 'view', 'user-management.view', 1),
+(4, 'user-management', 'edit', 'user-management.edit', 1),
+(5, 'user-management', 'add-user', 'user-management.add-user', 1),
+(6, 'permissions', '', 'permissions', NULL),
+(7, 'settings', '', 'settings', NULL),
+(8, 'client-management', '', 'client-management', NULL),
+(9, 'client-management', 'view', 'client-management.view', NULL),
+(10, 'client-management', 'edit', 'client-management.edit', NULL),
+(11, 'client-management', 'add-new-client', 'client-management.add-new-client', NULL),
+(12, 'client-management', 'location', 'client-management.location', NULL),
+(13, 'client-management', 'file-upload', 'client-management.file-upload', NULL),
+(14, 'new-client-management', '', 'new-client-management', NULL),
+(15, 'documents', '', 'documents', NULL),
+(16, 'documents', 'upload', 'documents.upload', NULL),
+(17, 'documents', 'view-only', 'documents.view-only', NULL),
+(18, 'certificate', '', 'certificate', NULL),
+(19, 'certificate', 'edit', 'certificate.edit', NULL),
+(20, 'certificate', 'remove', 'certificate.remove', NULL),
+(21, 'certificate', 'remove-auto-send', 'certificate.remove-auto-send', NULL),
+(22, 'edit-certificate', '', 'edit-certificate', NULL),
+(23, 'edit-certificate', 'header-tools-properties', 'edit-certificate.header-tools-properties', NULL),
+(24, 'business-status', '', 'business-status', NULL),
+(25, 'appointments', '', 'appointments', NULL),
+(26, 'appointments', 'approve', 'appointments.approve', NULL),
+(27, 'appointments', 'decline', 'appointments.decline', NULL),
+(28, 'appointments', 'view-files', 'appointments.view-files', NULL),
+(29, 'scheduling', '', 'scheduling', NULL),
+(30, 'scheduling', 'approve', 'scheduling.approve', NULL),
+(31, 'scheduling', 'decline', 'scheduling.decline', NULL),
+(32, 'scheduling', 'reschedule', 'scheduling.reschedule', NULL),
+(33, 'scheduling', 'configure-times', 'scheduling.configure-times', NULL),
+(34, 'tasks', '', 'tasks', NULL),
+(35, 'tasks', 'create-task', 'tasks.create-task', NULL),
+(36, 'tasks', 'client-appointments', 'tasks.client-appointments', NULL),
+(37, 'tasks', 'task-limit', 'tasks.task-limit', NULL),
+(38, 'tasks', 'edit-step', 'tasks.edit-step', NULL),
+(39, 'tasks', 'remove-step', 'tasks.remove-step', NULL),
+(40, 'calendar', '', 'calendar', NULL),
+(41, 'work-update', '', 'work-update', NULL),
+(42, 'work-update', 'check-steps', 'work-update.check-steps', NULL),
+(43, 'work-update', 'history', 'work-update.history', NULL),
+(44, 'work-update', 'edit', 'work-update.edit', 1),
+(45, 'work-update', 'mark-done', 'work-update.mark-done', 1),
+(46, 'work-update', 'decline', 'work-update.decline', NULL),
+(47, 'work-update', 'archive', 'work-update.archive', NULL),
+(48, 'work-update', 'restore', 'work-update.restore', NULL),
+(49, 'my-tasks', '', 'my-tasks', NULL),
+(50, 'messaging', '', 'messaging', NULL),
+(51, 'reports', '', 'reports', 1),
+(52, 'client-account', '', 'client-account', NULL),
+(54, 'work-update', 'approve', 'work-update.approve', NULL),
+(55, 'work-update', 'remarks', 'work-update.remarks', 1),
+(56, 'client-management', 'account-status', 'client-management.account-status', NULL),
+(57, 'user-management', 'account-status', 'user-management.account-status', NULL);
 
 -- --------------------------------------------------------
 
@@ -500,6 +585,249 @@ INSERT INTO `role` (`Role_id`, `Role_name`) VALUES
 (2, 'Secretary'),
 (3, 'Accountant'),
 (4, 'Client');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `role_permissions`
+--
+
+CREATE TABLE `role_permissions` (
+  `role_permissions_ID` int(11) NOT NULL,
+  `Role_id` int(11) NOT NULL,
+  `permission_id` int(11) NOT NULL,
+  `is_allowed` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `role_permissions`
+--
+
+INSERT INTO `role_permissions` (`role_permissions_ID`, `Role_id`, `permission_id`, `is_allowed`) VALUES
+(1, 1, 1, 1),
+(2, 2, 1, 1),
+(3, 3, 1, 1),
+(4, 4, 1, 1),
+(5, 1, 2, 1),
+(6, 2, 2, 0),
+(7, 3, 2, 0),
+(8, 4, 2, 0),
+(9, 1, 3, 1),
+(10, 2, 3, 0),
+(11, 3, 3, 0),
+(12, 4, 3, 0),
+(13, 1, 4, 1),
+(14, 2, 4, 0),
+(15, 3, 4, 0),
+(16, 4, 4, 0),
+(17, 1, 5, 1),
+(18, 2, 5, 0),
+(19, 3, 5, 0),
+(20, 4, 5, 0),
+(21, 1, 6, 1),
+(22, 2, 6, 0),
+(23, 3, 6, 0),
+(24, 4, 6, 0),
+(25, 1, 7, 1),
+(26, 2, 7, 0),
+(27, 3, 7, 0),
+(28, 4, 7, 0),
+(29, 1, 8, 1),
+(30, 2, 8, 1),
+(31, 3, 8, 0),
+(32, 4, 8, 0),
+(33, 1, 9, 1),
+(34, 2, 9, 1),
+(35, 3, 9, 0),
+(36, 4, 9, 0),
+(37, 1, 10, 1),
+(38, 2, 10, 1),
+(39, 3, 10, 0),
+(40, 4, 10, 0),
+(41, 1, 11, 1),
+(42, 2, 11, 1),
+(43, 3, 11, 0),
+(44, 4, 11, 0),
+(45, 1, 12, 1),
+(46, 2, 12, 1),
+(47, 3, 12, 0),
+(48, 4, 12, 0),
+(49, 1, 13, 1),
+(50, 2, 13, 1),
+(51, 3, 13, 0),
+(52, 4, 13, 0),
+(53, 1, 14, 1),
+(54, 2, 14, 0),
+(55, 3, 14, 0),
+(56, 4, 14, 0),
+(57, 1, 15, 1),
+(58, 2, 15, 1),
+(59, 3, 15, 0),
+(60, 4, 15, 0),
+(61, 1, 16, 1),
+(62, 2, 16, 1),
+(63, 3, 16, 0),
+(64, 4, 16, 0),
+(65, 1, 17, 1),
+(66, 2, 17, 1),
+(67, 3, 17, 0),
+(68, 4, 17, 0),
+(69, 1, 18, 1),
+(70, 2, 18, 0),
+(71, 3, 18, 0),
+(72, 4, 18, 0),
+(73, 1, 19, 1),
+(74, 2, 19, 0),
+(75, 3, 19, 0),
+(76, 4, 19, 0),
+(77, 1, 20, 1),
+(78, 2, 20, 0),
+(79, 3, 20, 0),
+(80, 4, 20, 0),
+(81, 1, 21, 1),
+(82, 2, 21, 0),
+(83, 3, 21, 0),
+(84, 4, 21, 0),
+(85, 1, 22, 1),
+(86, 2, 22, 0),
+(87, 3, 22, 0),
+(88, 4, 22, 0),
+(89, 1, 23, 1),
+(90, 2, 23, 0),
+(91, 3, 23, 0),
+(92, 4, 23, 0),
+(93, 1, 24, 1),
+(94, 2, 24, 1),
+(95, 3, 24, 0),
+(96, 4, 24, 0),
+(97, 1, 25, 1),
+(98, 2, 25, 1),
+(99, 3, 25, 0),
+(100, 4, 25, 0),
+(101, 1, 26, 1),
+(102, 2, 26, 1),
+(103, 3, 26, 0),
+(104, 4, 26, 0),
+(105, 1, 27, 1),
+(106, 2, 27, 1),
+(107, 3, 27, 0),
+(108, 4, 27, 0),
+(109, 1, 28, 1),
+(110, 2, 28, 1),
+(111, 3, 28, 0),
+(112, 4, 28, 0),
+(113, 1, 29, 1),
+(114, 2, 29, 0),
+(115, 3, 29, 0),
+(116, 4, 29, 0),
+(117, 1, 30, 1),
+(118, 2, 30, 0),
+(119, 3, 30, 0),
+(120, 4, 30, 0),
+(121, 1, 31, 1),
+(122, 2, 31, 0),
+(123, 3, 31, 0),
+(124, 4, 31, 0),
+(125, 1, 32, 1),
+(126, 2, 32, 0),
+(127, 3, 32, 0),
+(128, 4, 32, 0),
+(129, 1, 33, 1),
+(130, 2, 33, 0),
+(131, 3, 33, 0),
+(132, 4, 33, 0),
+(133, 1, 34, 1),
+(134, 2, 34, 1),
+(135, 3, 34, 0),
+(136, 4, 34, 0),
+(137, 1, 35, 1),
+(138, 2, 35, 1),
+(139, 3, 35, 0),
+(140, 4, 35, 0),
+(141, 1, 36, 1),
+(142, 2, 36, 1),
+(143, 3, 36, 0),
+(144, 4, 36, 0),
+(145, 1, 37, 1),
+(146, 2, 37, 0),
+(147, 3, 37, 0),
+(148, 4, 37, 0),
+(149, 1, 38, 1),
+(150, 2, 38, 1),
+(151, 3, 38, 0),
+(152, 4, 38, 0),
+(153, 1, 39, 1),
+(154, 2, 39, 1),
+(155, 3, 39, 0),
+(156, 4, 39, 0),
+(157, 1, 40, 1),
+(158, 2, 40, 1),
+(159, 3, 40, 1),
+(160, 4, 40, 1),
+(161, 1, 41, 1),
+(162, 2, 41, 1),
+(163, 3, 41, 1),
+(164, 4, 41, 0),
+(165, 1, 42, 1),
+(166, 2, 42, 1),
+(167, 3, 42, 1),
+(168, 4, 42, 0),
+(169, 1, 43, 1),
+(170, 2, 43, 1),
+(171, 3, 43, 1),
+(172, 4, 43, 0),
+(173, 1, 44, 1),
+(174, 2, 44, 1),
+(175, 3, 44, 0),
+(176, 4, 44, 0),
+(177, 1, 45, 1),
+(178, 2, 45, 1),
+(179, 3, 45, 0),
+(180, 4, 45, 0),
+(181, 1, 46, 1),
+(182, 2, 46, 1),
+(183, 3, 46, 1),
+(184, 4, 46, 0),
+(185, 1, 47, 1),
+(186, 2, 47, 1),
+(187, 3, 47, 0),
+(188, 4, 47, 0),
+(189, 1, 48, 1),
+(190, 2, 48, 1),
+(191, 3, 48, 0),
+(192, 4, 48, 0),
+(193, 1, 49, 1),
+(194, 2, 49, 0),
+(195, 3, 49, 1),
+(196, 4, 49, 0),
+(197, 1, 50, 1),
+(198, 2, 50, 1),
+(199, 3, 50, 1),
+(200, 4, 50, 1),
+(201, 1, 51, 1),
+(202, 2, 51, 0),
+(203, 3, 51, 0),
+(204, 4, 51, 0),
+(205, 1, 52, 1),
+(206, 2, 52, 1),
+(207, 3, 52, 0),
+(208, 4, 52, 0),
+(209, 1, 54, 1),
+(210, 2, 54, 1),
+(211, 3, 54, 0),
+(212, 4, 54, 0),
+(213, 1, 55, 1),
+(214, 2, 55, 1),
+(215, 3, 55, 1),
+(216, 4, 55, 0),
+(217, 1, 56, 1),
+(218, 2, 56, 1),
+(219, 3, 56, 0),
+(220, 4, 56, 0),
+(221, 1, 57, 1),
+(222, 2, 57, 0),
+(223, 3, 57, 0),
+(224, 4, 57, 0);
 
 -- --------------------------------------------------------
 
@@ -808,10 +1136,27 @@ ALTER TABLE `notifications`
   ADD KEY `idx_notifications_sender_id` (`sender_id`);
 
 --
+-- Indexes for table `permissions`
+--
+ALTER TABLE `permissions`
+  ADD PRIMARY KEY (`permission_id`),
+  ADD UNIQUE KEY `permission_name` (`permission_name`),
+  ADD UNIQUE KEY `uniq_module_action` (`module_key`,`action_key`),
+  ADD KEY `User_ID` (`User_ID`);
+
+--
 -- Indexes for table `role`
 --
 ALTER TABLE `role`
   ADD PRIMARY KEY (`Role_id`);
+
+--
+-- Indexes for table `role_permissions`
+--
+ALTER TABLE `role_permissions`
+  ADD PRIMARY KEY (`role_permissions_ID`),
+  ADD UNIQUE KEY `uniq_role_permission` (`Role_id`,`permission_id`),
+  ADD KEY `permission_id` (`permission_id`);
 
 --
 -- Indexes for table `services_type`
@@ -866,7 +1211,7 @@ ALTER TABLE `appointment`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=76;
+  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=82;
 
 --
 -- AUTO_INCREMENT for table `business`
@@ -902,7 +1247,7 @@ ALTER TABLE `client`
 -- AUTO_INCREMENT for table `client_services`
 --
 ALTER TABLE `client_services`
-  MODIFY `Client_services_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  MODIFY `Client_services_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT for table `consultation`
@@ -938,13 +1283,25 @@ ALTER TABLE `messages`
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
+  MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+
+--
+-- AUTO_INCREMENT for table `permissions`
+--
+ALTER TABLE `permissions`
+  MODIFY `permission_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=58;
 
 --
 -- AUTO_INCREMENT for table `role`
 --
 ALTER TABLE `role`
   MODIFY `Role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `role_permissions`
+--
+ALTER TABLE `role_permissions`
+  MODIFY `role_permissions_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=225;
 
 --
 -- AUTO_INCREMENT for table `services_type`
@@ -956,7 +1313,7 @@ ALTER TABLE `services_type`
 -- AUTO_INCREMENT for table `settings`
 --
 ALTER TABLE `settings`
-  MODIFY `Settings_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1543;
+  MODIFY `Settings_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1675;
 
 --
 -- AUTO_INCREMENT for table `specialization_type`
@@ -1072,6 +1429,19 @@ ALTER TABLE `messages`
 ALTER TABLE `notifications`
   ADD CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `notifications_ibfk_2` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Constraints for table `permissions`
+--
+ALTER TABLE `permissions`
+  ADD CONSTRAINT `permissions_ibfk_1` FOREIGN KEY (`User_ID`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Constraints for table `role_permissions`
+--
+ALTER TABLE `role_permissions`
+  ADD CONSTRAINT `role_permissions_ibfk_1` FOREIGN KEY (`Role_id`) REFERENCES `role` (`Role_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `role_permissions_ibfk_2` FOREIGN KEY (`permission_id`) REFERENCES `permissions` (`permission_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `user`

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotification } from "../../hooks/useNotification";
 import {
-  LOGIN_SESSION_STORAGE_KEY,
+  readSharedLoginSessionKey,
 } from "../../context/AuthContext";
 import { showAlertDialog } from "../../utils/feedback";
 import { ROLE_IDS } from "../../utils/helpers";
@@ -30,17 +30,9 @@ function resolveBusinessPermitClientKey(notification) {
   return String(clientId || "").trim();
 }
 
-function readLoginSessionKey() {
-  try {
-    return String(sessionStorage.getItem(LOGIN_SESSION_STORAGE_KEY) || "").trim();
-  } catch (_) {
-    return "";
-  }
-}
-
 function readShownState() {
   try {
-    const raw = sessionStorage.getItem(BUSINESS_PERMIT_ALERT_SESSION_STORAGE_KEY);
+    const raw = localStorage.getItem(BUSINESS_PERMIT_ALERT_SESSION_STORAGE_KEY);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
@@ -60,7 +52,7 @@ function readShownState() {
 
 function persistShownState(userKey, loginSessionKey, ids) {
   try {
-    sessionStorage.setItem(
+    localStorage.setItem(
       BUSINESS_PERMIT_ALERT_SESSION_STORAGE_KEY,
       JSON.stringify({
         userKey,
@@ -88,7 +80,7 @@ export default function BusinessPermitExpiryAlertObserver() {
 
   useEffect(() => {
     const currentUserKey = String(userId || "").trim();
-    const loginSessionKey = readLoginSessionKey();
+    const loginSessionKey = readSharedLoginSessionKey();
     const scopeKey = `${currentUserKey}::${loginSessionKey}`;
     if (scopeKeyRef.current === scopeKey) return;
 
@@ -112,7 +104,7 @@ export default function BusinessPermitExpiryAlertObserver() {
     if (![ROLE_IDS.ADMIN, ROLE_IDS.SECRETARY, ROLE_IDS.CLIENT].includes(role)) return;
 
     const currentUserKey = String(userId || "").trim();
-    const loginSessionKey = readLoginSessionKey();
+    const loginSessionKey = readSharedLoginSessionKey();
     if (!currentUserKey || !loginSessionKey) return;
 
     const freshNotifications = (Array.isArray(notifications) ? notifications : []).filter((notification) => {

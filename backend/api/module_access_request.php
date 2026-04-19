@@ -160,6 +160,5 @@ try {
     respond(500, [
         'success' => false,
         'message' => 'Server error',
-        'error' => $e->getMessage(),
     ]);
 }

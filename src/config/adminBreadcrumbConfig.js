@@ -8,6 +8,7 @@ import {
   Clock3,
   FilePenLine,
   FileText,
+  ListTodo,
   LayoutDashboard,
   MessageCircleMore,
   PencilLine,
@@ -57,8 +58,8 @@ export const adminBreadcrumbConfig = {
     },
     "/admin/users": { label: "Users", icon: UserCog },
     "/admin/work-update": {
-      label: "Task Updates",
-      icon: FilePenLine,
+      label: "My Tasks",
+      icon: ListTodo,
       trailingItems: [
         {
           label: "History",

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -25,6 +25,21 @@ function resolveNotificationId(notification) {
   return normalizeIdValue(notification?.notifications_ID ?? notification?.notification_id ?? notification?.id);
 }
 
+function resolveNotificationIds(notification) {
+  if (Array.isArray(notification?.notificationIds)) {
+    return Array.from(
+      new Set(
+        notification.notificationIds
+          .map((value) => normalizeIdValue(value))
+          .filter(Boolean)
+      )
+    );
+  }
+
+  const resolvedId = resolveNotificationId(notification);
+  return resolvedId ? [resolvedId] : [];
+}
+
 function resolveTimestamp(notification) {
   const raw = notification?.created_at ?? notification?.createdAt ?? notification?.created;
   if (raw instanceof Date) {
@@ -32,6 +47,48 @@ function resolveTimestamp(notification) {
   }
   const text = String(raw || "").trim();
   return text || null;
+}
+
+function normalizeSignatureTimestamp(notification) {
+  const timestamp = resolveTimestamp(notification);
+  if (!timestamp) {
+    return "";
+  }
+
+  const parsed = new Date(timestamp).getTime();
+  if (!Number.isFinite(parsed)) {
+    return String(timestamp).trim();
+  }
+
+  return new Date(parsed).toISOString();
+}
+
+function hashString(value) {
+  const input = String(value ?? "");
+  let hash = 5381;
+  for (let idx = 0; idx < input.length; idx += 1) {
+    hash = (hash * 33) ^ input.charCodeAt(idx);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildDeterministicNotificationId(notification) {
+  if (!notification || typeof notification !== "object") {
+    return `client:${hashString("empty")}`;
+  }
+
+  const userId = resolveNotificationUserId(notification) || "";
+  const senderId = resolveNotificationSenderId(notification) || "";
+  const type = resolveNotificationType(notification) || "";
+  const message = normalizeMessage(notification.message);
+  const createdAt = resolveTimestamp(notification) || "";
+  const targetRole = normalizeRole(notification.targetRole) || "";
+  const targetId =
+    notification.targetId !== undefined && notification.targetId !== null ? String(notification.targetId) : "";
+
+  return `client:${hashString(
+    [userId, senderId, type, message, createdAt, targetRole, targetId].map((v) => String(v ?? "")).join("|")
+  )}`;
 }
 
 function resolveNotificationUserId(notification) {
@@ -45,6 +102,19 @@ function resolveNotificationSenderId(notification) {
 function resolveNotificationType(notification) {
   const raw = String(notification?.type ?? notification?.kind ?? "").trim();
   return raw || "general";
+}
+
+function buildNotificationSignature(notification) {
+  const userId = resolveNotificationUserId(notification) || "";
+  const senderId = resolveNotificationSenderId(notification) || "";
+  const type = resolveNotificationType(notification).trim().toLowerCase();
+  const message = normalizeMessage(notification?.message).trim().toLowerCase();
+  const createdAt = normalizeSignatureTimestamp(notification);
+  const targetRole = normalizeRole(notification?.targetRole) || "";
+  const targetId =
+    notification?.targetId !== undefined && notification?.targetId !== null ? String(notification.targetId) : "";
+
+  return [userId, senderId, type, message, createdAt, targetRole, targetId].join("|");
 }
 
 function resolveNotificationRead(notification) {
@@ -63,18 +133,13 @@ export function NotificationProvider({ children }) {
   const { user, isAuthReady } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const idRef = useRef(0);
-
-  const createId = useCallback(() => {
-    idRef.current += 1;
-    return `${Date.now()}-${idRef.current}`;
-  }, []);
+  const [hasLoadedNotifications, setHasLoadedNotifications] = useState(false);
 
   const normalizeNotification = useCallback(
     (input) => {
       const base = input && typeof input === "object" ? input : { message: String(input || "") };
-      const createdAt = resolveTimestamp(base) || new Date().toISOString();
-      const notificationId = resolveNotificationId(base) || createId();
+      const createdAt = resolveTimestamp(base);
+      const notificationId = resolveNotificationId(base) || buildDeterministicNotificationId(base);
       const userId = resolveNotificationUserId(base);
       const senderId = resolveNotificationSenderId(base);
       const type = resolveNotificationType(base);
@@ -85,6 +150,7 @@ export function NotificationProvider({ children }) {
       return {
         id: notificationId,
         notifications_ID: notificationId,
+        notificationIds: resolveNotificationIds(base).length ? resolveNotificationIds(base) : [notificationId],
         user_id: userId,
         sender_id: senderId,
         message: normalizeMessage(base.message),
@@ -98,21 +164,59 @@ export function NotificationProvider({ children }) {
         isRead,
       };
     },
-    [createId]
+    []
+  );
+
+  const prepareNotifications = useCallback(
+    (incoming) => {
+      const normalizedItems = (Array.isArray(incoming) ? incoming : [incoming])
+        .map(normalizeNotification)
+        .filter(Boolean);
+
+      const dedupedItems = [];
+      const signatureIndex = new Map();
+
+      normalizedItems.forEach((item) => {
+        const signature = buildNotificationSignature(item);
+        const existingIndex = signatureIndex.get(signature);
+
+        if (existingIndex === undefined) {
+          signatureIndex.set(signature, dedupedItems.length);
+          dedupedItems.push(item);
+          return;
+        }
+
+        const existingItem = dedupedItems[existingIndex];
+        const mergedNotificationIds = Array.from(
+          new Set([...resolveNotificationIds(existingItem), ...resolveNotificationIds(item)])
+        );
+        const hasUnreadDuplicate = !resolveNotificationRead(existingItem) || !resolveNotificationRead(item);
+
+        dedupedItems[existingIndex] = {
+          ...existingItem,
+          notificationIds: mergedNotificationIds,
+          is_read: hasUnreadDuplicate ? 0 : 1,
+          isRead: !hasUnreadDuplicate,
+        };
+      });
+
+      return dedupedItems;
+    },
+    [normalizeNotification]
   );
 
   const addNotifications = useCallback(
     (incoming) => {
-      const items = (Array.isArray(incoming) ? incoming : [incoming]).map(normalizeNotification);
+      const items = prepareNotifications(incoming);
       if (!items.length) return [];
       setNotifications((prev) => {
-        const next = [...items, ...(Array.isArray(prev) ? prev : [])];
+        const next = prepareNotifications([...items, ...(Array.isArray(prev) ? prev : [])]);
         setUnreadCount(countUnread(next));
         return next;
       });
       return items;
     },
-    [normalizeNotification]
+    [prepareNotifications]
   );
 
   const removeNotification = useCallback((id) => {
@@ -142,22 +246,21 @@ export function NotificationProvider({ children }) {
     if (!isAuthReady || !userId) {
       setNotifications([]);
       setUnreadCount(0);
+      setHasLoadedNotifications(false);
       return;
     }
 
     try {
       const response = await api.get("notification_list.php");
       const itemsRaw = Array.isArray(response?.data?.notifications) ? response.data.notifications : [];
-      const items = itemsRaw.map(normalizeNotification);
+      const items = prepareNotifications(itemsRaw);
       setNotifications(items);
-      const unreadRaw = response?.data?.unread_count;
-      if (Number.isFinite(unreadRaw)) {
-        setUnreadCount(Math.max(0, Number(unreadRaw)));
-      } else {
-        setUnreadCount(countUnread(items));
-      }
-    } catch (_) {}
-  }, [isAuthReady, normalizeNotification, user]);
+      setUnreadCount(countUnread(items));
+      setHasLoadedNotifications(true);
+    } catch (_) {
+      setHasLoadedNotifications(true);
+    }
+  }, [isAuthReady, prepareNotifications, user]);
 
   useEffect(() => {
     let active = true;
@@ -165,9 +268,11 @@ export function NotificationProvider({ children }) {
     if (!isAuthReady || !userId) {
       setNotifications([]);
       setUnreadCount(0);
+      setHasLoadedNotifications(false);
       return undefined;
     }
 
+    setHasLoadedNotifications(false);
     void refreshNotifications();
     const intervalId = window.setInterval(() => {
       if (!active) return;
@@ -193,13 +298,20 @@ export function NotificationProvider({ children }) {
 
   const markNotificationRead = useCallback(
     async (notificationId) => {
-      const id = normalizeIdValue(notificationId);
-      if (!id) return;
+      const ids = Array.from(
+        new Set(
+          (Array.isArray(notificationId) ? notificationId : [notificationId])
+            .map((value) => normalizeIdValue(value))
+            .filter(Boolean)
+        )
+      );
+      if (!ids.length) return;
 
       setNotifications((prev) => {
         const next = (Array.isArray(prev) ? prev : []).map((item) => {
-          const itemId = normalizeIdValue(item?.notifications_ID ?? item?.id);
-          if (itemId !== id) return item;
+          const itemIds = resolveNotificationIds(item);
+          const shouldMarkRead = itemIds.some((itemId) => ids.includes(itemId));
+          if (!shouldMarkRead) return item;
           return { ...item, is_read: 1, isRead: true };
         });
         setUnreadCount(countUnread(next));
@@ -207,11 +319,10 @@ export function NotificationProvider({ children }) {
       });
 
       try {
-        const response = await api.post("notification_mark_read.php", { notification_id: id });
-        const unreadRaw = response?.data?.unread_count;
-        if (Number.isFinite(unreadRaw)) {
-          setUnreadCount(Math.max(0, Number(unreadRaw)));
-        }
+        await api.post("notification_mark_read.php", {
+          notification_ids: ids,
+          notification_id: ids[0],
+        });
       } catch (_) {
         void refreshNotifications();
       }
@@ -223,6 +334,7 @@ export function NotificationProvider({ children }) {
     () => ({
       notifications,
       unreadCount,
+      hasLoadedNotifications,
       addNotifications,
       removeNotification,
       clearNotifications,
@@ -233,6 +345,7 @@ export function NotificationProvider({ children }) {
     [
       notifications,
       unreadCount,
+      hasLoadedNotifications,
       addNotifications,
       removeNotification,
       clearNotifications,

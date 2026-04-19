@@ -42,6 +42,5 @@ try {
     monitoring_auth_respond(500, [
         'success' => false,
         'message' => 'Unable to load audit logs.',
-        'error' => $e->getMessage(),
     ]);
 }

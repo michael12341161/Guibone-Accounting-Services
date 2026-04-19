@@ -177,7 +177,7 @@ export default function ClientHistory() {
 
   const user = useMemo(() => {
     try {
-      const raw = localStorage.getItem("session:user");
+      const raw = sessionStorage.getItem("session:user");
       return raw ? JSON.parse(raw) : null;
     } catch (_) {
       return null;

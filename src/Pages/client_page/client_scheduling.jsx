@@ -8,7 +8,7 @@ const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
 function useSessionUser() {
   return useMemo(() => {
     try {
-      const raw = localStorage.getItem("session:user");
+      const raw = sessionStorage.getItem("session:user");
       return raw ? JSON.parse(raw) : null;
     } catch (_) {
       return null;

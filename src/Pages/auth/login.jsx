@@ -8,6 +8,7 @@ import ForgotPasswordModal from "./forgot_password";
 import LoginForm from "../../components/login_UI/login_form";
 import { loginAnimStyles } from "../../components/login_UI/login_styles";
 import LoginVisualPanel from "../../components/login_UI/login_visual_panel";
+import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
 import { useTheme } from "../../context/ThemeContext";
 import { captureAuditContext } from "../../utils/audit";
 import { showInfoToast, showSuccessToast } from "../../utils/feedback";
@@ -46,7 +47,7 @@ export default function LoginPage() {
   const usernameRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, role, login } = useAuth();
+  const { user, role, login, isAuthReady } = useAuth();
   const { isDarkMode } = useTheme();
   const isAuthenticated = !!(user && (user.username || user.id));
   const isLoginVerificationEnabled = !!securitySettings.loginVerificationEnabled;
@@ -83,6 +84,10 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthReady) {
+      return;
+    }
+
     if (!isAuthenticated && usernameRef.current) {
       usernameRef.current.focus();
       return;
@@ -91,7 +96,7 @@ export default function LoginPage() {
     if (isAuthenticated) {
       navigate(getHomePathForRole(role), { replace: true });
     }
-  }, [isAuthenticated, navigate, role]);
+  }, [isAuthReady, isAuthenticated, navigate, role]);
 
   useEffect(() => {
     return () => {
@@ -259,6 +264,14 @@ export default function LoginPage() {
     }
   };
 
+  if (!isAuthReady) {
+    return (
+      <div className="mx-auto min-h-screen max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+        <RouteLoadingPanel />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`min-h-screen transition-colors duration-300 ${
@@ -267,7 +280,7 @@ export default function LoginPage() {
           : "bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_25%),linear-gradient(180deg,_#f8fafc_0%,_#ecfdf5_100%)]"
       }`}
     >
-      <style dangerouslySetInnerHTML={{ __html: loginAnimStyles }} />
+      <style>{loginAnimStyles}</style>
 
       <div className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
         <LoginVisualPanel />

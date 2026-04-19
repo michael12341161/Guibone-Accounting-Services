@@ -188,10 +188,10 @@ function monitoring_normalize_impersonation_state($value): ?array
     ];
 }
 
-function monitoring_build_jwt_payload(array $user, ?array $impersonationState = null): array
+function monitoring_build_jwt_payload(array $user, ?array $impersonationState = null, ?int $issuedAtOverride = null): array
 {
     $preparedUser = monitoring_prepare_session_user($user);
-    $issuedAt = time();
+    $issuedAt = ($issuedAtOverride !== null && $issuedAtOverride > 0) ? $issuedAtOverride : time();
     $timeoutMinutes = monitoring_normalize_session_timeout_minutes(
         $preparedUser['security_settings']['sessionTimeoutMinutes'] ?? null
     );
@@ -225,14 +225,44 @@ function monitoring_encode_jwt(array $payload): string
     return $signatureInput . '.' . monitoring_base64url_encode($signature);
 }
 
-function monitoring_issue_jwt_for_user(array $user, ?array $impersonationState = null): string
+function monitoring_issue_jwt_for_user(array $user, ?array $impersonationState = null, ?int $issuedAtOverride = null): string
 {
-    return monitoring_encode_jwt(monitoring_build_jwt_payload($user, $impersonationState));
+    return monitoring_encode_jwt(monitoring_build_jwt_payload($user, $impersonationState, $issuedAtOverride));
 }
 
-function monitoring_queue_jwt_response_header(array $user, ?array $impersonationState = null): void
+function monitoring_clear_auth_cookie(): void
 {
-    header(MONITORING_JWT_RESPONSE_HEADER . ': ' . monitoring_issue_jwt_for_user($user, $impersonationState));
+    setcookie(
+        'monitoring_auth_jwt',
+        '',
+        [
+            'expires' => time() - 42000,
+            'path' => '/',
+            'secure' => monitoring_is_https(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]
+    );
+
+    unset($_COOKIE['monitoring_auth_jwt']);
+}
+
+function monitoring_queue_jwt_response_header(array $user, ?array $impersonationState = null, ?int $issuedAtOverride = null): void
+{
+    $token = monitoring_issue_jwt_for_user($user, $impersonationState, $issuedAtOverride);
+    header(MONITORING_JWT_RESPONSE_HEADER . ': ' . $token);
+    
+    setcookie(
+        'monitoring_auth_jwt',
+        $token,
+        [
+            'expires' => 0, // Session cookie
+            'path' => '/',
+            'secure' => monitoring_is_https(),
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]
+    );
 }
 
 function monitoring_decode_jwt(string $token): ?array
@@ -278,7 +308,7 @@ function monitoring_decode_jwt(string $token): ?array
     }
 
     $expiresAt = isset($payload['exp']) ? (int)$payload['exp'] : 0;
-    if ($expiresAt <= 0 || ($expiresAt + MONITORING_JWT_LEEWAY_SECONDS) <= $now) {
+    if ($expiresAt <= 0 || $now >= $expiresAt) {
         return null;
     }
 
@@ -299,10 +329,11 @@ function monitoring_decode_jwt(string $token): ?array
     return [
         'user' => $preparedUser,
         'impersonation' => monitoring_normalize_impersonation_state($payload['impersonation'] ?? null),
+        'issued_at' => isset($payload['iat']) ? (int)$payload['iat'] : 0,
     ];
 }
 
-function monitoring_persist_session_user(array $user, bool $regenerateId = true): array
+function monitoring_persist_session_user(array $user, bool $regenerateId = true, ?int $lastActivityAt = null): array
 {
     monitoring_start_session();
     if ($regenerateId) {
@@ -313,7 +344,9 @@ function monitoring_persist_session_user(array $user, bool $regenerateId = true)
     $preparedUser['session_timeout_minutes'] = monitoring_normalize_session_timeout_minutes(
         $preparedUser['security_settings']['sessionTimeoutMinutes'] ?? null
     );
-    $preparedUser['last_activity_at'] = time();
+    $preparedUser['last_activity_at'] = ($lastActivityAt !== null && $lastActivityAt > 0)
+        ? $lastActivityAt
+        : time();
     $_SESSION[MONITORING_SESSION_KEY] = $preparedUser;
 
     return $preparedUser;
@@ -350,21 +383,28 @@ function monitoring_read_session_user_from_session(bool $enforceTimeout = true, 
         return null;
     }
 
+    $raw = monitoring_refresh_auth_user_security_settings($raw);
+    $refreshActivity = monitoring_request_refreshes_session_activity();
     $timeoutMinutes = monitoring_normalize_session_timeout_minutes($raw['session_timeout_minutes'] ?? null);
     $lastActivityAt = isset($raw['last_activity_at']) ? (int)$raw['last_activity_at'] : 0;
-    if ($enforceTimeout && $lastActivityAt > 0 && (time() - $lastActivityAt) > ($timeoutMinutes * 60)) {
+    if ($enforceTimeout && $lastActivityAt > 0 && (time() - $lastActivityAt) >= ($timeoutMinutes * 60)) {
         monitoring_destroy_session();
         return null;
     }
 
-    $_SESSION[MONITORING_SESSION_KEY]['last_activity_at'] = time();
+    $activityTimestamp = $lastActivityAt > 0 ? $lastActivityAt : time();
+    if ($refreshActivity) {
+        $activityTimestamp = time();
+        $_SESSION[MONITORING_SESSION_KEY]['last_activity_at'] = $activityTimestamp;
+    }
+
     $user = monitoring_prepare_session_user($_SESSION[MONITORING_SESSION_KEY]);
     $user['session_timeout_minutes'] = $timeoutMinutes;
-    $user['last_activity_at'] = $_SESSION[MONITORING_SESSION_KEY]['last_activity_at'];
+    $user['last_activity_at'] = $activityTimestamp;
     $user['impersonation'] = monitoring_read_impersonation_state();
 
     if ($issueJwt) {
-        monitoring_queue_jwt_response_header($user, $user['impersonation']);
+        monitoring_queue_jwt_response_header($user, $user['impersonation'], $activityTimestamp);
     }
 
     return $user;
@@ -374,6 +414,10 @@ function monitoring_read_session_user_from_jwt(): ?array
 {
     $token = monitoring_get_bearer_token();
     if ($token === '') {
+        $token = $_COOKIE['monitoring_auth_jwt'] ?? '';
+    }
+    
+    if ($token === '') {
         return null;
     }
 
@@ -382,11 +426,28 @@ function monitoring_read_session_user_from_jwt(): ?array
         return null;
     }
 
+    $decoded['user'] = monitoring_refresh_auth_user_security_settings($decoded['user'], false);
+    $timeoutMinutes = monitoring_normalize_session_timeout_minutes(
+        $decoded['user']['security_settings']['sessionTimeoutMinutes'] ?? null
+    );
+    $issuedAt = isset($decoded['issued_at']) ? (int)$decoded['issued_at'] : 0;
+    if ($issuedAt > 0 && ($issuedAt + ($timeoutMinutes * 60)) <= time()) {
+        monitoring_destroy_session();
+        return null;
+    }
+
+    $refreshActivity = monitoring_request_refreshes_session_activity();
+    $activityTimestamp = $issuedAt > 0 ? $issuedAt : time();
+    if ($refreshActivity) {
+        $activityTimestamp = time();
+    }
+
     $impersonationState = monitoring_normalize_impersonation_state($decoded['impersonation'] ?? null);
     monitoring_sync_impersonation_state($impersonationState);
-    $preparedUser = monitoring_persist_session_user($decoded['user'], false);
+    $preparedUser = monitoring_persist_session_user($decoded['user'], false, $activityTimestamp);
+    $preparedUser['last_activity_at'] = $activityTimestamp;
     $preparedUser['impersonation'] = monitoring_read_impersonation_state();
 
-    monitoring_queue_jwt_response_header($preparedUser, $preparedUser['impersonation']);
+    monitoring_queue_jwt_response_header($preparedUser, $preparedUser['impersonation'], $activityTimestamp);
     return $preparedUser;
 }

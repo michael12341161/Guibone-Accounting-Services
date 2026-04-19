@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Award, Building2, CalendarCheck, FileText, KeyRound, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
+import { Award, Building2, CalendarCheck, CalendarDays, FileText, KeyRound, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { appLogo } from "../assets/branding";
 import { Button } from "../components/UI/buttons";
@@ -80,6 +80,14 @@ export const clientNavItems = [
     icon: <Award {...sidebarIconProps} />,
     sectionLabel: "My Certificate",
     accessKey: "client-account",
+  },
+  {
+    key: "calendar",
+    label: "Calendar",
+    to: "/client/calendar",
+    icon: <CalendarDays {...sidebarIconProps} />,
+    sectionLabel: "Event Calendar",
+    accessKey: "calendar",
   },
   {
     key: "messaging",

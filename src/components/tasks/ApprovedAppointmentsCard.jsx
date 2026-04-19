@@ -26,6 +26,18 @@ function normalizeAppointmentStatus(value) {
   return String(value || "").trim();
 }
 
+function normalizeApprovedByLabel(value) {
+  const display = String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!display) return "";
+  const tokens = display.split(" ");
+  if (tokens.length > 1 && new Set(tokens.map((token) => token.toLowerCase())).size === 1) {
+    return tokens[0];
+  }
+  return display;
+}
+
 function isApprovedAppointmentStatus(value) {
   return normalizeAppointmentStatus(value).toLowerCase() === "approved";
 }
@@ -163,7 +175,7 @@ function normalizeAppointmentRow(row, activeClientsById) {
     secondary,
     serviceName,
     date,
-    approvedBy,
+    approvedBy: normalizeApprovedByLabel(approvedBy),
     status,
   };
 }

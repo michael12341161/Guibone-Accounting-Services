@@ -243,5 +243,6 @@ try {
 
     respond(200, ['success' => true, 'rows' => $out]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => $e->getMessage()]);
+    error_log('scheduling_list error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

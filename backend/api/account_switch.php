@@ -4,10 +4,9 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/audit_logs_helper.php';
+require_once __DIR__ . '/module_permission_store.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
-
-const ACCOUNT_SWITCH_MODULE_PERMISSIONS_FILE = __DIR__ . '/../data/module_permissions.json';
 
 function account_switch_respond(int $code, array $payload): void
 {
@@ -74,38 +73,7 @@ function account_switch_build_client_session_user(PDO $conn, int $clientId): arr
     ];
 }
 
-function account_switch_load_client_account_permissions(): array
-{
-    $defaults = [
-        'admin' => false,
-        'secretary' => false,
-        'accountant' => false,
-        'client' => true,
-    ];
-
-    if (!is_file(ACCOUNT_SWITCH_MODULE_PERMISSIONS_FILE)) {
-        return $defaults;
-    }
-
-    $raw = @file_get_contents(ACCOUNT_SWITCH_MODULE_PERMISSIONS_FILE);
-    if ($raw === false || trim($raw) === '') {
-        return $defaults;
-    }
-
-    $decoded = json_decode($raw, true);
-    $feature = is_array($decoded) && is_array($decoded['client-account'] ?? null)
-        ? $decoded['client-account']
-        : [];
-
-    return [
-        'admin' => (bool)($feature['admin'] ?? $defaults['admin']),
-        'secretary' => (bool)($feature['secretary'] ?? $defaults['secretary']),
-        'accountant' => (bool)($feature['accountant'] ?? $defaults['accountant']),
-        'client' => (bool)($feature['client'] ?? $defaults['client']),
-    ];
-}
-
-function account_switch_can_start_client_view(array $sessionUser): bool
+function account_switch_can_start_client_view(PDO $conn, array $sessionUser): bool
 {
     $roleId = (int)($sessionUser['role_id'] ?? 0);
     if ($roleId === MONITORING_ROLE_ADMIN) {
@@ -116,8 +84,7 @@ function account_switch_can_start_client_view(array $sessionUser): bool
         return false;
     }
 
-    $permissions = account_switch_load_client_account_permissions();
-    return (bool)($permissions['secretary'] ?? false);
+    return monitoring_module_permissions_is_role_allowed($conn, 'client-account', null, MONITORING_ROLE_SECRETARY);
 }
 
 try {
@@ -136,7 +103,7 @@ try {
 
     if ($action === 'start_client_view') {
         $sessionUser = monitoring_require_roles([MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
-        if (!account_switch_can_start_client_view($sessionUser)) {
+        if (!account_switch_can_start_client_view($conn, $sessionUser)) {
             account_switch_respond(403, [
                 'success' => false,
                 'message' => 'You do not have permission to access client accounts.',
@@ -194,6 +161,5 @@ try {
     account_switch_respond(500, [
         'success' => false,
         'message' => 'Server error.',
-        'error' => $e->getMessage(),
     ]);
 }

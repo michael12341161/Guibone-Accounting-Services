@@ -32,31 +32,38 @@ export const FEATURE_SECTIONS = [
         key: "dashboard",
         label: "Dashboard Access",
         description: "Open the role home page.",
-        defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: true, client: true },
       },
       {
         key: "user-management",
         label: "User Management",
         description: "View and manage system users.",
-        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
         actions: [
           {
             key: "view",
             label: "Can View",
             description: "Allow the role to open and review user accounts.",
-            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
           },
           {
             key: "edit",
             label: "Can Edit",
             description: "Allow the role to update existing user accounts.",
-            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
           },
           {
             key: "add-user",
             label: "Add User",
             description: "Allow the role to create new user accounts.",
-            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
+          },
+          {
+            key: "account-status",
+            label: "Set Active / Inactive",
+            description:
+              "Allow the role to change a user account between Active and Inactive from the User Management list (login and password recovery follow account status).",
+            defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
           },
         ],
       },
@@ -75,7 +82,7 @@ export const FEATURE_SECTIONS = [
     ],
   },
   {
-    label: "Client Work",
+    label: "Client Work 1",
     features: [
       {
         key: "client-management",
@@ -111,7 +118,14 @@ export const FEATURE_SECTIONS = [
             key: "file-upload",
             label: "File Upload",
             description: "Allow the role to upload files in Required Documents.",
-            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+          },
+          {
+            key: "account-status",
+            label: "Set Active / Inactive",
+            description:
+              "Allow the role to change a client account between Active and Inactive from the Client Management list (login and password recovery follow account status).",
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
         ],
       },
@@ -119,25 +133,25 @@ export const FEATURE_SECTIONS = [
         key: "new-client-management",
         label: "New Client Management",
         description: "Handle newly created client records.",
-        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
       },
       {
         key: "documents",
         label: "Documents",
         description: "Manage Business Permit, DTI, SEC, and LGU files for client businesses.",
-        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
         actions: [
           {
             key: "upload",
             label: "Can Upload",
             description: "Allow the role to upload or replace Business Permit, DTI, SEC, and LGU files.",
-            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
           {
             key: "view-only",
             label: "View Only",
             description: "Allow the role to open the Documents page and review uploaded files without uploading changes.",
-            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
         ],
       },
@@ -167,6 +181,11 @@ export const FEATURE_SECTIONS = [
           },
         ],
       },
+    ],
+  },
+  {
+    label: "Client Work 2",
+    features: [
       {
         key: "edit-certificate",
         label: "Edit Certificate",
@@ -185,7 +204,7 @@ export const FEATURE_SECTIONS = [
         key: "business-status",
         label: "Business Status",
         description: "Review which client businesses are registered and which still need a Business Permit.",
-        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
       },
       {
         key: "appointments",
@@ -217,25 +236,25 @@ export const FEATURE_SECTIONS = [
         key: "scheduling",
         label: "Consultation",
         description: "Manage consultation schedules and slots.",
-        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
         actions: [
           {
             key: "approve",
             label: "Approve",
             description: "Allow the role to approve consultation requests.",
-            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
           },
           {
             key: "decline",
             label: "Decline",
             description: "Allow the role to decline consultation requests.",
-            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
           },
           {
             key: "reschedule",
             label: "Reschedule",
             description: "Allow the role to reschedule consultation requests.",
-            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
           },
           {
             key: "configure-times",
@@ -254,13 +273,13 @@ export const FEATURE_SECTIONS = [
         key: "tasks",
         label: "Task Management",
         description: "Create, assign, and track tasks.",
-        defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
         actions: [
           {
             key: "create-task",
             label: "Create Task",
             description: "Allow the role to create tasks from task management.",
-            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
           {
             key: "client-appointments",
@@ -278,13 +297,13 @@ export const FEATURE_SECTIONS = [
             key: "edit-step",
             label: "Can Edit Tasks To-Do",
             description: "Allow the role to edit task to-do items, add new steps, and update step assignees from Task Management.",
-            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
           {
             key: "remove-step",
             label: "Remove Step",
             description: "Allow the role to remove task steps.",
-            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
         ],
       },
@@ -292,25 +311,31 @@ export const FEATURE_SECTIONS = [
         key: "calendar",
         label: "Calendar",
         description: "Open the shared calendar view.",
-        defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: true, client: true },
       },
       {
         key: "work-update",
-        label: "Task Update",
+        label: "My tasks",
         description: "Review and update task progress.",
-        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
         actions: [
           {
             key: "check-steps",
             label: "Can Check Steps",
             description: "Allow the role to mark assigned task steps as completed.",
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+          },
+          {
+            key: "approve",
+            label: "Can Approve",
+            description: "Allow the role to approve submitted task steps that are pending review.",
             defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
           {
             key: "history",
             label: "Can View History",
             description: "Allow the role to open task update history and view saved task update logs.",
-            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
           },
           {
             key: "edit",
@@ -322,12 +347,18 @@ export const FEATURE_SECTIONS = [
             key: "mark-done",
             label: "Can Mark Done",
             description: "Allow the role to mark task updates as done.",
-            defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
           },
           {
             key: "decline",
             label: "Can Decline",
             description: "Allow the role to decline task updates.",
+            defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+          },
+          {
+            key: "remarks",
+            label: "Can Add Remarks",
+            description: "Allow the role to add or edit emergency remarks on task steps in My tasks.",
             defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
           {
@@ -344,12 +375,6 @@ export const FEATURE_SECTIONS = [
           },
         ],
       },
-      {
-        key: "my-tasks",
-        label: "My Tasks",
-        description: "Review accountant task assignments.",
-        defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
-      },
     ],
   },
   {
@@ -359,7 +384,7 @@ export const FEATURE_SECTIONS = [
         key: "messaging",
         label: "Messaging",
         description: "Open team and client conversations.",
-        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: true, client: true },
       },
     ],
   },
@@ -367,16 +392,10 @@ export const FEATURE_SECTIONS = [
     label: "Insights",
     features: [
       {
-        key: "invoices",
-        label: "Invoices",
-        description: "View and manage invoices.",
-        defaultAccess: { admin: true, secretary: false, accountant: true, client: false },
-      },
-      {
         key: "reports",
         label: "Reports",
         description: "Open reports and summaries.",
-        defaultAccess: { admin: true, secretary: true, accountant: true, client: false },
+        defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
       },
     ],
   },
@@ -387,7 +406,7 @@ export const FEATURE_SECTIONS = [
         key: "client-account",
         label: "Can Access Account",
         description: "Allow the client to access their account portal.",
-        defaultAccess: { admin: false, secretary: false, accountant: false, client: true },
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: true },
       },
     ],
   },
@@ -520,6 +539,58 @@ function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
     }
   }
 
+  // DB may still expose a top-level `my-tasks` row; the app uses feature key `work-update`
+  // (Permissions UI label "My tasks") for routes, nav, and gates — same as secretary.
+  if (featureKey === "work-update") {
+    const legacyMyTasks = storedPermissions?.["my-tasks"];
+    if (!legacyMyTasks || typeof legacyMyTasks !== "object") {
+      return directPermissions;
+    }
+
+    const roleKeys = ["admin", "secretary", "accountant", "client"];
+    const base =
+      directPermissions && typeof directPermissions === "object"
+        ? {
+            ...directPermissions,
+            actions:
+              directPermissions.actions && typeof directPermissions.actions === "object"
+                ? Object.fromEntries(
+                    Object.entries(directPermissions.actions).map(([actionKey, value]) => [
+                      actionKey,
+                      value && typeof value === "object" ? { ...value } : value,
+                    ])
+                  )
+                : {},
+          }
+        : { actions: {} };
+
+    const actionsObj = base.actions && typeof base.actions === "object" ? base.actions : {};
+    base.actions = actionsObj;
+
+    for (const roleKey of roleKeys) {
+      if (!legacyMyTasks[roleKey]) {
+        continue;
+      }
+      base[roleKey] = true;
+      const anyActionForRole = Object.values(actionsObj).some(
+        (actionPerm) => actionPerm && typeof actionPerm === "object" && Boolean(actionPerm[roleKey])
+      );
+      if (!anyActionForRole) {
+        const existing = actionsObj["check-steps"] && typeof actionsObj["check-steps"] === "object" ? actionsObj["check-steps"] : {};
+        actionsObj["check-steps"] = {
+          admin: false,
+          secretary: false,
+          accountant: false,
+          client: false,
+          ...existing,
+          [roleKey]: true,
+        };
+      }
+    }
+
+    return base;
+  }
+
   return directPermissions;
 }
 
@@ -616,10 +687,11 @@ export function hasFeatureActionAccess(user, featureKey, actionKey, permissions 
     return false;
   }
 
-  const featurePermissions = permissions?.[featureKey];
+  const mergedPermissions = mergePermissions(permissions ?? null);
+  const featurePermissions = mergedPermissions?.[featureKey];
   const actionPermissions = featurePermissions?.actions?.[actionKey];
   if (!actionPermissions || typeof actionPermissions !== "object") {
-    return hasModuleAccess(user, featureKey, permissions);
+    return hasModuleAccess(user, featureKey, mergedPermissions);
   }
 
   return Boolean(actionPermissions[roleKey]);
@@ -644,7 +716,7 @@ export function hasModuleAccess(user, moduleKey, permissions = null) {
     return false;
   }
 
-  const nextPermissions = permissions;
+  const nextPermissions = mergePermissions(permissions ?? null);
   const modulePermissions = nextPermissions?.[moduleKey];
 
   if (!modulePermissions || typeof modulePermissions !== "object") {

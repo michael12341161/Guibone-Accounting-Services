@@ -7,7 +7,7 @@ import { RouteLoadingPanel } from "./route_loading_panel";
 import { RouteLoadingContext } from "./route_loading_context";
 import { normalizePath } from "./layout_utils";
 import { useAuth } from "../../hooks/useAuth";
-import { LOGIN_SESSION_STORAGE_KEY } from "../../context/AuthContext";
+import { readSharedLoginSessionKey } from "../../context/AuthContext";
 import { showAlertDialog } from "../../utils/feedback";
 
 function classNames(...values) {
@@ -142,8 +142,7 @@ export function DashboardShell({
     try {
       const userId = String(user?.id ?? user?.user_id ?? user?.User_ID ?? "").trim();
       const passwordChangedAt = String(user?.password_changed_at || "").trim();
-      const loginSessionKey =
-        String(sessionStorage.getItem(LOGIN_SESSION_STORAGE_KEY) || "").trim() || "restored";
+      const loginSessionKey = readSharedLoginSessionKey() || "restored";
       if (!userId) {
         return;
       }

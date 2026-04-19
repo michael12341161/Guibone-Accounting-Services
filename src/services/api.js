@@ -4,15 +4,20 @@ import { mergePermissions } from "../utils/module_permissions";
 import { DEFAULT_TASK_WORKLOAD_SETTINGS, normalizeTaskWorkloadSettings } from "../utils/task_workload";
 
 // Configure to hit the PHP backend served by XAMPP.
-// Adjust this baseURL if your Apache virtual host differs.
-const baseURL = "http://localhost/Monitoring/monitoring/backend/api/";
-const AUTH_TOKEN_KEY = "auth:jwt";
+// Set REACT_APP_API_BASE_URL in .env for production, or use the default for local dev.
+const baseURL = process.env.REACT_APP_API_BASE_URL || "http://localhost/Monitoring/monitoring/backend/api/";
 const JWT_REFRESH_HEADER = "x-monitoring-jwt";
+const SESSION_ACTIVITY_HEADER = "X-Monitoring-Activity";
+// Keep this short so background polling does not extend inactivity timeouts.
+const RECENT_ACTIVITY_WINDOW_MS = 5 * 1000;
 export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
+export const MONITORING_AUTH_USER_SYNC_EVENT = "monitoring:auth-user-sync";
 export const MONITORING_SYSTEM_CONFIG_UPDATED_EVENT = "monitoring:system-config-updated";
 export const MONITORING_SCHEDULED_BACKUP_EVENT = "monitoring:scheduled-backup";
 export const MONITORING_AUTH_REQUIRED_MESSAGE = "Authentication is required.";
 export const MONITORING_SESSION_EXPIRED_MESSAGE = "Session expired. Please log in again.";
+
+let lastUserInteractionAt = 0;
 
 function dispatchAuthInvalidEvent() {
   if (typeof window === "undefined") {
@@ -20,6 +25,60 @@ function dispatchAuthInvalidEvent() {
   }
 
   window.dispatchEvent(new CustomEvent(MONITORING_AUTH_INVALID_EVENT));
+}
+
+function dispatchAuthUserSyncEvent(user) {
+  if (typeof window === "undefined" || !user || typeof user !== "object") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(MONITORING_AUTH_USER_SYNC_EVENT, {
+      detail: { user },
+    })
+  );
+}
+
+function syncUserFromResponse(response) {
+  const token = String(response?.headers?.[JWT_REFRESH_HEADER] || "").trim();
+  if (!token) {
+    return;
+  }
+
+  try {
+    const decoded = jwtDecode(token);
+    const nextUser = decoded?.user;
+    if (nextUser && typeof nextUser === "object") {
+      dispatchAuthUserSyncEvent(nextUser);
+    }
+  } catch (_) {}
+}
+
+export function recordUserInteraction(timestamp = Date.now()) {
+  if (!Number.isFinite(timestamp)) {
+    lastUserInteractionAt = Date.now();
+    return;
+  }
+
+  lastUserInteractionAt = Math.max(lastUserInteractionAt, Math.trunc(timestamp));
+}
+
+function resolveMonitoringActivityMode(config = {}) {
+  const explicitMode = String(config?.monitoringActivity || "").trim().toLowerCase();
+  if (explicitMode === "active" || explicitMode === "passive") {
+    return explicitMode;
+  }
+
+  return Date.now() - lastUserInteractionAt <= RECENT_ACTIVITY_WINDOW_MS ? "active" : "passive";
+}
+
+function attachMonitoringActivity(config) {
+  const nextConfig = { ...config };
+  const headers = { ...(nextConfig.headers || {}) };
+  headers[SESSION_ACTIVITY_HEADER] = resolveMonitoringActivityMode(nextConfig);
+  nextConfig.headers = headers;
+  delete nextConfig.monitoringActivity;
+  return nextConfig;
 }
 
 export function isAuthenticationRequiredMessage(message) {
@@ -57,88 +116,19 @@ function normalizeAuthenticationError(error) {
   return error;
 }
 
-function readTokenStorage() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    return window.localStorage;
-  } catch (_) {
-    return null;
-  }
-}
-
 export function clearStoredAuthToken() {
-  const storage = readTokenStorage();
-  storage?.removeItem(AUTH_TOKEN_KEY);
+  // Handled by HTTP-only cookie
 }
 
 export function storeAuthToken(token) {
-  const normalized = String(token ?? "").trim();
-  if (!normalized) {
-    clearStoredAuthToken();
-    return;
-  }
-
-  const storage = readTokenStorage();
-  storage?.setItem(AUTH_TOKEN_KEY, normalized);
-}
-
-function isExpiredToken(token) {
-  try {
-    const decoded = jwtDecode(token);
-    const exp = Number(decoded?.exp ?? 0);
-    if (!Number.isFinite(exp) || exp <= 0) {
-      return true;
-    }
-
-    return exp * 1000 <= Date.now() + 5000;
-  } catch (_) {
-    return true;
-  }
+  // Handled by HTTP-only cookie  
 }
 
 export function getStoredAuthToken() {
-  const storage = readTokenStorage();
-  const token = String(storage?.getItem(AUTH_TOKEN_KEY) ?? "").trim();
-  if (!token) {
-    return "";
-  }
-
-  if (isExpiredToken(token)) {
-    clearStoredAuthToken();
-    return "";
-  }
-
-  return token;
+  return "";
 }
 
-function syncTokenFromResponse(response) {
-  const token = String(response?.headers?.[JWT_REFRESH_HEADER] ?? "").trim();
-  if (token) {
-    storeAuthToken(token);
-  }
-
-  return response;
-}
-
-function attachJwtAuthorization(config) {
-  const nextConfig = { ...config };
-  const headers = { ...(nextConfig.headers || {}) };
-  const token = getStoredAuthToken();
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  } else {
-    delete headers.Authorization;
-  }
-
-  nextConfig.headers = headers;
-  return nextConfig;
-}
-
-// Authenticated requests use JWT bearer headers with PHP sessions kept for compatibility flows.
+// Authenticated requests use PHP sessions/http-only cookies on backend.
 export const api = axios.create({
   baseURL,
   withCredentials: true,
@@ -150,26 +140,40 @@ export const apiSession = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use(attachJwtAuthorization);
+api.interceptors.request.use(attachMonitoringActivity);
+apiSession.interceptors.request.use(attachMonitoringActivity);
 
-[api, apiSession].forEach((client) => {
-  client.interceptors.response.use(
-    (response) => syncTokenFromResponse(response),
-    (error) => {
-      if (error?.response) {
-        syncTokenFromResponse(error.response);
-      }
-
-      if (error?.response?.status === 401) {
-        clearStoredAuthToken();
-        normalizeAuthenticationError(error);
-        dispatchAuthInvalidEvent();
-      }
-
-      return Promise.reject(error);
+api.interceptors.response.use(
+  (response) => {
+    syncUserFromResponse(response);
+    return response;
+  },
+  (error) => {
+    syncUserFromResponse(error?.response);
+    if (error?.response?.status === 401) {
+      clearStoredAuthToken();
+      normalizeAuthenticationError(error);
+      dispatchAuthInvalidEvent();
     }
-  );
-});
+    return Promise.reject(error);
+  }
+);
+
+apiSession.interceptors.response.use(
+  (response) => {
+    syncUserFromResponse(response);
+    return response;
+  },
+  (error) => {
+    syncUserFromResponse(error?.response);
+    if (error?.response?.status === 401) {
+      clearStoredAuthToken();
+      normalizeAuthenticationError(error);
+      dispatchAuthInvalidEvent();
+    }
+    return Promise.reject(error);
+  }
+);
 
 export function normalizeServiceOptions(rows) {
   if (!Array.isArray(rows)) {

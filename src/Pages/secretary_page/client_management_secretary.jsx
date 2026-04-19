@@ -33,7 +33,7 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showConfirmDialog, showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
 
 const PAGE_SIZE = 10;
@@ -657,10 +657,12 @@ export default function ClientManagementSecretary() {
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [switchingClientAccountId, setSwitchingClientAccountId] = useState(null);
+  const [statusActionClientId, setStatusActionClientId] = useState(null);
   const locationRequestIdRef = useRef(0);
 
   const canViewClientManagement = hasFeatureActionAccess(user, "client-management", "view", permissions);
   const canEditClientManagement = hasFeatureActionAccess(user, "client-management", "edit", permissions);
+  const canSetClientAccountStatus = hasFeatureActionAccess(user, "client-management", "account-status", permissions);
   const canAddNewClient = hasFeatureActionAccess(user, "client-management", "add-new-client", permissions);
   const canViewClientLocation = hasFeatureActionAccess(user, "client-management", "location", permissions);
   const canUploadRequiredDocuments = hasFeatureActionAccess(user, "client-management", "file-upload", permissions);
@@ -1377,10 +1379,10 @@ export default function ClientManagementSecretary() {
     }
   };
 
-  const toggleClientStatus = async (client) => {
+  const toggleClientStatus = useCallback(async (client) => {
     if (!client?.id) return;
-    if (!canEditClientManagement) {
-      setError("You do not have permission to edit client records.");
+    if (!canSetClientAccountStatus) {
+      setError("You do not have permission to change client account status.");
       return;
     }
 
@@ -1389,6 +1391,29 @@ export default function ClientManagementSecretary() {
 
     const currentId = Number(client.status_id);
     const nextId = currentId === 1 ? 2 : 1;
+    const nextStatusLabel = nextId === 1 ? "Active" : "Inactive";
+
+    if (nextStatusLabel === "Inactive") {
+      const confirmation = await showDangerConfirmDialog({
+        title: "Set client account to inactive?",
+        text: "This client will no longer be able to log in or use forgot password until the account is reactivated.",
+        confirmButtonText: "Set Inactive",
+      });
+      if (!confirmation.isConfirmed) {
+        return;
+      }
+    } else {
+      const confirmation = await showConfirmDialog({
+        title: "Set client account to active?",
+        text: "This client will be able to log in and use forgot password again.",
+        confirmButtonText: "Set Active",
+      });
+      if (!confirmation.isConfirmed) {
+        return;
+      }
+    }
+
+    setStatusActionClientId(client.id);
 
     setClients((prev) =>
       prev.map((c) =>
@@ -1396,7 +1421,7 @@ export default function ClientManagementSecretary() {
           ? {
               ...c,
               status_id: nextId,
-              status: nextId === 1 ? "Active" : "Inactive",
+              status: nextStatusLabel,
             }
           : c
       )
@@ -1429,13 +1454,22 @@ export default function ClientManagementSecretary() {
       if (updated?.id) {
         setClients((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
       }
+      showSuccessToast({
+        title: nextStatusLabel === "Active" ? "Client account activated." : "Client account set to inactive.",
+        description:
+          nextStatusLabel === "Active"
+            ? "The client can log in and use forgot password again."
+            : "The client can no longer log in until the account is reactivated.",
+      });
     } catch (err) {
       setClients((prev) =>
         prev.map((c) => (c.id === client.id ? { ...c, status_id: currentId, status: client.status } : c))
       );
       setError(err?.response?.data?.message || err?.message || "Failed to update status.");
+    } finally {
+      setStatusActionClientId(null);
     }
-  };
+  }, [canSetClientAccountStatus]);
 
   const businessTypeOptions = useMemo(() => {
     return buildBusinessTypeOptions(businessTypes, clients);
@@ -1504,134 +1538,156 @@ export default function ClientManagementSecretary() {
     [pagedClients, startIndex]
   );
 
-  const columns = [
-    { key: "index", header: "#", width: "8%" },
-    { key: "clientName", header: "Client Name", width: "16%" },
-    { key: "tradeName", header: "Trade Name", width: "15%" },
-    { key: "businessType", header: "Type of Business", width: "15%" },
-    {
-      key: "businessLocation",
-      header: "Business Location",
-      width: "16%",
-      render: (_, row) => (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            if (canViewClientLocation) {
-              void onOpenLocation(row.raw);
-              return;
-            }
-            void promptClientManagementAccess();
-          }}
-          aria-disabled={!canViewClientLocation}
-          className={!canViewClientLocation ? "cursor-not-allowed opacity-60" : ""}
-          aria-label={`View ${row.clientName} location`}
-          title={canViewClientLocation ? "Location" : "Request access"}
-        >
-          <MapPin className="h-3.5 w-3.5" strokeWidth={1.8} />
-          Location
-        </Button>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      width: "10%",
-      render: (value, row) => (
-        <button
-          type="button"
-          onClick={() => {
-            if (canEditClientManagement) {
-              void toggleClientStatus(row.raw);
-              return;
-            }
-            void promptClientManagementAccess();
-          }}
-          aria-disabled={!canEditClientManagement}
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(
-            value
-          )} hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-            canEditClientManagement ? "" : "cursor-not-allowed opacity-60"
-          }`}
-          title={canEditClientManagement ? "Click to toggle status" : "Request access"}
-        >
-          {value}
-        </button>
-      ),
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      align: "right",
-      width: "26%",
-      render: (_, row) => (
-        <div className="flex min-w-max flex-nowrap items-center justify-end gap-1">
-          {canAccessClientAccount ? (
-            <Button
+  const columns = useMemo(
+    () => [
+      { key: "index", header: "#", width: "8%" },
+      { key: "clientName", header: "Client Name", width: "16%" },
+      { key: "tradeName", header: "Trade Name", width: "15%" },
+      { key: "businessType", header: "Type of Business", width: "15%" },
+      {
+        key: "businessLocation",
+        header: "Business Location",
+        width: "16%",
+        render: (_, row) => (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              if (canViewClientLocation) {
+                void onOpenLocation(row.raw);
+                return;
+              }
+              void promptClientManagementAccess();
+            }}
+            aria-disabled={!canViewClientLocation}
+            className={!canViewClientLocation ? "cursor-not-allowed opacity-60" : ""}
+            aria-label={`View ${row.clientName} location`}
+            title={canViewClientLocation ? "Location" : "Request access"}
+          >
+            <MapPin className="h-3.5 w-3.5" strokeWidth={1.8} />
+            Location
+          </Button>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        width: "10%",
+        render: (value, row) => (
+          <button
+            type="button"
+            onClick={() => {
+              if (canSetClientAccountStatus) {
+                void toggleClientStatus(row.raw);
+                return;
+              }
+              void promptClientManagementAccess();
+            }}
+            disabled={canSetClientAccountStatus && statusActionClientId === row.raw?.id}
+            aria-disabled={!canSetClientAccountStatus}
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(
+              value
+            )} hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+              canSetClientAccountStatus
+                ? statusActionClientId === row.raw?.id
+                  ? "cursor-wait opacity-70"
+                  : ""
+                : "cursor-not-allowed opacity-60"
+            }`}
+            title={canSetClientAccountStatus ? "Click to change status" : "Request access"}
+          >
+            {value}
+          </button>
+        ),
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        align: "right",
+        width: "26%",
+        render: (_, row) => (
+          <div className="flex min-w-max flex-nowrap items-center justify-end gap-1">
+            {canAccessClientAccount ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="shrink-0 gap-1 px-2.5"
+                onClick={() => {
+                  void openClientAccount(row.raw);
+                }}
+                disabled={
+                  switchingClientAccountId === Number(row.raw?.id ?? 0) ||
+                  Number(row.raw?.user_id ?? 0) <= 0 ||
+                  Number(row.raw?.role_id ?? 0) !== 4
+                }
+                title={
+                  Number(row.raw?.user_id ?? 0) > 0 && Number(row.raw?.role_id ?? 0) === 4
+                    ? "Access client account"
+                    : "No linked client account"
+                }
+              >
+                <LogIn className="h-3.5 w-3.5" strokeWidth={1.8} />
+                {switchingClientAccountId === Number(row.raw?.id ?? 0) ? "Opening..." : "Account"}
+              </Button>
+            ) : null}
+            <IconButton
               size="sm"
               variant="secondary"
-              className="shrink-0 gap-1 px-2.5"
               onClick={() => {
-                void openClientAccount(row.raw);
+                if (canViewClientManagement) {
+                  void onViewInfo(row.raw);
+                  return;
+                }
+                void promptClientManagementAccess();
               }}
-              disabled={
-                switchingClientAccountId === Number(row.raw?.id ?? 0) ||
-                Number(row.raw?.user_id ?? 0) <= 0 ||
-                Number(row.raw?.role_id ?? 0) !== 4
-              }
-              title={
-                Number(row.raw?.user_id ?? 0) > 0 && Number(row.raw?.role_id ?? 0) === 4
-                  ? "Access client account"
-                  : "No linked client account"
-              }
+              aria-disabled={!canViewClientManagement}
+              className={`shrink-0${!canViewClientManagement ? " cursor-not-allowed opacity-60" : ""}`}
+              aria-label={`View ${row.clientName}`}
+              title={canViewClientManagement ? "View Info" : "Request access"}
             >
-              <LogIn className="h-3.5 w-3.5" strokeWidth={1.8} />
-              {switchingClientAccountId === Number(row.raw?.id ?? 0) ? "Opening..." : "Account"}
-            </Button>
-          ) : null}
-          <IconButton
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              if (canViewClientManagement) {
-                void onViewInfo(row.raw);
-                return;
-              }
-              void promptClientManagementAccess();
-            }}
-            aria-disabled={!canViewClientManagement}
-            className={`shrink-0${!canViewClientManagement ? " cursor-not-allowed opacity-60" : ""}`}
-            aria-label={`View ${row.clientName}`}
-            title={canViewClientManagement ? "View Info" : "Request access"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z" />
-            </svg>
-          </IconButton>
-          <IconButton
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              if (canEditClientManagement) {
-                void onOpenEdit(row.raw);
-                return;
-              }
-              void promptClientManagementAccess();
-            }}
-            aria-disabled={!canEditClientManagement}
-            className={`shrink-0${!canEditClientManagement ? " cursor-not-allowed opacity-60" : ""}`}
-            aria-label={`Edit ${row.clientName}`}
-            title={canEditClientManagement ? "Edit" : "Request access"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" />
-            </svg>
-          </IconButton>
-        </div>
-      ),
-    },
-  ];
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z" />
+              </svg>
+            </IconButton>
+            <IconButton
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                if (canEditClientManagement) {
+                  void onOpenEdit(row.raw);
+                  return;
+                }
+                void promptClientManagementAccess();
+              }}
+              aria-disabled={!canEditClientManagement}
+              className={`shrink-0${!canEditClientManagement ? " cursor-not-allowed opacity-60" : ""}`}
+              aria-label={`Edit ${row.clientName}`}
+              title={canEditClientManagement ? "Edit" : "Request access"}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" />
+              </svg>
+            </IconButton>
+          </div>
+        ),
+      },
+    ],
+    [
+      canAccessClientAccount,
+      canEditClientManagement,
+      canSetClientAccountStatus,
+      canViewClientLocation,
+      canViewClientManagement,
+      onOpenEdit,
+      onOpenLocation,
+      onViewInfo,
+      openClientAccount,
+      promptClientManagementAccess,
+      statusActionClientId,
+      switchingClientAccountId,
+      toggleClientStatus,
+    ]
+  );
 
   const locationBusinessName = useMemo(() => {
     return getTradeName(locationBusiness) || locationClientName || "Selected Client";

@@ -79,6 +79,5 @@ try {
     certificate_templates_respond(500, [
         'success' => false,
         'message' => 'Server error',
-        'error' => $e->getMessage(),
     ]);
 }

@@ -30,7 +30,7 @@ const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
 function useSessionUser() {
   return useMemo(() => {
     try {
-      const raw = localStorage.getItem("session:user");
+      const raw = sessionStorage.getItem("session:user");
       return raw ? JSON.parse(raw) : null;
     } catch (_) {
       return null;
@@ -907,7 +907,7 @@ export default function ClientDashboard({ user, onLogout }) {
  
   return (
     <ClientLayout user={user} onLogout={onLogout}>
-      <style dangerouslySetInnerHTML={{ __html: calendarStyles }} />
+      <style>{calendarStyles}</style>
 
       {/* Page title intentionally hidden to match requested layout */}
 

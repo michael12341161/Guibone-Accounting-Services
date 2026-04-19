@@ -281,7 +281,7 @@ export default function TasksUpdateHistory() {
 
   const persistedUser = useMemo(() => {
     try {
-      const raw = localStorage.getItem("session:user");
+      const raw = sessionStorage.getItem("session:user");
       return raw ? JSON.parse(raw) : null;
     } catch (_) {
       return null;
@@ -541,12 +541,12 @@ export default function TasksUpdateHistory() {
 
   const backMeta = useMemo(() => {
     if (routeRole === "secretary") {
-      return { path: "/secretary/work-update", label: "Back to Task Updates" };
+      return { path: "/secretary/work-update", label: "Back to My Tasks" };
     }
     if (routeRole === "accountant") {
-      return { path: "/accountant/my-tasks", label: "Back to My Tasks" };
+      return { path: "/accountant/work-update", label: "Back to My Tasks" };
     }
-    return { path: "/admin/work-update", label: "Back to Task Updates" };
+    return { path: "/admin/work-update", label: "Back to My Tasks" };
   }, [routeRole]);
 
   return (

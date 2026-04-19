@@ -25,5 +25,6 @@ try {
         'specialization_types' => $specializationTypes,
     ]);
 } catch (Throwable $e) {
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('specialization_type_list error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

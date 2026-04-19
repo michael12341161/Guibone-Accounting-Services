@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw } from "lucide-react";
+import { Download } from "lucide-react";
+import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import PieChart from "../../components/charts/PieChart";
 import Barchart from "../../components/charts/Barchart";
 import { DataTable } from "../../components/UI/table";
 import { api } from "../../services/api";
-import { useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const TASK_STATUS_COLORS = {
   Completed: "#10b981",
@@ -26,18 +28,24 @@ const APPOINTMENT_STATUS_COLORS = {
   Other: "#94a3b8",
 };
 
-const DUE_WINDOW_COLORS = {
-  Overdue: "#f43f5e",
-  "Due Today": "#f59e0b",
-  "This Week": "#0ea5e9",
-  Other: "#94a3b8",
-};
-
 const RANGE_OPTIONS = [
   { value: "7d", label: "Last 7 days" },
   { value: "30d", label: "Last 30 days" },
   { value: "90d", label: "Last 90 days" },
   { value: "all", label: "All time" },
+];
+
+const REPORT_VIEWS = [
+  { value: "works", label: "Total Works" },
+  { value: "appointments", label: "Total Appointment" },
+  { value: "consultations", label: "Total Consultation" },
+  { value: "workload", label: "Accountant Workload" },
+];
+
+const EXPORT_FORMATS = [
+  { value: "csv", label: "CSV" },
+  { value: "excel", label: "Excel (.xlsx)" },
+  { value: "pdf", label: "PDF" },
 ];
 
 const CHART_PALETTE = [
@@ -52,18 +60,7 @@ const CHART_PALETTE = [
   "#64748b",
 ];
 
-function extractMetaFromDescription(descriptionRaw) {
-  const description = String(descriptionRaw || "");
-  const getValue = (key) => {
-    const match = description.match(new RegExp(`^\\s*\\[${key}\\]\\s*(.+?)\\s*$`, "im"));
-    return match?.[1]?.trim() || "";
-  };
-
-  return {
-    priority: getValue("Priority"),
-    deadline: getValue("Deadline"),
-  };
-}
+const PAGE_SIZE = 10;
 
 function parseDateValue(value) {
   const raw = String(value || "").trim();
@@ -86,19 +83,6 @@ function formatDate(value) {
     year: "numeric",
     month: "short",
     day: "2-digit",
-  });
-}
-
-function formatDateTime(value) {
-  const parsed = value instanceof Date ? value : parseDateValue(value);
-  if (!parsed) return "-";
-
-  return parsed.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
   });
 }
 
@@ -148,7 +132,9 @@ function normalizeTaskStatus(statusRaw) {
 function normalizeAppointmentStatus(statusRaw) {
   const status = String(statusRaw || "").trim().toLowerCase();
 
-  if (status === "approved" || status === "active" || status === "in progress") return "Approved";
+  if (status === "approved" || status === "active" || status === "in progress" || status === "confirmed") {
+    return "Approved";
+  }
   if (status === "reject" || status === "rejected" || status === "declined" || status === "cancelled") return "Declined";
   if (status === "completed" || status === "done") return "Completed";
   if (status === "pending" || status === "") return "Pending";
@@ -160,30 +146,11 @@ function isTaskClosed(task) {
   return normalizeTaskStatus(task?.status) === "Completed";
 }
 
-function getTaskPriority(task) {
-  const meta = extractMetaFromDescription(task?.description);
-  const priority = String(task?.priority || task?.task_priority || task?.level || meta.priority || "Low")
-    .trim()
-    .toLowerCase();
-
-  if (priority === "high" || priority === "urgent") return "High";
-  if (priority === "medium" || priority === "normal") return "Medium";
-  return "Low";
-}
-
-function getPriorityClass(priority) {
-  if (priority === "High") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (priority === "Medium") return "border-amber-200 bg-amber-50 text-amber-800";
-  return "border-emerald-200 bg-emerald-50 text-emerald-700";
-}
-
-function getStatusClass(status) {
-  if (status === "Completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "In Progress") return "border-sky-200 bg-sky-50 text-sky-700";
-  if (status === "Incomplete") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (status === "Overdue") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (status === "Declined") return "border-rose-200 bg-rose-50 text-rose-700";
-  return "border-slate-200 bg-slate-50 text-slate-700";
+function safeFilenamePart(value) {
+  return String(value || "report")
+    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 72);
 }
 
 function csvEscape(value) {
@@ -194,13 +161,7 @@ function csvEscape(value) {
   return normalized;
 }
 
-function downloadCsv(filename, columns, rows) {
-  const header = columns.map((column) => csvEscape(column.label)).join(",");
-  const body = rows
-    .map((row) => columns.map((column) => csvEscape(row[column.key])).join(","))
-    .join("\n");
-  const csv = `${header}\n${body}`;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -211,54 +172,109 @@ function downloadCsv(filename, columns, rows) {
   URL.revokeObjectURL(url);
 }
 
+function exportRowsToCsv(filename, columnDefs, rows) {
+  const header = columnDefs.map((c) => csvEscape(c.header)).join(",");
+  const body = rows
+    .map((row) => columnDefs.map((c) => csvEscape(row[c.key])).join(","))
+    .join("\n");
+  const csv = `${header}\n${body}`;
+  downloadBlob(filename, new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+}
+
+function exportRowsToExcel(filename, columnDefs, rows) {
+  const workbook = XLSX.utils.book_new();
+  let worksheet;
+  if (!rows.length) {
+    worksheet = XLSX.utils.aoa_to_sheet([columnDefs.map((c) => c.header)]);
+  } else {
+    const sheetData = rows.map((row) =>
+      Object.fromEntries(columnDefs.map((c) => [c.header, row[c.key] ?? ""]))
+    );
+    worksheet = XLSX.utils.json_to_sheet(sheetData);
+  }
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Report");
+  XLSX.writeFile(workbook, filename);
+}
+
+function exportRowsToPdf(filename, title, columnDefs, rows) {
+  const doc = new jsPDF({
+    orientation: columnDefs.length > 5 ? "landscape" : "portrait",
+    unit: "pt",
+    format: "a4",
+  });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 40;
+  const keys = columnDefs.map((c) => c.key);
+  const headers = columnDefs.map((c) => c.header);
+  const colCount = Math.max(headers.length, 1);
+  const usable = pageWidth - margin * 2;
+  const colW = usable / colCount;
+  const lineHeight = 13;
+  const cellPad = 4;
+
+  let y = margin;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(String(title).slice(0, 120), margin, y);
+  y += lineHeight * 1.6;
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  headers.forEach((h, i) => {
+    doc.text(String(h).slice(0, 28), margin + i * colW + cellPad, y);
+  });
+  y += lineHeight;
+
+  doc.setFont("helvetica", "normal");
+  rows.forEach((row) => {
+    if (y > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+    keys.forEach((k, i) => {
+      const text = String(row[k] ?? "").slice(0, 36);
+      doc.text(text, margin + i * colW + cellPad, y);
+    });
+    y += lineHeight;
+  });
+
+  doc.save(filename);
+}
+
 export default function SecretaryReports() {
   const [range, setRange] = useState("30d");
+  const [reportView, setReportView] = useState("works");
+  const [exportFormat, setExportFormat] = useState("csv");
   const [tasks, setTasks] = useState([]);
   const [appointments, setAppointments] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [consultations, setConsultations] = useState([]);
   const [error, setError] = useState("");
-  const [lastUpdated, setLastUpdated] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   useErrorToast(error);
 
   const loadReports = useCallback(async ({ silent } = { silent: false }) => {
     try {
-      if (!silent) {
-        setLoading(true);
-      } else {
-        setRefreshing(true);
-      }
-
       setError("");
 
-      const [tasksRes, appointmentsRes, usersRes, clientsRes] = await Promise.all([
+      const [tasksRes, appointmentsRes, schedulingRes] = await Promise.all([
         api.get("task_list.php"),
         api.get("appointment_list.php"),
-        api.get("user_list.php"),
-        api.get("client_list.php", { params: { exclude_unapproved_self_signup: 1 } }).catch(() => null),
+        api.get("scheduling_list.php").catch(() => null),
       ]);
 
       setTasks(Array.isArray(tasksRes?.data?.tasks) ? tasksRes.data.tasks : []);
       setAppointments(Array.isArray(appointmentsRes?.data?.appointments) ? appointmentsRes.data.appointments : []);
-      setUsers(Array.isArray(usersRes?.data?.users) ? usersRes.data.users : []);
-      setClients(Array.isArray(clientsRes?.data?.clients) ? clientsRes.data.clients : []);
-      setLastUpdated(new Date().toISOString());
+      const schedulingList = schedulingRes?.data?.rows ?? schedulingRes?.data?.scheduling ?? schedulingRes?.data ?? [];
+      setConsultations(Array.isArray(schedulingList) ? schedulingList : []);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || requestError?.message || "Unable to load secretary reports.");
       if (!silent) {
         setTasks([]);
         setAppointments([]);
-        setUsers([]);
-        setClients([]);
+        setConsultations([]);
       }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-      setRefreshing(false);
     }
   }, []);
 
@@ -286,51 +302,18 @@ export default function SecretaryReports() {
     );
   }, [appointments, range]);
 
+  const filteredConsultations = useMemo(() => {
+    return (Array.isArray(consultations) ? consultations : []).filter((row) => {
+      const dateRaw = row?.Date ?? row?.date ?? "";
+      const dateStr = dateRaw ? String(dateRaw).slice(0, 10) : "";
+      return matchesRange(dateStr, range);
+    });
+  }, [consultations, range]);
+
   const openTasks = useMemo(
     () => filteredTasks.filter((task) => !isTaskClosed(task)),
     [filteredTasks]
   );
-
-  const pendingAppointments = useMemo(
-    () => filteredAppointments.filter((appointment) => normalizeAppointmentStatus(appointment?.status) === "Pending"),
-    [filteredAppointments]
-  );
-
-  const activeAccountants = useMemo(() => {
-    return (Array.isArray(users) ? users : []).filter((user) =>
-      String(user?.role || "").trim().toLowerCase().includes("accountant")
-    );
-  }, [users]);
-
-  const dueMetrics = useMemo(() => {
-    const today = startOfDay(new Date());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-
-    let overdue = 0;
-    let dueToday = 0;
-    let dueThisWeek = 0;
-
-    openTasks.forEach((task) => {
-      const dueDate = parseDateValue(task?.due_date || task?.deadline);
-      if (!dueDate) return;
-
-      if (dueDate < today) {
-        overdue += 1;
-      }
-      if (dueDate >= today && dueDate < tomorrow) {
-        dueToday += 1;
-      }
-      if (dueDate >= today && dueDate < weekEnd) {
-        dueThisWeek += 1;
-      }
-    });
-
-    return { overdue, dueToday, dueThisWeek };
-  }, [openTasks]);
 
   const taskStatusBreakdown = useMemo(() => {
     const counts = {
@@ -366,25 +349,19 @@ export default function SecretaryReports() {
       .map(([name, value]) => ({ name, value }));
   }, [filteredAppointments]);
 
-  const serviceDemand = useMemo(() => {
-    const counts = new Map();
-    filteredAppointments.forEach((appointment) => {
-      const name = String(appointment?.service_name || appointment?.service || "Other").trim() || "Other";
-      counts.set(name, (counts.get(name) || 0) + 1);
+  const consultationStatusBreakdown = useMemo(() => {
+    const counts = { Approved: 0, Pending: 0, Declined: 0, Completed: 0, Other: 0 };
+
+    filteredConsultations.forEach((row) => {
+      const statusRaw = row?.Status ?? row?.status ?? row?.Status_name ?? row?.status_name ?? "";
+      const label = normalizeAppointmentStatus(statusRaw);
+      counts[label] = (counts[label] || 0) + 1;
     });
 
-    if (counts.size === 0) {
-      filteredTasks.forEach((task) => {
-        const name = String(task?.service_name || task?.service || "Other").trim() || "Other";
-        counts.set(name, (counts.get(name) || 0) + 1);
-      });
-    }
-
-    return Array.from(counts.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((left, right) => right.value - left.value)
-      .slice(0, 8);
-  }, [filteredAppointments, filteredTasks]);
+    return Object.entries(counts)
+      .filter(([, value]) => value > 0)
+      .map(([name, value]) => ({ name, value }));
+  }, [filteredConsultations]);
 
   const accountantWorkload = useMemo(() => {
     const counts = new Map();
@@ -396,25 +373,8 @@ export default function SecretaryReports() {
     return Array.from(counts.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((left, right) => right.value - left.value)
-      .slice(0, 8);
+      .slice(0, 12);
   }, [openTasks]);
-
-  const dueWindowBreakdown = useMemo(() => {
-    return [
-      { name: "Overdue", value: dueMetrics.overdue },
-      { name: "Due Today", value: dueMetrics.dueToday },
-      { name: "This Week", value: dueMetrics.dueThisWeek },
-    ];
-  }, [dueMetrics]);
-
-  const serviceColors = useMemo(() => {
-    const colors = {};
-    serviceDemand.forEach((item, index) => {
-      colors[item.name] = CHART_PALETTE[index % CHART_PALETTE.length];
-    });
-    colors.Other = "#94a3b8";
-    return colors;
-  }, [serviceDemand]);
 
   const workloadColors = useMemo(() => {
     const colors = {};
@@ -425,138 +385,208 @@ export default function SecretaryReports() {
     return colors;
   }, [accountantWorkload]);
 
-  const focusRows = useMemo(() => {
-    const today = startOfDay(new Date());
-    const priorityOrder = { High: 0, Medium: 1, Low: 2 };
+  const reportTable = useMemo(() => {
+    if (reportView === "works") {
+      const columns = [
+        { key: "task", header: "Task" },
+        { key: "client", header: "Client" },
+        { key: "service", header: "Service" },
+        { key: "status", header: "Status" },
+        { key: "due", header: "Due Date" },
+        { key: "assignee", header: "Assigned To" },
+      ];
+      const rows = filteredTasks.map((task, idx) => ({
+        id: String(task?.id ?? task?.task_id ?? `w-${idx}`),
+        task: task?.title || task?.name || "—",
+        client: task?.client_name || "—",
+        service: task?.service_name || task?.service || "—",
+        status: normalizeTaskStatus(task?.status),
+        due: formatDate(task?.due_date || task?.deadline),
+        assignee: task?.accountant_name || "Unassigned",
+      }));
+      return {
+        title: "Total Works",
+        description: "Task status mix and task list in the selected report window.",
+        columns,
+        rows,
+        emptyMessage: "No task records in the selected range.",
+      };
+    }
 
-    return openTasks
-      .map((task) => {
-        const priority = getTaskPriority(task);
-        const dueDate = parseDateValue(task?.due_date || task?.deadline);
-        const status = normalizeTaskStatus(task?.status);
+    if (reportView === "appointments") {
+      const columns = [
+        { key: "client", header: "Client" },
+        { key: "service", header: "Service" },
+        { key: "date", header: "Date" },
+        { key: "status", header: "Status" },
+        { key: "notes", header: "Notes" },
+      ];
+      const rows = filteredAppointments.map((a, idx) => ({
+        id: String(a?.id ?? a?.appointment_id ?? `a-${idx}`),
+        client: a?.client_name || a?.Client_name || "—",
+        service: a?.service_name || a?.service || a?.Name || "—",
+        date: formatDate(a?.date || a?.Date),
+        status: normalizeAppointmentStatus(a?.status),
+        notes: String(a?.notes || a?.description || "").slice(0, 200) || "—",
+      }));
+      return {
+        title: "Total Appointment",
+        description: "Appointment status mix and appointment list in the selected window.",
+        columns,
+        rows,
+        emptyMessage: "No appointment activity in the selected range.",
+      };
+    }
 
+    if (reportView === "consultations") {
+      const columns = [
+        { key: "client", header: "Client" },
+        { key: "title", header: "Title / Service" },
+        { key: "date", header: "Date" },
+        { key: "time", header: "Time" },
+        { key: "status", header: "Status" },
+      ];
+      const rows = filteredConsultations.map((row, idx) => {
+        const dateRaw = row?.Date ?? row?.date ?? "";
+        const dateStr = dateRaw ? String(dateRaw).slice(0, 10) : "";
+        const timeRaw = row?.Time ?? row?.time ?? "";
+        const timeStr = timeRaw ? String(timeRaw).slice(0, 8) : "—";
+        const statusRaw = row?.Status ?? row?.status ?? "";
         return {
-          id: task?.id || task?.task_id || `${task?.client_id || "task"}-${task?.name || "item"}`,
-          task: task?.title || task?.name || "Untitled task",
-          client: task?.client_name || "Client",
-          service: task?.service_name || task?.service || "Service",
-          assignee: task?.accountant_name || "Unassigned",
-          status,
-          dueDate,
-          dueDateLabel: formatDate(dueDate),
-          priority,
-          isOverdue: Boolean(dueDate && dueDate < today),
-          dueTime: dueDate ? dueDate.getTime() : Number.POSITIVE_INFINITY,
-          priorityRank: priorityOrder[priority] ?? 3,
+          id: String(row?.Scheduling_ID ?? row?.scheduling_id ?? row?.id ?? `c-${idx}`),
+          client: row?.Client_name ?? row?.client_name ?? "—",
+          title: row?.Name ?? row?.title ?? row?.Title ?? "Consultation",
+          date: dateStr ? formatDate(dateStr) : "—",
+          time: timeStr,
+          status: normalizeAppointmentStatus(statusRaw),
         };
-      })
-      .sort((left, right) => {
-        if (left.isOverdue !== right.isOverdue) return left.isOverdue ? -1 : 1;
-        if (left.dueTime !== right.dueTime) return left.dueTime - right.dueTime;
-        if (left.priorityRank !== right.priorityRank) return left.priorityRank - right.priorityRank;
-        return left.task.localeCompare(right.task);
       });
-  }, [openTasks]);
+      return {
+        title: "Total Consultation",
+        description: "Consultation status mix and scheduling list in the selected window.",
+        columns,
+        rows,
+        emptyMessage: "No consultation records in the selected range.",
+      };
+    }
 
-  const queueColumns = useMemo(
-    () => [
-      {
-        key: "task",
-        header: "Task",
-        render: (value, row) => (
-          <div className="min-w-0">
-            <div className="font-medium text-slate-900">{value}</div>
-            <div className="text-xs text-slate-500">{row.service}</div>
-          </div>
-        ),
-      },
+    const columns = [
+      { key: "task", header: "Task" },
       { key: "client", header: "Client" },
       { key: "assignee", header: "Assigned To" },
-      {
-        key: "status",
-        header: "Status",
-        render: (value) => (
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusClass(value)}`}>
-            {value}
-          </span>
-        ),
-      },
-      {
-        key: "priority",
-        header: "Priority",
-        render: (value) => (
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getPriorityClass(value)}`}>
-            {value}
-          </span>
-        ),
-      },
-      {
-        key: "dueDateLabel",
-        header: "Due Date",
-        render: (value, row) => (
-          <span className={row.isOverdue ? "font-medium text-rose-700" : "text-slate-700"}>{value}</span>
-        ),
-      },
-    ],
-    []
-  );
-
-  const exportQueueReport = useCallback(() => {
-    const exportRows = focusRows.map((row) => ({
-      task: row.task,
-      client: row.client,
-      service: row.service,
-      assignee: row.assignee,
-      status: row.status,
-      priority: row.priority,
-      due_date: row.dueDateLabel,
+      { key: "status", header: "Status" },
+      { key: "due", header: "Due Date" },
+      { key: "service", header: "Service" },
+    ];
+    const sortedOpen = [...openTasks].sort((a, b) => {
+      const na = String(a?.accountant_name || "").localeCompare(String(b?.accountant_name || ""));
+      if (na !== 0) return na;
+      return String(a?.title || a?.name || "").localeCompare(String(b?.title || b?.name || ""));
+    });
+    const rows = sortedOpen.map((task, idx) => ({
+      id: String(task?.id ?? task?.task_id ?? `o-${idx}`),
+      task: task?.title || task?.name || "—",
+      client: task?.client_name || "—",
+      assignee: task?.accountant_name || "Unassigned",
+      status: normalizeTaskStatus(task?.status),
+      due: formatDate(task?.due_date || task?.deadline),
+      service: task?.service_name || task?.service || "—",
     }));
+    return {
+      title: "Accountant Workload",
+      description: "Open tasks per accountant (chart) and open-task list for the selected window.",
+      columns,
+      rows,
+      emptyMessage: "No open tasks in the selected range.",
+    };
+  }, [reportView, filteredTasks, filteredAppointments, filteredConsultations, openTasks]);
 
-    downloadCsv(
-      "secretary-operational-report.csv",
-      [
-        { key: "task", label: "Task" },
-        { key: "client", label: "Client" },
-        { key: "service", label: "Service" },
-        { key: "assignee", label: "Assigned To" },
-        { key: "status", label: "Status" },
-        { key: "priority", label: "Priority" },
-        { key: "due_date", label: "Due Date" },
-      ],
-      exportRows
-    );
-  }, [focusRows]);
+  const reportRowCount = reportTable.rows.length;
+  const totalPages = Math.max(1, Math.ceil(reportRowCount / PAGE_SIZE));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [reportView, range]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(Math.max(1, page), totalPages));
+  }, [totalPages]);
+
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const pagedReportRows = reportTable.rows.slice(startIndex, startIndex + PAGE_SIZE);
+  const canPrev = currentPage > 1;
+  const canNext = currentPage < totalPages;
+
+  const chartConfig = useMemo(() => {
+    if (reportView === "works") {
+      return {
+        kind: "pie",
+        data: taskStatusBreakdown,
+        colors: TASK_STATUS_COLORS,
+        emptyLabel: "No task records in the selected range.",
+      };
+    }
+    if (reportView === "appointments") {
+      return {
+        kind: "pie",
+        data: appointmentStatusBreakdown,
+        colors: APPOINTMENT_STATUS_COLORS,
+        emptyLabel: "No appointment activity in the selected range.",
+      };
+    }
+    if (reportView === "consultations") {
+      return {
+        kind: "pie",
+        data: consultationStatusBreakdown,
+        colors: APPOINTMENT_STATUS_COLORS,
+        emptyLabel: "No consultation records in the selected range.",
+      };
+    }
+    return {
+      kind: "bar",
+      data: accountantWorkload,
+      colors: workloadColors,
+      emptyLabel: "No active accountant workload found.",
+    };
+  }, [
+    reportView,
+    taskStatusBreakdown,
+    appointmentStatusBreakdown,
+    consultationStatusBreakdown,
+    accountantWorkload,
+    workloadColors,
+  ]);
+
+  const rangeLabel = useMemo(() => RANGE_OPTIONS.find((o) => o.value === range)?.label ?? range, [range]);
+
+  const handleExport = useCallback(() => {
+    const viewSlug = safeFilenamePart(REPORT_VIEWS.find((v) => v.value === reportView)?.label ?? "report");
+    const rangeSlug = safeFilenamePart(rangeLabel);
+    const base = `secretary-${viewSlug}-${rangeSlug}`;
+
+    const docTitle = `${reportTable.title} — ${rangeLabel}`;
+
+    if (exportFormat === "csv") {
+      const filename = `${base}.csv`;
+      exportRowsToCsv(filename, reportTable.columns, reportTable.rows);
+      showSuccessToast(`Download started: ${filename}`);
+      return;
+    }
+    if (exportFormat === "excel") {
+      const filename = `${base}.xlsx`;
+      exportRowsToExcel(filename, reportTable.columns, reportTable.rows);
+      showSuccessToast(`Download started: ${filename}`);
+      return;
+    }
+    const filename = `${base}.pdf`;
+    exportRowsToPdf(filename, docTitle, reportTable.columns, reportTable.rows);
+    showSuccessToast(`Download started: ${filename}`);
+  }, [exportFormat, rangeLabel, reportTable, reportView]);
 
   return (
     <div className="space-y-4">
       <Card compact>
-        <CardHeader
-          action={(
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <select
-                value={range}
-                onChange={(event) => setRange(event.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 sm:w-36"
-              >
-                {RANGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-
-              <Button variant="secondary" size="sm" onClick={() => void loadReports({ silent: true })} disabled={refreshing}>
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-
-              <Button variant="success" size="sm" onClick={exportQueueReport} disabled={focusRows.length === 0}>
-                <Download className="h-3.5 w-3.5" />
-                Export CSV
-              </Button>
-            </div>
-          )}
-        >
+        <CardHeader>
           <CardTitle>Reports</CardTitle>
           <CardDescription>
             Track appointments, task deadlines, and accountant workload from the secretary dashboard.
@@ -568,160 +598,135 @@ export default function SecretaryReports() {
             <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
           ) : null}
 
-          <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              Active accountants: <span className="font-medium text-slate-700">{activeAccountants.length}</span>
-              {" · "}
-              Clients: <span className="font-medium text-slate-700">{clients.length}</span>
-            </span>
-            <span>Last updated: {lastUpdated ? formatDateTime(lastUpdated) : "-"}</span>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">Open Tasks</div>
-              <div className="mt-1 text-2xl font-bold text-emerald-700">{openTasks.length}</div>
+          <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
+            <div className="flex min-w-0 flex-col gap-1 sm:w-40">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500" htmlFor="report-range">
+                Date range
+              </label>
+              <select
+                id="report-range"
+                value={range}
+                onChange={(event) => setRange(event.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/20"
+              >
+                {RANGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">Overdue Tasks</div>
-              <div className="mt-1 text-2xl font-bold text-rose-700">{dueMetrics.overdue}</div>
+            <div className="flex min-w-0 flex-col gap-1 sm:min-w-[12rem] sm:max-w-xs">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500" htmlFor="report-view">
+                Report
+              </label>
+              <select
+                id="report-view"
+                value={reportView}
+                onChange={(e) => setReportView(e.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/20"
+              >
+                {REPORT_VIEWS.map((v) => (
+                  <option key={v.value} value={v.value}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">Pending Appointments</div>
-              <div className="mt-1 text-2xl font-bold text-amber-700">{pendingAppointments.length}</div>
+            <div className="flex min-w-0 flex-col gap-1 sm:w-44">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500" htmlFor="export-format">
+                Export as
+              </label>
+              <select
+                id="export-format"
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/20"
+              >
+                {EXPORT_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">Due Today</div>
-              <div className="mt-1 text-2xl font-bold text-sky-700">{dueMetrics.dueToday}</div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card compact className="shadow-none">
-              <CardHeader>
-                <CardTitle>Task Status Breakdown</CardTitle>
-                <CardDescription>Current work mix in the selected report window.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PieChart
-                  data={taskStatusBreakdown}
-                  colors={TASK_STATUS_COLORS}
-                  emptyLabel="No task records in the selected range."
-                />
-              </CardContent>
-            </Card>
-
-            <Card compact className="shadow-none">
-              <CardHeader>
-                <CardTitle>Appointment Status Breakdown</CardTitle>
-                <CardDescription>Shows incoming appointment activity that needs coordination.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PieChart
-                  data={appointmentStatusBreakdown}
-                  colors={APPOINTMENT_STATUS_COLORS}
-                  emptyLabel="No appointment activity in the selected range."
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card compact className="shadow-none">
-              <CardHeader>
-                <CardTitle>Service Demand</CardTitle>
-                <CardDescription>Most requested services from the selected operational window.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Barchart
-                  data={serviceDemand}
-                  colors={serviceColors}
-                  barSize={34}
-                  emptyLabel="No services were recorded in the selected range."
-                />
-              </CardContent>
-            </Card>
-
-            <Card compact className="shadow-none">
-              <CardHeader>
-                <CardTitle>Accountant Workload</CardTitle>
-                <CardDescription>Open tasks currently assigned to each accountant.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Barchart
-                  data={accountantWorkload}
-                  colors={workloadColors}
-                  barSize={34}
-                  emptyLabel="No active accountant workload found."
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card compact className="shadow-none">
-              <CardHeader>
-                <CardTitle>Deadline Windows</CardTitle>
-                <CardDescription>Quick view of which task deadlines need attention first.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Barchart
-                  data={dueWindowBreakdown}
-                  colors={DUE_WINDOW_COLORS}
-                  barSize={44}
-                  emptyLabel="No task deadlines available."
-                />
-              </CardContent>
-            </Card>
-
-            <Card compact className="shadow-none">
-              <CardHeader>
-                <CardTitle>Operational Summary</CardTitle>
-                <CardDescription>High-signal figures for secretarial follow-up.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Appointments In Window</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-900">{filteredAppointments.length}</div>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Completed Tasks</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-900">
-                    {filteredTasks.filter((task) => isTaskClosed(task)).length}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Workload Per Accountant</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-900">
-                    {activeAccountants.length > 0 ? (openTasks.length / activeAccountants.length).toFixed(1) : "0.0"}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Due This Week</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-900">{dueMetrics.dueThisWeek}</div>
-                </div>
-              </CardContent>
-            </Card>
+            <Button variant="success" size="sm" className="w-full sm:mb-0.5 sm:w-auto" onClick={handleExport} type="button">
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
           </div>
 
           <Card compact className="shadow-none">
             <CardHeader>
-              <CardTitle>Operational Queue</CardTitle>
-              <CardDescription>
-                Tasks that still need coordination, ranked by urgency, due date, and priority.
-              </CardDescription>
+              <CardTitle>{reportTable.title}</CardTitle>
+              <CardDescription>{reportTable.description}</CardDescription>
             </CardHeader>
             <CardContent>
+              {chartConfig.kind === "pie" ? (
+                <PieChart data={chartConfig.data} colors={chartConfig.colors} emptyLabel={chartConfig.emptyLabel} />
+              ) : (
+                <Barchart
+                  data={chartConfig.data}
+                  colors={chartConfig.colors}
+                  barSize={34}
+                  emptyLabel={chartConfig.emptyLabel}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card compact className="shadow-none">
+            <CardHeader>
+              <CardTitle>List</CardTitle>
+              <CardDescription>
+                {reportTable.rows.length} row{reportTable.rows.length === 1 ? "" : "s"} · {rangeLabel}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
               <DataTable
-                columns={queueColumns}
-                rows={focusRows}
+                columns={reportTable.columns}
+                rows={pagedReportRows}
                 keyField="id"
-                loading={loading}
                 compact
                 striped={false}
-                emptyMessage="No active tasks in the selected range."
+                emptyMessage={reportTable.emptyMessage}
                 className="shadow-none"
               />
+              <div className="flex flex-col items-center justify-between gap-2 sm:flex-row">
+                <div className="text-xs text-slate-600">
+                  Showing <span className="font-medium">{reportRowCount === 0 ? 0 : startIndex + 1}</span>-
+                  <span className="font-medium">{Math.min(startIndex + PAGE_SIZE, reportRowCount)}</span> of{" "}
+                  <span className="font-medium">{reportRowCount}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      if (canPrev) setCurrentPage((prev) => prev - 1);
+                    }}
+                    disabled={!canPrev}
+                  >
+                    Previous
+                  </Button>
+                  <div className="text-xs text-slate-600">
+                    Page <span className="font-medium">{currentPage}</span> of{" "}
+                    <span className="font-medium">{totalPages}</span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      if (canNext) setCurrentPage((prev) => prev + 1);
+                    }}
+                    disabled={!canNext}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </CardContent>

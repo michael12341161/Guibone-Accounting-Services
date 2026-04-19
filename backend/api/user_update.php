@@ -598,39 +598,48 @@ try {
         ]);
     }
 
-    $id = isset($data['id']) ? (int)$data['id'] : 0;
-    if ($id <= 0) {
-        respond(422, ['success' => false, 'message' => 'id is required']);
-    }
-
-    monitoring_require_user_access($id, [MONITORING_ROLE_ADMIN], $sessionUser);
-
-    $current = $conn->prepare(
-        'SELECT u.User_id,
-                u.Username,
-                u.Email,
-                u.Role_id,
-                u.Employment_status_id,
-                c.Client_ID AS Client_id,
-                u.Profile_Image,
-                c.Profile_Image AS Client_Profile_Image
-         FROM user u
-         LEFT JOIN client c ON c.User_id = u.User_id
-         WHERE u.User_id = :id
-         LIMIT 1'
-    );
-    $current->execute([':id' => $id]);
-    $rowCurrent = $current->fetch(PDO::FETCH_ASSOC);
-    if (!$rowCurrent) {
-        respond(404, ['success' => false, 'message' => 'User not found']);
-    }
-    $currentProfile = loadEmployeeProfile($conn, $id);
-
     if ($action === 'update_status') {
-        monitoring_require_roles([MONITORING_ROLE_ADMIN], $sessionUser);
+        require_once __DIR__ . '/module_permission_store.php';
+        $id = isset($data['id']) ? (int)$data['id'] : 0;
+        if ($id <= 0) {
+            respond(422, ['success' => false, 'message' => 'id is required']);
+        }
+
+        $actorRoleId = (int)($sessionUser['role_id'] ?? 0);
+        if (
+            $actorRoleId !== MONITORING_ROLE_ADMIN
+            && !monitoring_module_permissions_is_role_allowed($conn, 'user-management', 'account-status', $actorRoleId)
+        ) {
+            respond(403, [
+                'success' => false,
+                'message' => 'You do not have permission to change user account status.',
+            ]);
+        }
+
+        $candidate = $conn->prepare(
+            'SELECT u.User_id,
+                    u.Role_id,
+                    u.Employment_status_id
+             FROM user u
+             WHERE u.User_id = :id
+             LIMIT 1'
+        );
+        $candidate->execute([':id' => $id]);
+        $rowCurrent = $candidate->fetch(PDO::FETCH_ASSOC);
+        if (!$rowCurrent) {
+            respond(404, ['success' => false, 'message' => 'User not found']);
+        }
 
         if ((int)$rowCurrent['Role_id'] === MONITORING_ROLE_CLIENT) {
             respond(422, ['success' => false, 'message' => 'Client accounts must be updated from Client Management.']);
+        }
+
+        $targetRoleId = (int)$rowCurrent['Role_id'];
+        if ($targetRoleId === MONITORING_ROLE_ADMIN && $actorRoleId !== MONITORING_ROLE_ADMIN) {
+            respond(403, [
+                'success' => false,
+                'message' => 'Only an administrator can change another administrator account status.',
+            ]);
         }
 
         $requestedStatusId = isset($data['employment_status_id']) && preg_match('/^\d+$/', (string)$data['employment_status_id'])
@@ -673,6 +682,34 @@ try {
             ],
         ]);
     }
+
+    $id = isset($data['id']) ? (int)$data['id'] : 0;
+    if ($id <= 0) {
+        respond(422, ['success' => false, 'message' => 'id is required']);
+    }
+
+    monitoring_require_user_access($id, [MONITORING_ROLE_ADMIN], $sessionUser);
+
+    $current = $conn->prepare(
+        'SELECT u.User_id,
+                u.Username,
+                u.Email,
+                u.Role_id,
+                u.Employment_status_id,
+                c.Client_ID AS Client_id,
+                u.Profile_Image,
+                c.Profile_Image AS Client_Profile_Image
+         FROM user u
+         LEFT JOIN client c ON c.User_id = u.User_id
+         WHERE u.User_id = :id
+         LIMIT 1'
+    );
+    $current->execute([':id' => $id]);
+    $rowCurrent = $current->fetch(PDO::FETCH_ASSOC);
+    if (!$rowCurrent) {
+        respond(404, ['success' => false, 'message' => 'User not found']);
+    }
+    $currentProfile = loadEmployeeProfile($conn, $id);
 
     if ($action === 'update_profile_image') {
         if (!isset($_FILES['profile_image'])) {
@@ -857,7 +894,7 @@ try {
             ':e' => $email,
             ':r' => $roleId,
             ':employment_status_id' => $nextEmploymentStatusId,
-            ':p' => hash('sha256', $password),
+            ':p' => password_hash($password, PASSWORD_DEFAULT),
             ':id' => $id,
         ]);
     } else {
@@ -1101,5 +1138,6 @@ try {
     if ($e instanceof InvalidArgumentException) {
         respond(422, ['success' => false, 'message' => $e->getMessage()]);
     }
-    respond(500, ['success' => false, 'message' => 'Server error', 'error' => $e->getMessage()]);
+    error_log('user_update error: ' . $e->getMessage());
+    respond(500, ['success' => false, 'message' => 'Server error']);
 }

@@ -32,6 +32,29 @@ if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 $codeExpiresInSeconds = 5 * 60;
 $codeExpiresInMinutes = (int)max(1, ceil($codeExpiresInSeconds / 60));
 
+$now = time();
+$limitWindow = 15 * 60;
+$maxAttempts = 3;
+
+if (!isset($_SESSION['pw_reset_limit'])) {
+  $_SESSION['pw_reset_limit'] = [];
+}
+
+foreach ($_SESSION['pw_reset_limit'] as $e => $attempts) {
+  if (empty($attempts) || end($attempts) < $now - $limitWindow) {
+    unset($_SESSION['pw_reset_limit'][$e]);
+  } else {
+    $_SESSION['pw_reset_limit'][$e] = array_filter($attempts, fn($time) => $time >= $now - $limitWindow);
+  }
+}
+
+if (isset($_SESSION['pw_reset_limit'][$email])) {
+  if (count($_SESSION['pw_reset_limit'][$email]) >= $maxAttempts) {
+    respond(429, ['success' => false, 'message' => 'Too many password reset requests. Please try again later.']);
+  }
+}
+$_SESSION['pw_reset_limit'][$email][] = $now;
+
 // Check user exists
 try {
   monitoring_ensure_user_employment_status_column($conn);
@@ -82,15 +105,10 @@ $companyName = monitoring_get_system_company_name($conn);
 $supportEmail = monitoring_get_system_support_email($conn);
 
 if (!$smtpUser || !$smtpPass) {
+  error_log('SMTP not configured: user=' . ($smtpUser ? 'set' : 'missing') . ' pass=' . ($smtpPass ? 'set' : 'missing') . ' host=' . $smtpHost . ' port=' . $smtpPort);
   respond(500, [
     'success' => false,
-    'message' => 'Email service is not configured.',
-    'debug' => [
-      'SMTP_USER_set' => (bool)$smtpUser,
-      'SMTP_PASS_set' => (bool)$smtpPass,
-      'SMTP_HOST' => $smtpHost,
-      'SMTP_PORT' => $smtpPort,
-    ],
+    'message' => 'Email service is not configured. Please contact the administrator.',
   ]);
 }
 
