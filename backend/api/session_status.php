@@ -41,6 +41,5 @@ monitoring_auth_respond(200, [
         'registration_source' => $user['registration_source'] ?? null,
         'approval_status' => $user['approval_status'] ?? null,
         'security_settings' => is_array($user['security_settings'] ?? null) ? $user['security_settings'] : [],
-        'impersonation' => is_array($user['impersonation'] ?? null) ? $user['impersonation'] : null,
     ],
 ]);

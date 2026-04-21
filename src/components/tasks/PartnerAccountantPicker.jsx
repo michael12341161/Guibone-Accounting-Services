@@ -2,7 +2,29 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "../UI/modal";
 
 function getAccountantSpecialization(accountant) {
+  const names = Array.isArray(accountant?.employee_specialization_type_names)
+    ? accountant.employee_specialization_type_names.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (names.length > 0) {
+    return names.join(", ");
+  }
   return String(accountant?.employee_specialization_type_name || "").trim();
+}
+
+function accountantMatchesService(accountant, serviceName) {
+  const normalizedServiceName = String(serviceName || "").trim().toLowerCase();
+  if (!normalizedServiceName) {
+    return true;
+  }
+
+  const serviceNames = Array.isArray(accountant?.employee_specialization_service_names)
+    ? accountant.employee_specialization_service_names
+    : [];
+  if (serviceNames.length > 0) {
+    return serviceNames.some((value) => String(value || "").trim().toLowerCase() === normalizedServiceName);
+  }
+
+  return String(getAccountantSpecialization(accountant) || "").trim().toLowerCase() === normalizedServiceName;
 }
 
 function getAccountantDisplayName(accountant, fallbackValue = "") {
@@ -19,6 +41,7 @@ export default function PartnerAccountantPicker({
   onChange,
   serviceName = "",
   disabled = false,
+  filterByService = true,
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,9 +62,19 @@ export default function PartnerAccountantPicker({
       const name = getAccountantDisplayName(accountant);
       const email = String(accountant?.email || "").trim();
       const specialization = getAccountantSpecialization(accountant);
-      return `${name} ${email} ${specialization}`.toLowerCase().includes(query);
+      const serviceNames = Array.isArray(accountant?.employee_specialization_service_names)
+        ? accountant.employee_specialization_service_names.join(" ")
+        : "";
+      return `${name} ${email} ${specialization} ${serviceNames}`.toLowerCase().includes(query);
     });
   }, [accountants, search]);
+
+  const visibleAccountants = useMemo(() => {
+    if (!filterByService) {
+      return filteredAccountants;
+    }
+    return filteredAccountants.filter((accountant) => accountantMatchesService(accountant, serviceName));
+  }, [filteredAccountants, filterByService, serviceName]);
 
   useEffect(() => {
     if (!open) {
@@ -67,11 +100,11 @@ export default function PartnerAccountantPicker({
     : "Select accountant partner";
   const buttonMeta = selectedAccountant
     ? selectedSpecialization || "Accountant"
-    : serviceName
+    : filterByService && serviceName
       ? `Choose a partner accountant for ${serviceName}.`
       : "Choose an accountant partner from the list.";
   const hasSearch = Boolean(String(search || "").trim());
-  const emptyMessage = serviceName
+  const emptyMessage = filterByService && serviceName
     ? hasSearch
       ? `No accountant partners match your search for ${serviceName}.`
       : `No accountant partners are available for ${serviceName}.`
@@ -134,10 +167,10 @@ export default function PartnerAccountantPicker({
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              {serviceName ? `${serviceName} specialists` : "Available specialists"}
+              {filterByService && serviceName ? `${serviceName} specialists` : "Available accountants"}
             </div>
             <div className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
-              {filteredAccountants.length}
+              {visibleAccountants.length}
             </div>
           </div>
 
@@ -158,8 +191,8 @@ export default function PartnerAccountantPicker({
           </div>
 
           <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-            {filteredAccountants.length > 0 ? (
-              filteredAccountants.map((accountant) => {
+            {visibleAccountants.length > 0 ? (
+              visibleAccountants.map((accountant) => {
                 const isSelected = String(accountant?.id || "") === String(value || "");
                 const name = getAccountantDisplayName(accountant);
                 const specialization = getAccountantSpecialization(accountant);
@@ -188,7 +221,9 @@ export default function PartnerAccountantPicker({
                         ) : null}
                       </div>
                       <div className="truncate text-xs text-slate-500">
-                        {specialization ? "Accountant specialization match" : "Accountant"}
+                        {filterByService
+                          ? (specialization ? "Accountant specialization match" : "Accountant")
+                          : (specialization || "Accountant")}
                       </div>
                     </div>
 
@@ -211,7 +246,5 @@ export default function PartnerAccountantPicker({
     </>
   );
 }
-
-
 
 

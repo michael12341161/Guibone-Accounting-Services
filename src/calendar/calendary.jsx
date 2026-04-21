@@ -972,16 +972,8 @@ export default function Calendar() {
 
       {/* Header */}
       <div className="flex items-start sm:items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-slate-800">{canManageCalendar ? "Calendar" : "Task Calendar"}</h2>
-          <p className="text-xs text-slate-500">
-            {canManageCalendar
-              ? "Create announcements and view task schedules, client consultations, and live Philippine public holidays. Click an event to view details."
-              : "View your assigned tasks, announcements, and live Philippine public holidays by date. Click an event to see full details."}
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {canManageCalendar ? (
             <>
               <button

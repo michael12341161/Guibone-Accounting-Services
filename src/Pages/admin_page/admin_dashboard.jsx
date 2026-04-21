@@ -263,6 +263,7 @@ export default function AdminDashboard({ user, onLogout }) {
                 if (currentKey === "scheduling") return "";
                 if (currentKey === "tasks") return "";
                 if (currentKey === "work-update") return "";
+                if (currentKey === "new-services") return "";
                 if (currentKey === "reports") return "";
                 return currentKey.charAt(0).toUpperCase() + currentKey.slice(1);
               })()}

@@ -10,6 +10,7 @@ import {
   FileText,
   FilePenLine,
   ListTodo,
+  PlusSquare,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -20,6 +21,7 @@ import {
   UserPlus,
   UserRound,
   Users,
+  UserX,
 } from "lucide-react";
 import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
@@ -151,6 +153,13 @@ export const adminNavItems = [
         icon: <ListTodo {...sidebarIconProps} />,
         accessKey: "work-update",
       },
+      {
+        key: "new-services",
+        label: "New Services",
+        to: "/admin/new-services",
+        icon: <PlusSquare {...sidebarIconProps} />,
+        accessKey: "tasks",
+      },
     ],
   },
   {
@@ -197,6 +206,20 @@ export const adminNavItems = [
         to: "/admin/permissions",
         icon: <ShieldCheck {...sidebarIconProps} />,
         accessKey: "permissions",
+      },
+      {
+        key: "new-specialization",
+        label: "New Specialization",
+        to: "/admin/new-specialization",
+        icon: <PlusSquare {...sidebarIconProps} />,
+        accessKey: "user-management",
+      },
+      {
+        key: "new-role",
+        label: "New Role",
+        to: "/admin/new-role",
+        icon: <PlusSquare {...sidebarIconProps} />,
+        accessKey: "user-management",
       },
     ],
   },

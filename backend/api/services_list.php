@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
+require_once __DIR__ . '/service_bundle_settings_helper.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -16,6 +17,7 @@ try {
     $sessionUser = monitoring_read_session_user(true);
     $roleId = is_array($sessionUser) ? (int)($sessionUser['role_id'] ?? 0) : 0;
     $requestedClientId = isset($_GET['client_id']) ? (int)$_GET['client_id'] : 0;
+    $includeDisabled = !empty($_GET['include_disabled']);
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_write_close();
     }
@@ -29,7 +31,12 @@ try {
     ];
 
     // Pull service names from services_type exactly as configured in monitoring.sql.
-    $sql = "SELECT Name AS name
+    $bundleSettings = monitoring_get_service_bundle_settings($conn);
+    $serviceConfigMap = isset($bundleSettings['services']) && is_array($bundleSettings['services'])
+        ? $bundleSettings['services']
+        : [];
+
+    $sql = "SELECT Services_type_Id AS id, Name AS name
             FROM services_type
             WHERE Name IS NOT NULL AND TRIM(Name) <> ''
             ORDER BY Services_type_Id ASC";
@@ -37,10 +44,27 @@ try {
     $stmt = $conn->query($sql);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    // Normalize to a list of unique, trimmed names
-    $names = array_values(array_filter(array_unique(array_map(function ($r) {
-        return isset($r['name']) ? trim($r['name']) : '';
-    }, $rows)), function($v) { return $v !== ''; }));
+    $services = [];
+    foreach ($rows as $row) {
+        $serviceId = isset($row['id']) ? (int)$row['id'] : 0;
+        $serviceName = isset($row['name']) ? trim((string)$row['name']) : '';
+        if ($serviceId <= 0 || $serviceName === '') {
+            continue;
+        }
+
+        $serviceConfig = $serviceConfigMap[(string)$serviceId] ?? [];
+        $disabled = !empty($serviceConfig['disabled']);
+        if ($disabled && !$includeDisabled) {
+            continue;
+        }
+
+        $services[] = [
+            'id' => $serviceId,
+            'name' => $serviceName,
+            'disabled' => $disabled,
+            'bundle_steps' => monitoring_normalize_service_bundle_steps($serviceConfig['bundle_steps'] ?? []),
+        ];
+    }
 
     $effectiveClientId = 0;
     if ($roleId === MONITORING_ROLE_CLIENT) {
@@ -67,15 +91,19 @@ try {
         ];
 
         if (!$businessRegistered) {
-            $names = array_values(array_filter($names, 'monitoring_service_name_is_processing'));
-            if (count($names) === 0) {
-                $names = ['Processing'];
+            $services = array_values(array_filter($services, function ($service) {
+                return monitoring_service_name_is_processing(isset($service['name']) ? (string)$service['name'] : '');
+            }));
+            if (count($services) === 0) {
+                $services = [[
+                    'id' => null,
+                    'name' => 'Processing',
+                    'disabled' => false,
+                    'bundle_steps' => [],
+                ]];
             }
         }
     }
-
-    // Map to array of objects with `name` field as expected by frontend
-    $services = array_map(function ($n) { return ['name' => $n]; }, $names);
 
     respond(200, [
         'success' => true,

@@ -123,6 +123,12 @@ export function buildBreadcrumbItems(pathname, config = {}, canAccessTrailItem =
     return [];
   }
 
+  // Check if current path has skipParentSegments config
+  const currentPathMeta = config?.exactPaths?.[normalizedPath];
+  const skipParentSegments = Array.isArray(currentPathMeta?.skipParentSegments)
+    ? currentPathMeta.skipParentSegments.map((path) => normalizePath(path))
+    : [];
+
   const segments = normalizedPath.split("/").filter(Boolean);
   const items = [];
   const collectedSegments = [];
@@ -132,6 +138,11 @@ export function buildBreadcrumbItems(pathname, config = {}, canAccessTrailItem =
 
     const itemPath = normalizePath(`/${collectedSegments.join("/")}`);
     if (!isPathWithinBase(itemPath, basePath)) {
+      return;
+    }
+
+    // Skip segments that are in skipParentSegments
+    if (skipParentSegments.includes(itemPath)) {
       return;
     }
 

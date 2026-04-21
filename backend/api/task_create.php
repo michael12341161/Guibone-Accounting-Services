@@ -5,6 +5,7 @@ require_once __DIR__ . '/client_service_access.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
 require_once __DIR__ . '/task_workload_settings_helper.php';
 require_once __DIR__ . '/task_deadline_monitor.php';
+require_once __DIR__ . '/employee_specialization.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -239,6 +240,29 @@ function isTaskAccountantUser(array $user): bool {
     }
 
     return strtolower(trim((string)($user['role_name'] ?? ''))) === 'accountant';
+}
+
+function taskUserAllowedForService(PDO $conn, array $user, int $serviceId): bool {
+    if ($serviceId <= 0) {
+        return true;
+    }
+
+    if (isTaskSecretaryUser($user)) {
+        return true;
+    }
+
+    if (!isTaskAccountantUser($user)) {
+        return false;
+    }
+
+    $userId = isset($user['id']) ? (int)$user['id'] : 0;
+    if ($userId <= 0) {
+        return false;
+    }
+
+    $specializationIds = employeeSpecializationGetUserAssignments($conn, $userId);
+    $allowedServiceIds = employeeSpecializationResolveServiceIds($conn, $specializationIds);
+    return in_array($serviceId, $allowedServiceIds, true);
 }
 
 function buildTaskUserLabel(array $user): string {
@@ -521,6 +545,8 @@ try {
         if ($partnerUser === null || !isTaskAccountantUser($partnerUser)) {
             respond(422, ['success' => false, 'message' => 'Partner must be an accountant.']);
         }
+    } elseif ($assigneeUser !== null && isTaskAccountantUser($assigneeUser) && !taskUserAllowedForService($conn, $assigneeUser, $serviceId)) {
+        respond(422, ['success' => false, 'message' => 'The selected accountant does not have access to this service.']);
     } else {
         $partnerId = 0;
         $partnerUser = null;

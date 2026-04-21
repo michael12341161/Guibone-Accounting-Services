@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
-import { api, fetchAvailableServices, fetchTaskWorkloadSettings, saveTaskWorkloadSettings } from "../../services/api";
+import { api, fetchAvailableServices, fetchTaskWorkloadSettings, saveTaskWorkloadSettings, updateServiceType } from "../../services/api";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotification } from "../../hooks/useNotification";
@@ -18,6 +18,12 @@ import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
 import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import { filterTaskServiceOptions } from "../../utils/task_service_options";
+import {
+  buildServiceBundleCollection,
+  cloneBundleSteps as cloneServiceBundleSteps,
+  getServiceBundleKey,
+  normalizeServiceNameKey as normalizeServiceMatchKey,
+} from "../../utils/service_bundles";
 import {
   DEFAULT_TASK_WORKLOAD_SETTINGS,
   MAX_TASK_WORKLOAD_LIMIT,
@@ -60,6 +66,12 @@ const stepAssigneeLabel = (assignee) => {
   if (normalized === "secretary") return "Secretary";
   return "Accountant";
 };
+
+const hasBundleDraft = (drafts, bundleKey) =>
+  Object.prototype.hasOwnProperty.call(drafts || {}, bundleKey);
+
+const getBundleDraftSteps = (drafts, bundleKey, fallbackSteps) =>
+  cloneServiceBundleSteps(hasBundleDraft(drafts, bundleKey) ? drafts[bundleKey] : fallbackSteps);
 
 const stepAssigneeTone = (assignee) => {
   const normalized = normalizeStepAssignee(assignee);
@@ -452,119 +464,13 @@ function isActiveClient(client) {
   return statusText === "active" || statusId === 1;
 }
 
-function normalizeServiceMatchKey(value) {
-  const compact = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-
-  if (!compact) return "";
-  if (compact === "booking" || compact.includes("bookkeep")) return "bookkeeping";
-  if (compact.includes("taxfil")) return "taxfiling";
-  if (compact.includes("audit")) return "auditing";
-  if (compact.includes("taxcomp")) return "taxcomputation";
-  return compact;
-}
-
-const TASK_BUNDLE_TEMPLATES = [
-  {
-    key: "taxfiling",
-    label: "Tax Filing Bundle",
-    serviceName: "Tax Filing",
-    summary: "Ready-made filing workflow from document collection up to submission proof.",
-    steps: [
-      { assignee: "secretary", text: "Collect and validate the client's tax source documents for the filing period." },
-      { assignee: "accountant", text: "Review records and reconcile transactions that affect the tax filing." },
-      { assignee: "accountant", text: "Prepare the tax return and compute the amount due or refund." },
-      { assignee: "owner", text: "Review the prepared return and approve it before submission." },
-      { assignee: "secretary", text: "Submit the filing and save the official proof of submission." },
-    ],
-  },
-  {
-    key: "auditing",
-    label: "Auditing Bundle",
-    serviceName: "Auditing",
-    summary: "Standard audit flow for requirements, testing, review, and report release.",
-    steps: [
-      { assignee: "secretary", text: "Request the audit requirements and prior records from the client." },
-      { assignee: "accountant", text: "Organize the working papers and supporting schedules." },
-      { assignee: "accountant", text: "Perform audit testing and document the findings." },
-      { assignee: "owner", text: "Review the findings and approve the final audit report." },
-      { assignee: "secretary", text: "Release the completed audit report to the client." },
-    ],
-  },
-  {
-    key: "bookkeeping",
-    label: "Book Keeping Bundle",
-    serviceName: "Book Keeping",
-    summary: "Recurring bookkeeping flow for encoding, reconciliation, and report review.",
-    steps: [
-      { assignee: "secretary", text: "Collect bookkeeping documents, receipts, and supporting files from the client." },
-      { assignee: "accountant", text: "Record and categorize the transactions for the covered period." },
-      { assignee: "accountant", text: "Reconcile the bank records and subsidiary ledgers." },
-      { assignee: "accountant", text: "Prepare the bookkeeping summary and draft reports." },
-      { assignee: "owner", text: "Review the reports and confirm the bookkeeping output." },
-    ],
-  },
-  {
-    key: "taxcomputation",
-    label: "Tax Computation Bundle",
-    serviceName: "Tax Computation",
-    summary: "Template for validating records, computing taxes due, and final client-ready output.",
-    steps: [
-      { assignee: "secretary", text: "Gather income, expense, and deductible documents needed for tax computation." },
-      { assignee: "accountant", text: "Validate the source records and prepare the tax computation worksheet." },
-      { assignee: "accountant", text: "Compute taxes due and document adjustments or discrepancies." },
-      { assignee: "owner", text: "Review the computation and approve the finalized figures." },
-      { assignee: "secretary", text: "Send the approved tax computation summary to the client." },
-    ],
-  },
-  {
-    key: "processing",
-    label: "Processing Bundle",
-    serviceName: "Processing",
-    summary: "Default processing flow for requirements checking, forms, review, and submission tracking.",
-    steps: [
-      { assignee: "secretary", text: "Confirm the client's requirements and identify missing documents." },
-      { assignee: "secretary", text: "Prepare the processing checklist and required forms." },
-      { assignee: "accountant", text: "Review the submitted details and attachments for completeness." },
-      { assignee: "secretary", text: "Submit the processed documents and track the status update." },
-    ],
-  },
-];
-
-function findTaskBundleTemplate(bundleKey) {
-  return TASK_BUNDLE_TEMPLATES.find((template) => template.key === bundleKey) || null;
-}
-
-function cloneBundleSteps(steps) {
-  return (Array.isArray(steps) ? steps : []).map((step) => ({
-    assignee: normalizeStepAssignee(step?.assignee, "accountant"),
-    text: String(step?.text || ""),
-  }));
-}
-
-function getTaskBundleTemplateKey(serviceName) {
-  const serviceKey = normalizeServiceMatchKey(serviceName);
-  if (!serviceKey) return "";
-
-  return (
-    TASK_BUNDLE_TEMPLATES.find(
-      (template) => normalizeServiceMatchKey(template.serviceName) === serviceKey
-    )?.key || ""
-  );
-}
-
-function resolveTaskBundleServiceName(bundle, availableServices) {
-  const bundleKey = normalizeServiceMatchKey(bundle?.serviceName);
-  const matchedService = (Array.isArray(availableServices) ? availableServices : []).find(
-    (service) => normalizeServiceMatchKey(service?.name || "") === bundleKey
-  );
-
-  return String(matchedService?.name || bundle?.serviceName || "").trim();
-}
-
 function getAccountantSpecialization(accountant) {
+  const names = Array.isArray(accountant?.employee_specialization_type_names)
+    ? accountant.employee_specialization_type_names.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (names.length > 0) {
+    return names.join(", ");
+  }
   return String(accountant?.employee_specialization_type_name || "").trim();
 }
 
@@ -591,6 +497,15 @@ function accountantMatchesService(accountant, serviceName) {
   if (isSecretaryUser(accountant)) return true;
   const serviceKey = normalizeServiceMatchKey(serviceName);
   if (!serviceKey) return true;
+  const matchedServiceKeys = (Array.isArray(accountant?.employee_specialization_service_names)
+    ? accountant.employee_specialization_service_names
+    : []
+  )
+    .map((value) => normalizeServiceMatchKey(value))
+    .filter(Boolean);
+  if (matchedServiceKeys.length > 0) {
+    return matchedServiceKeys.includes(serviceKey);
+  }
   return normalizeServiceMatchKey(getAccountantSpecialization(accountant)) === serviceKey;
 }
 
@@ -962,6 +877,7 @@ export default function SecretaryTaskManagement() {
   const [selectedBundleKey, setSelectedBundleKey] = useState("");
   const [editingBundleKey, setEditingBundleKey] = useState("");
   const [bundleDraftSteps, setBundleDraftSteps] = useState({});
+  const [savingBundleKey, setSavingBundleKey] = useState("");
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
   const [didLoadClients, setDidLoadClients] = useState(false);
 
@@ -999,9 +915,9 @@ export default function SecretaryTaskManagement() {
   }, [accountants, form.service_name, form.title]);
   const partnerAccountants = useMemo(() => {
     return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      isAccountantUser(accountant) && accountantMatchesService(accountant, form.service_name || form.title)
+      isAccountantUser(accountant)
     );
-  }, [accountants, form.service_name, form.title]);
+  }, [accountants]);
   const selectedAssignee = useMemo(
     () => (Array.isArray(accountants) ? accountants : []).find((accountant) => String(accountant.id) === String(form.accountant_id || "")) || null,
     [accountants, form.accountant_id]
@@ -1011,6 +927,10 @@ export default function SecretaryTaskManagement() {
     () => partnerAccountants.find((accountant) => String(accountant.id) === String(form.partner_id || "")) || null,
     [form.partner_id, partnerAccountants]
   );
+  const selectedClientForTask = useMemo(() => {
+    if (!form.client_id) return null;
+    return findClientById(activeClients, form.client_id) || findClientById(clients, form.client_id) || null;
+  }, [activeClients, clients, form.client_id]);
   const canCreateTask = hasFeatureActionAccess(user, "tasks", "create-task", permissions);
   const canOpenClientAppointments = hasFeatureActionAccess(user, "tasks", "client-appointments", permissions);
   const canViewTaskLimit = hasFeatureActionAccess(user, "tasks", "task-limit", permissions);
@@ -1025,21 +945,39 @@ export default function SecretaryTaskManagement() {
     () => getEstimatedServiceDuration(form.service_name || form.title),
     [form.service_name, form.title]
   );
+  const resolveBundleKeyForService = (serviceName, serviceId = "") => {
+    const normalizedServiceId = String(serviceId || "").trim();
+    if (normalizedServiceId) {
+      const matchedById = (Array.isArray(services) ? services : []).find(
+        (service) => String(service?.id ?? service?.Services_type_Id ?? "").trim() === normalizedServiceId
+      );
+      if (matchedById) {
+        return String(matchedById?.id ?? matchedById?.Services_type_Id ?? "").trim();
+      }
+    }
+
+    const targetKey = normalizeServiceMatchKey(serviceName);
+    if (!targetKey) return "";
+
+    const matchedService = (Array.isArray(services) ? services : []).find(
+      (service) => normalizeServiceMatchKey(service?.name || "") === targetKey
+    );
+
+    return String(matchedService?.id || getServiceBundleKey(serviceName) || "").trim();
+  };
   const suggestedBundleKey = useMemo(
-    () => getTaskBundleTemplateKey(form.service_name || form.title),
-    [form.service_name, form.title]
+    () => resolveBundleKeyForService(form.service_name || form.title),
+    [form.service_name, form.title, services]
   );
   const bundleTemplates = useMemo(() => {
-    return TASK_BUNDLE_TEMPLATES.map((template) => {
-      const resolvedServiceName = resolveTaskBundleServiceName(template, services);
-      const isAvailable = !form.client_id || Boolean(resolvedServiceName);
-      const draftSteps = bundleDraftSteps[template.key];
+    return buildServiceBundleCollection(services).map((bundle) => {
+      const isAvailable = !form.client_id || Boolean(bundle.serviceName);
+      const draftSteps = bundleDraftSteps[bundle.key];
 
       return {
-        ...template,
-        serviceName: resolvedServiceName || template.serviceName,
+        ...bundle,
         isAvailable,
-        steps: cloneBundleSteps(draftSteps || template.steps),
+        steps: cloneServiceBundleSteps(draftSteps || bundle.steps),
       };
     });
   }, [bundleDraftSteps, form.client_id, services]);
@@ -1194,11 +1132,25 @@ export default function SecretaryTaskManagement() {
   }, [form.service_name, form.title, selectedAppointmentId, selectedBundleKey]);
 
   useEffect(() => {
+    if (!selectedAppointmentId || selectedBundleKey || !suggestedBundleKey) return;
+    setSelectedBundleKey(suggestedBundleKey);
+  }, [selectedAppointmentId, selectedBundleKey, suggestedBundleKey]);
+
+  useEffect(() => {
+    const hasSelectedService = String(form.service_name || form.title || "").trim();
+    if (!hasSelectedService) return;
+    if (!suggestedBundleKey) return;
+    if (selectedBundle) return;
+    setSelectedBundleKey(suggestedBundleKey);
+  }, [form.service_name, form.title, selectedBundle, selectedBundleKey, suggestedBundleKey]);
+
+  useEffect(() => {
     const appointment = location.state?.prefillTaskFromAppointment;
     if (!appointment) return undefined;
 
     const nextClientId = String(appointment?.clientId || "").trim();
     const nextServiceName = String(appointment?.serviceName || "").trim();
+    const nextServiceId = String(appointment?.serviceId || "").trim();
     const nextDueDate = String(appointment?.date || "").trim();
 
     if (!nextClientId || !nextServiceName) {
@@ -1207,7 +1159,7 @@ export default function SecretaryTaskManagement() {
       return undefined;
     }
 
-    const autoBundleKey = getTaskBundleTemplateKey(nextServiceName);
+    const autoBundleKey = resolveBundleKeyForService(nextServiceName, nextServiceId);
     const fallbackDueDate = getAutoDueDateForService(nextServiceName) || "";
 
     setForm((current) => ({
@@ -1217,7 +1169,7 @@ export default function SecretaryTaskManagement() {
       service_name: nextServiceName,
       accountant_id: "",
       partner_id: "",
-      due_date: nextDueDate || fallbackDueDate,
+      due_date: fallbackDueDate || nextDueDate,
     }));
     setSelectedAppointmentId(String(appointment?.id || ""));
     setSelectedBundleKey(autoBundleKey);
@@ -1249,7 +1201,7 @@ export default function SecretaryTaskManagement() {
 
   const handleServiceSelection = (value, options = {}) => {
     const autoDueDate = getAutoDueDateForService(value);
-    const autoBundleKey = getTaskBundleTemplateKey(value);
+    const autoBundleKey = resolveBundleKeyForService(value);
     if (options.clearAppointment !== false) {
       setSelectedAppointmentId("");
     }
@@ -1281,10 +1233,11 @@ export default function SecretaryTaskManagement() {
 
   const startBundleEditing = (bundleKey) => {
     setBundleDraftSteps((current) => {
-      if (current[bundleKey]) return current;
+      if (hasBundleDraft(current, bundleKey)) return current;
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
       return {
         ...current,
-        [bundleKey]: cloneBundleSteps(findTaskBundleTemplate(bundleKey)?.steps),
+        [bundleKey]: cloneServiceBundleSteps(sourceBundle?.steps),
       };
     });
     setEditingBundleKey(bundleKey);
@@ -1292,7 +1245,8 @@ export default function SecretaryTaskManagement() {
 
   const updateBundleStep = (bundleKey, stepIndex, changes) => {
     setBundleDraftSteps((current) => {
-      const source = cloneBundleSteps(current[bundleKey] || findTaskBundleTemplate(bundleKey)?.steps);
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+      const source = getBundleDraftSteps(current, bundleKey, sourceBundle?.steps);
       if (!source[stepIndex]) return current;
 
       source[stepIndex] = {
@@ -1317,14 +1271,75 @@ export default function SecretaryTaskManagement() {
 
   const addBundleStep = (bundleKey) => {
     setBundleDraftSteps((current) => {
-      const source = cloneBundleSteps(current[bundleKey] || findTaskBundleTemplate(bundleKey)?.steps);
-      source.push({ assignee: "accountant", text: "New bundle step" });
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+      const source = getBundleDraftSteps(current, bundleKey, sourceBundle?.steps);
+      source.push({ assignee: "accountant", text: "" });
       return {
         ...current,
         [bundleKey]: source,
       };
     });
     setEditingBundleKey(bundleKey);
+  };
+
+  const removeBundleStep = (bundleKey, stepIndex) => {
+    setBundleDraftSteps((current) => {
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+      const source = getBundleDraftSteps(current, bundleKey, sourceBundle?.steps);
+      if (!source[stepIndex]) return current;
+
+      return {
+        ...current,
+        [bundleKey]: source.filter((_, index) => index !== stepIndex),
+      };
+    });
+    setEditingBundleKey(bundleKey);
+  };
+
+  const finishBundleEditing = async (bundleKey) => {
+    const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+    if (!sourceBundle) {
+      return;
+    }
+
+    const nextSteps = getBundleDraftSteps(bundleDraftSteps, bundleKey, sourceBundle?.steps).map((step) => ({
+      assignee: normalizeStepAssignee(step?.assignee, "accountant"),
+      text: String(step?.text || ""),
+    }));
+
+    const serviceId = Number(sourceBundle?.id || 0);
+    if (!Number.isInteger(serviceId) || serviceId <= 0) {
+      showErrorToast("Unable to save bundle steps because the service record is missing.");
+      return;
+    }
+
+    try {
+      setSavingBundleKey(bundleKey);
+      await updateServiceType({
+        service_id: serviceId,
+        name: sourceBundle.serviceName,
+        disabled: Boolean(sourceBundle.disabled),
+        bundle_steps: nextSteps,
+      });
+
+      setServices((current) =>
+        (Array.isArray(current) ? current : []).map((service) =>
+          String(service?.id ?? "") === String(serviceId)
+            ? { ...service, bundle_steps: nextSteps }
+            : service
+        )
+      );
+      setBundleDraftSteps((current) => ({
+        ...current,
+        [bundleKey]: nextSteps,
+      }));
+      setEditingBundleKey("");
+      showSuccessToast("Bundle steps saved to the database.");
+    } catch (error) {
+      showErrorToast(error?.response?.data?.message || error?.message || "Failed to save bundle steps.");
+    } finally {
+      setSavingBundleKey("");
+    }
   };
 
   const resetBundleDraft = (bundleKey) => {
@@ -1407,7 +1422,7 @@ export default function SecretaryTaskManagement() {
     }
     if (selectedAssigneeIsSecretary) {
       if (partnerAccountants.length === 0) {
-        setError("No accountant partners match the selected service right now.");
+        setError("No accountant partners are available right now.");
         return;
       }
       if (!String(form.partner_id || "").trim()) {
@@ -1415,7 +1430,7 @@ export default function SecretaryTaskManagement() {
         return;
       }
       if (!partnerAccountants.some((accountant) => String(accountant.id) === String(form.partner_id))) {
-        setError("Please select a partner accountant whose specialization matches the selected service.");
+        setError("Please select a valid partner accountant for the secretary.");
         return;
       }
     }
@@ -1650,11 +1665,10 @@ export default function SecretaryTaskManagement() {
     return currentAssignee ? [currentAssignee, ...available] : available;
   }, [accountants, taskAssigneeEditCtx]);
   const taskPartnerOptions = useMemo(() => {
-    const serviceName = String(taskAssigneeEditCtx?.serviceName || "").trim();
     return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      isAccountantUser(accountant) && accountantMatchesService(accountant, serviceName)
+      isAccountantUser(accountant)
     );
-  }, [accountants, taskAssigneeEditCtx]);
+  }, [accountants]);
   const selectedTaskAssignee = useMemo(() => {
     if (!taskAssigneeEditValue) return null;
     return taskAssigneeOptions.find((accountant) => String(accountant.id) === String(taskAssigneeEditValue)) || null;
@@ -1999,6 +2013,7 @@ export default function SecretaryTaskManagement() {
       currentAssigneeName: String(currentAssigneeName || "").trim() || "Unassigned",
       currentPartnerId: String(currentPartnerId || "").trim(),
       currentPartnerName: String(currentPartnerName || "").trim(),
+      clientName: String(taskRow?.client_name || "").trim(),
       currentPriority: parsePriority(taskRow?.description || ""),
       hasLegacyAssignee: Boolean(currentAssignee && normalizedCurrentId && !hasCurrent),
     });
@@ -2063,7 +2078,7 @@ export default function SecretaryTaskManagement() {
     }
     if (shouldRequirePartner) {
       if (!taskPartnerOptions.length) {
-        setTaskEditError("No accountant partners match this service right now.");
+        setTaskEditError("No accountant partners are available right now.");
         return;
       }
       if (!nextPartnerId) {
@@ -2071,7 +2086,7 @@ export default function SecretaryTaskManagement() {
         return;
       }
       if (!taskPartnerOptions.some((accountant) => String(accountant.id) === nextPartnerId)) {
-        setTaskEditError("Please select a partner accountant whose specialization matches this service.");
+        setTaskEditError("Please select a valid partner accountant for the secretary.");
         return;
       }
     }
@@ -2293,14 +2308,15 @@ export default function SecretaryTaskManagement() {
                         setError("");
                       }}
                       serviceName={form.service_name || form.title}
+                      filterByService={false}
                       disabled={partnerAccountants.length === 0}
                     />
                     <p className="mt-1 text-[11px] text-slate-500">
-                      Required for secretary-assigned tasks.
+                      Required for secretary-assigned tasks. You can choose any accountant partner.
                     </p>
                     {partnerAccountants.length === 0 ? (
                       <p className="mt-1 text-[11px] text-rose-600">
-                        No partner accountant matches this task specialization yet.
+                        No accountant partners are available right now.
                       </p>
                     ) : null}
                     {selectedPartnerAccountant ? (
@@ -2309,6 +2325,11 @@ export default function SecretaryTaskManagement() {
                         {getAccountantSpecialization(selectedPartnerAccountant)
                           ? ` - ${getAccountantSpecialization(selectedPartnerAccountant)}`
                           : ""}
+                      </p>
+                    ) : null}
+                    {selectedPartnerAccountant && form.client_id ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Assigned client and service: {selectedClientForTask ? getClientDisplayName(selectedClientForTask) : "Selected client"} • {form.service_name || form.title || "Selected service"}
                       </p>
                     ) : null}
                   </div>
@@ -3036,34 +3057,35 @@ export default function SecretaryTaskManagement() {
                         type="button"
                         variant="secondary"
                         size="sm"
-                        disabled={!bundle.isAvailable}
-                        onClick={() => {
+                        disabled={!bundle.isAvailable || savingBundleKey === bundle.key}
+                        onClick={async () => {
                           if (isEditing) {
-                            setEditingBundleKey("");
+                            await finishBundleEditing(bundle.key);
                             return;
                           }
                           startBundleEditing(bundle.key);
                         }}
                       >
-                        {isEditing ? "Done Editing" : "Edit Steps"}
+                        {savingBundleKey === bundle.key ? "Saving..." : isEditing ? "Done Editing" : "Edit Steps"}
                       </Button>
                       <Button
                         type="button"
                         variant="secondary"
                         size="sm"
-                        disabled={!bundle.isAvailable}
+                        disabled={!bundle.isAvailable || savingBundleKey === bundle.key}
                         onClick={() => addBundleStep(bundle.key)}
                       >
                         Add Step
                       </Button>
                       {isEditing ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => resetBundleDraft(bundle.key)}
-                        >
-                          Reset Steps
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={savingBundleKey === bundle.key}
+                            onClick={() => resetBundleDraft(bundle.key)}
+                          >
+                            Reset Steps
                         </Button>
                       ) : null}
                       {suggestedBundleKey ? (
@@ -3091,45 +3113,65 @@ export default function SecretaryTaskManagement() {
                   </div>
 
                   <div className="mt-4 grid gap-2">
-                    {bundle.steps.map((step, index) => (
-                      <div
-                        key={`${bundle.key}-step-${index}`}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2"
-                      >
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Step {index + 1}
-                          </span>
+                    {bundle.steps.length ? (
+                      bundle.steps.map((step, index) => (
+                        <div
+                          key={`${bundle.key}-step-${index}`}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                                Step {index + 1}
+                              </span>
+                              {isEditing ? (
+                                <select
+                                  value={step.assignee}
+                                  onChange={(e) =>
+                                    updateBundleStep(bundle.key, index, { assignee: e.target.value })
+                                  }
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                  <option value="accountant">Accountant</option>
+                                  <option value="secretary">Secretary</option>
+                                  <option value="owner">Owner</option>
+                                </select>
+                              ) : (
+                                <span>{stepAssigneeLabel(step.assignee)}</span>
+                              )}
+                            </div>
+                            {isEditing ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={savingBundleKey === bundle.key}
+                                onClick={() => removeBundleStep(bundle.key, index)}
+                              >
+                                Remove Step
+                              </Button>
+                            ) : null}
+                          </div>
                           {isEditing ? (
-                            <select
-                              value={step.assignee}
+                            <textarea
+                              rows={2}
+                              value={step.text}
                               onChange={(e) =>
-                                updateBundleStep(bundle.key, index, { assignee: e.target.value })
+                                updateBundleStep(bundle.key, index, { text: e.target.value })
                               }
-                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            >
-                              <option value="accountant">Accountant</option>
-                              <option value="secretary">Secretary</option>
-                              <option value="owner">Owner</option>
-                            </select>
+                              className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                              placeholder="Describe the bundle step"
+                            />
                           ) : (
-                            <span>{stepAssigneeLabel(step.assignee)}</span>
+                            <div className="mt-1 text-sm text-slate-700">{step.text}</div>
                           )}
                         </div>
-                        {isEditing ? (
-                          <textarea
-                            rows={2}
-                            value={step.text}
-                            onChange={(e) =>
-                              updateBundleStep(bundle.key, index, { text: e.target.value })
-                            }
-                            className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                          />
-                        ) : (
-                          <div className="mt-1 text-sm text-slate-700">{step.text}</div>
-                        )}
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                        No bundle steps yet. Use Add Step to create one.
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
               );
@@ -3381,14 +3423,15 @@ export default function SecretaryTaskManagement() {
                   setTaskEditError("");
                 }}
                 serviceName={taskAssigneeEditCtx?.serviceName || ""}
+                filterByService={false}
                 disabled={taskAssigneeSaving || taskPartnerOptions.length === 0}
               />
               <div className="mt-2 text-[11px] text-slate-500">
-                Required for secretary-assigned tasks.
+                Required for secretary-assigned tasks. You can choose any accountant partner.
               </div>
               {taskPartnerOptions.length === 0 ? (
                 <div className="mt-2 text-[11px] text-rose-600">
-                  No partner accountant matches this task specialization yet.
+                  No accountant partners are available right now.
                 </div>
               ) : null}
               {selectedTaskPartnerAccountant ? (
@@ -3398,6 +3441,9 @@ export default function SecretaryTaskManagement() {
                   </div>
                   <div className="mt-1 text-[11px] text-slate-600">
                     {getAccountantSpecialization(selectedTaskPartnerAccountant) || "Accountant"}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Assigned client and service: {taskAssigneeEditCtx?.clientName || "Selected client"} • {taskAssigneeEditCtx?.serviceName || "Selected service"}
                   </div>
                 </div>
               ) : null}

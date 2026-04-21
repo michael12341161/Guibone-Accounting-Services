@@ -7,8 +7,10 @@ import { getHomePathForRole } from "../context/AuthContext";
 import { useAuth } from "../hooks/useAuth";
 import AdminDashboard from "../Pages/admin_page/admin_dashboard";
 import UserManagement from "../Pages/admin_page/user_management";
+import InactiveEmployee from "../Pages/admin_page/inactive_employee";
 import Permissions from "../Pages/admin_page/permission";
 import ClientManagement from "../Pages/admin_page/client_management";
+import InactiveClients from "../Pages/admin_page/inactive_clients";
 import NewClientManagement from "../Pages/admin_page/new_client_management";
 import DocumentAdminPage from "../Pages/admin_page/document_admin";
 import ClientBusinessStatusPage from "../Pages/admin_page/client_business_status";
@@ -30,6 +32,9 @@ import AdminAppointmentManagement from "../Pages/admin_page/client_appointment";
 import AdminWorkUpdate from "../Pages/admin_page/accountant_work_update";
 import AdminAccountantTaskManagement from "../Pages/admin_page/accountant_task";
 import AdminReports from "../Pages/admin_page/admin_reports";
+import NewServices from "../Pages/admin_page/new_services";
+import NewRole from "../Pages/admin_page/new_role";
+import NewSpecialization from "../Pages/admin_page/new_specialization";
 import ClientHistory from "../Pages/history/client_history";
 import TasksUpdateHistory from "../Pages/history/tasks_update_history";
 import MyTasks from "../Pages/accountant_page/my_tasks";
@@ -111,8 +116,12 @@ const privateRouteGroups = [
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
       { path: "settings", element: withModuleAccess("settings", <AdminSettings />) },
       { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
+      { path: "users/inactive-users", element: withModuleAccess("user-management", <InactiveEmployee />) },
       { path: "permissions", element: withModuleAccess("permissions", <Permissions />) },
+      { path: "new-specialization", element: withModuleAccess("user-management", <NewSpecialization />) },
+      { path: "new-role", element: withModuleAccess("user-management", <NewRole />) },
       { path: "client-management", element: withModuleAccess("client-management", <ClientManagement />) },
+      { path: "client-management/inactive-users", element: withModuleAccess("client-management", <InactiveClients />) },
       { path: "documents", element: withModuleAccess("documents", <DocumentAdminPage />) },
       { path: "certificate", element: withModuleAccess("certificate", <CertificatePage />) },
       { path: "certificate/edit", element: withModuleAccess("edit-certificate", <EditCertificate />) },
@@ -121,6 +130,7 @@ const privateRouteGroups = [
       { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
       { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
       { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
+      { path: "new-services", element: withModuleAccess("tasks", <NewServices />) },
       { path: "reports", element: withModuleAccess("reports", <AdminReports />) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],
@@ -184,12 +194,12 @@ const privateRouteGroups = [
     roleId: 4,
     component: ClientDashboard,
     children: [
-      { path: "businesses", element: withModuleAccess("client-account", <BusinessPage />) },
-      { path: "appointment", element: withModuleAccess("client-account", <ClientAppointment />) },
-      { path: "work-progress", element: withModuleAccess("client-account", <WorkProgress />) },
-      { path: "work-progress/history", element: withModuleAccess("client-account", <ClientHistory />) },
-      { path: "certificate", element: withModuleAccess("client-account", <ClientCertificatePage />) },
-      { path: "documents", element: withModuleAccess("client-account", <ClientDocumentsPage />) },
+      { path: "businesses", element: <BusinessPage /> },
+      { path: "appointment", element: <ClientAppointment /> },
+      { path: "work-progress", element: <WorkProgress /> },
+      { path: "work-progress/history", element: <ClientHistory /> },
+      { path: "certificate", element: <ClientCertificatePage /> },
+      { path: "documents", element: <ClientDocumentsPage /> },
       { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],

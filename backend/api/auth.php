@@ -5,7 +5,6 @@ const MONITORING_ROLE_SECRETARY = 2;
 const MONITORING_ROLE_ACCOUNTANT = 3;
 const MONITORING_ROLE_CLIENT = 4;
 const MONITORING_SESSION_KEY = 'monitoring_auth';
-const MONITORING_IMPERSONATION_KEY = 'monitoring_impersonation';
 const MONITORING_SIGNUP_UPLOAD_KEY = 'monitoring_signup_uploads';
 const MONITORING_JWT_RESPONSE_HEADER = 'X-Monitoring-JWT';
 const MONITORING_JWT_LOCAL_CONFIG_FILE = __DIR__ . '/jwt_config.php';
@@ -381,30 +380,7 @@ function monitoring_prepare_session_user(array $user): array
 function monitoring_store_session_user(array $user): void
 {
     $preparedUser = monitoring_persist_session_user($user, true);
-    monitoring_queue_jwt_response_header($preparedUser, monitoring_read_impersonation_state());
-}
-
-function monitoring_store_impersonation_state(array $originalUser): void
-{
-    monitoring_start_session();
-    $_SESSION[MONITORING_IMPERSONATION_KEY] = [
-        'active' => true,
-        'original_user' => monitoring_prepare_session_user($originalUser),
-        'started_at' => time(),
-    ];
-}
-
-function monitoring_read_impersonation_state(): ?array
-{
-    monitoring_start_session();
-    $raw = $_SESSION[MONITORING_IMPERSONATION_KEY] ?? null;
-    return monitoring_normalize_impersonation_state($raw);
-}
-
-function monitoring_clear_impersonation_state(): void
-{
-    monitoring_start_session();
-    unset($_SESSION[MONITORING_IMPERSONATION_KEY]);
+    monitoring_queue_jwt_response_header($preparedUser);
 }
 
 function monitoring_update_session_timeout(int $minutes): void
@@ -420,7 +396,7 @@ function monitoring_update_session_timeout(int $minutes): void
     }
     $_SESSION[MONITORING_SESSION_KEY]['security_settings']['sessionTimeoutMinutes'] = monitoring_normalize_session_timeout_minutes($minutes);
 
-    monitoring_queue_jwt_response_header($_SESSION[MONITORING_SESSION_KEY], monitoring_read_impersonation_state());
+    monitoring_queue_jwt_response_header($_SESSION[MONITORING_SESSION_KEY]);
 }
 
 function monitoring_read_session_user(bool $enforceTimeout = true): ?array
@@ -441,10 +417,6 @@ function monitoring_validate_session_user_access(?array $user): ?array
 
     $userId = isset($user['id']) ? (int)$user['id'] : 0;
     if ($userId <= 0) {
-        return $user;
-    }
-
-    if (monitoring_read_impersonation_state() !== null) {
         return $user;
     }
 

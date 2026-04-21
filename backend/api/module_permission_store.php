@@ -254,13 +254,6 @@ if (!function_exists('monitoring_module_permissions_ensure_store')) {
             'module permissions'
         );
 
-        $permissionCount = (int)($conn->query('SELECT COUNT(*) FROM permissions')->fetchColumn() ?: 0);
-        if ($permissionCount <= 0) {
-            throw new RuntimeException(
-                'Module permissions are not configured. Import monitoring/monitoring.sql before using the permissions module.'
-            );
-        }
-
         $checked = true;
     }
 }
@@ -298,12 +291,6 @@ if (!function_exists('monitoring_module_permission_catalog_rows')) {
                     ? $permissionName
                     : monitoring_module_permission_build_name($moduleKey, $actionKey),
             ];
-        }
-
-        if (empty($rows)) {
-            throw new RuntimeException(
-                'Module permissions are not configured. Import monitoring/monitoring.sql before using the permissions module.'
-            );
         }
 
         return $rows;
@@ -390,10 +377,70 @@ if (!function_exists('monitoring_module_permissions_load')) {
     }
 }
 
+if (!function_exists('monitoring_module_permissions_ensure_catalog_entries')) {
+    function monitoring_module_permissions_ensure_catalog_entries(PDO $conn, array $permissions): void
+    {
+        $existingRows = monitoring_module_permission_catalog_rows($conn);
+        $existingKeys = [];
+        foreach ($existingRows as $row) {
+            $existingKeys[$row['module_key'] . "\0" . $row['action_key']] = true;
+        }
+
+        $insertStmt = $conn->prepare(
+            'INSERT INTO permissions (module_key, action_key, permission_name)
+             VALUES (:module_key, :action_key, :permission_name)'
+        );
+
+        foreach ($permissions as $moduleKey => $modulePermissions) {
+            if (!is_array($modulePermissions)) {
+                continue;
+            }
+
+            $normalizedModuleKey = trim((string)$moduleKey);
+            if ($normalizedModuleKey === '') {
+                continue;
+            }
+
+            $compositeKey = $normalizedModuleKey . "\0" . '';
+            if (!isset($existingKeys[$compositeKey])) {
+                $insertStmt->execute([
+                    ':module_key' => $normalizedModuleKey,
+                    ':action_key' => '',
+                    ':permission_name' => monitoring_module_permission_build_name($normalizedModuleKey, ''),
+                ]);
+                $existingKeys[$compositeKey] = true;
+            }
+
+            $actions = $modulePermissions['actions'] ?? [];
+            if (!is_array($actions)) {
+                continue;
+            }
+
+            foreach ($actions as $actionKey => $actionPermissions) {
+                $normalizedActionKey = trim((string)$actionKey);
+                if ($normalizedActionKey === '') {
+                    continue;
+                }
+
+                $compositeKey = $normalizedModuleKey . "\0" . $normalizedActionKey;
+                if (!isset($existingKeys[$compositeKey])) {
+                    $insertStmt->execute([
+                        ':module_key' => $normalizedModuleKey,
+                        ':action_key' => $normalizedActionKey,
+                        ':permission_name' => monitoring_module_permission_build_name($normalizedModuleKey, $normalizedActionKey),
+                    ]);
+                    $existingKeys[$compositeKey] = true;
+                }
+            }
+        }
+    }
+}
+
 if (!function_exists('monitoring_module_permissions_save')) {
     function monitoring_module_permissions_save(PDO $conn, array $permissions, ?int $modifiedByUserId = null): array
     {
         monitoring_module_permissions_ensure_store($conn);
+        monitoring_module_permissions_ensure_catalog_entries($conn, $permissions);
 
         $reference = monitoring_module_permissions_load($conn);
         $normalized = monitoring_module_permission_normalize($permissions, $reference);

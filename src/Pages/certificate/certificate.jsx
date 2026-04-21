@@ -1260,14 +1260,14 @@ export default function CertificatePage() {
                 </div>
               </div>
             )
-          ) : (
+          ) : !isLoading ? (
             <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-12 text-center">
               <div className="text-base font-semibold text-slate-800">No certificate created yet</div>
               <div className="mt-2 text-sm text-slate-500">
                 Nothing will be displayed here until you save a certificate template from the editor.
               </div>
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
     </div>

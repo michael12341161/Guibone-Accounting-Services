@@ -243,7 +243,7 @@ function monitoring_document_resolve_expiration_date(?string $documentName, ?str
     return monitoring_document_calculate_expiration_date($uploadedAt, $resolvedDurationDays);
 }
 
-function monitoring_document_ensure_type_exists(PDO $conn, int $documentTypeId): ?array
+function monitoring_document_find_type(PDO $conn, int $documentTypeId): ?array
 {
     if ($documentTypeId <= 0) {
         return null;
@@ -262,39 +262,7 @@ function monitoring_document_ensure_type_exists(PDO $conn, int $documentTypeId):
     } catch (Throwable $__) {
         return null;
     }
-
-    $knownTypes = monitoring_document_known_types();
-    $documentName = $knownTypes[$documentTypeId] ?? null;
-    if ($documentName === null) {
-        return null;
-    }
-
-    try {
-        $insert = $conn->prepare('INSERT INTO Document_type (Document_type_ID, Document_name) VALUES (:id, :name)');
-        $insert->execute([
-            ':id' => $documentTypeId,
-            ':name' => $documentName,
-        ]);
-    } catch (Throwable $__) {
-        try {
-            $select = $conn->prepare('SELECT Document_type_ID AS id, Document_name AS name FROM Document_type WHERE Document_type_ID = :id LIMIT 1');
-            $select->execute([':id' => $documentTypeId]);
-            $existing = $select->fetch(PDO::FETCH_ASSOC);
-            if ($existing) {
-                return [
-                    'id' => (int)$existing['id'],
-                    'name' => (string)$existing['name'],
-                ];
-            }
-        } catch (Throwable $___) {
-            return null;
-        }
-    }
-
-    return [
-        'id' => $documentTypeId,
-        'name' => $documentName,
-    ];
+    return null;
 }
 
 function monitoring_document_table_exists(PDO $conn, string $table): bool

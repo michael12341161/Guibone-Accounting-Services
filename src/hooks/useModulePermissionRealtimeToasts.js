@@ -33,7 +33,7 @@ export function useModulePermissionRealtimeToasts({
       return;
     }
     if (!isAuthReady) return;
-    if (![ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT].includes(role)) return;
+    if (![ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT, ROLE_IDS.CLIENT].includes(role)) return;
 
     const currentUserKey = String(userId || "").trim();
     if (!currentUserKey) return;

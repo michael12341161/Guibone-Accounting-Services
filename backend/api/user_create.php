@@ -154,8 +154,6 @@ try {
     monitoring_require_roles([MONITORING_ROLE_ADMIN]);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     monitoring_ensure_user_security_columns($conn);
-    monitoring_ensure_user_employment_status_column($conn);
-    ensureEmployeeSpecializationSchema($conn);
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
@@ -210,21 +208,30 @@ try {
 
     $specializationRaw = $employeeDetails['specialization_type_id'] ?? ($employeeDetails['specialization_type_ID'] ?? null);
     $profileSpecializationId = employeeSpecializationPayloadId($employeeDetails);
+    $profileSpecializationIds = employeeSpecializationPayloadIds($employeeDetails);
     if ($profileSpecializationId === null && trim((string)($specializationRaw ?? '')) !== '') {
         respond(422, ['success' => false, 'message' => 'Invalid specialization_type_id']);
+    }
+    $specializationNames = [];
+    foreach ($profileSpecializationIds as $specializationId) {
+        $specializationRow = findSpecializationTypeById($conn, $specializationId);
+        if ($specializationRow === null) {
+            respond(422, ['success' => false, 'message' => 'Invalid specialization_type_id']);
+        }
+        $specializationNames[] = (string)($specializationRow['name'] ?? '');
     }
     $specializationType = $profileSpecializationId !== null
         ? findSpecializationTypeById($conn, $profileSpecializationId)
         : null;
+    $specializationServiceIds = employeeSpecializationResolveServiceIds($conn, $profileSpecializationIds);
+    $specializationServiceNames = employeeSpecializationResolveServiceNames($conn, $profileSpecializationIds);
     if ($profileSpecializationId !== null && $specializationType === null) {
         respond(422, ['success' => false, 'message' => 'Invalid specialization_type_id']);
     }
 
     $conn->beginTransaction();
 
-    $employmentStatusId = $roleId === MONITORING_ROLE_CLIENT
-        ? null
-        : monitoring_default_employment_status_id($conn);
+    $employmentStatusId = null;
 
     $ins = $conn->prepare(
         'INSERT INTO user (Username, Password, Role_id, Employment_status_id, Email)
@@ -292,6 +299,7 @@ try {
         ':philhealth_account_number' => $philhealthAccount,
         ':user_id' => $newId,
     ]);
+    employeeSpecializationSetUserAssignments($conn, $newId, $profileSpecializationIds);
 
     $financialDetails = buildGovernmentFinancialDetails($governmentAccounts);
     $financialText = implode(', ', array_values(array_map(function ($row) {
@@ -327,6 +335,10 @@ try {
         'employee_position' => $roleName,
         'employee_specialization_type_id' => $profileSpecializationId,
         'employee_specialization_type_name' => $specializationType['name'] ?? null,
+        'employee_specialization_type_ids' => $profileSpecializationIds,
+        'employee_specialization_type_names' => array_values(array_filter($specializationNames, 'strlen')),
+        'employee_specialization_service_ids' => $specializationServiceIds,
+        'employee_specialization_service_names' => $specializationServiceNames,
         'employee_financial_details' => $financialDetails,
         'employee_financial_details_ids' => $financialIds,
         'employee_financial_details_text' => $financialText,

@@ -399,17 +399,6 @@ export const FEATURE_SECTIONS = [
       },
     ],
   },
-  {
-    label: "Client Area",
-    features: [
-      {
-        key: "client-account",
-        label: "Can Access Account",
-        description: "Allow the client to access their account portal.",
-        defaultAccess: { admin: true, secretary: false, accountant: false, client: true },
-      },
-    ],
-  },
 ];
 
 export function getRoleKeyFromId(roleId) {
@@ -466,12 +455,12 @@ export function getFeatureActionLabel(featureKey, actionKey) {
   return humanizePermissionKey(actionKey);
 }
 
-function createRolePermissions(defaultAccess = {}) {
+function createRolePermissions() {
   return {
-    admin: Boolean(defaultAccess?.admin),
-    secretary: Boolean(defaultAccess?.secretary),
-    accountant: Boolean(defaultAccess?.accountant),
-    client: Boolean(defaultAccess?.client),
+    admin: false,
+    secretary: false,
+    accountant: false,
+    client: false,
   };
 }
 

@@ -487,8 +487,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     monitoring_ensure_user_security_columns($conn);
-    monitoring_ensure_user_employment_status_column($conn);
-    ensureEmployeeSpecializationSchema($conn);
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
@@ -854,11 +852,18 @@ try {
     $specializationPayloadProvided = employeeSpecializationPayloadProvided($employeeDetails);
     $validatedSpecializationType = null;
     $validatedSpecializationValue = null;
+    $validatedSpecializationValues = [];
     if ($specializationPayloadProvided) {
         $specializationRaw = $employeeDetails['specialization_type_id'] ?? ($employeeDetails['specialization_type_ID'] ?? null);
         $validatedSpecializationValue = employeeSpecializationPayloadId($employeeDetails);
+        $validatedSpecializationValues = employeeSpecializationPayloadIds($employeeDetails);
         if ($validatedSpecializationValue === null && trim((string)($specializationRaw ?? '')) !== '') {
             respond(422, ['success' => false, 'message' => 'Invalid specialization_type_id']);
+        }
+        foreach ($validatedSpecializationValues as $specializationId) {
+            if (findSpecializationTypeById($conn, $specializationId) === null) {
+                respond(422, ['success' => false, 'message' => 'Invalid specialization_type_id']);
+            }
         }
         if ($validatedSpecializationValue !== null) {
             $validatedSpecializationType = findSpecializationTypeById($conn, $validatedSpecializationValue);
@@ -872,7 +877,7 @@ try {
         ? null
         : ((isset($rowCurrent['Employment_status_id']) && $rowCurrent['Employment_status_id'] !== null)
             ? (int)$rowCurrent['Employment_status_id']
-            : monitoring_default_employment_status_id($conn));
+            : null);
 
     $conn->beginTransaction();
 
@@ -985,6 +990,11 @@ try {
             'pagibig_account_number' => $pagibigValue,
             'philhealth_account_number' => $philhealthValue,
         ]);
+
+        $specializationAssignments = $specializationPayloadProvided
+            ? $validatedSpecializationValues
+            : employeeSpecializationGetUserAssignments($conn, $id);
+        employeeSpecializationSetUserAssignments($conn, $id, $specializationAssignments);
     }
 
     $conn->commit();
@@ -1048,6 +1058,19 @@ try {
 
     $profileSpecializationId = employeeSpecializationNormalizeId($fresh['profile_specialization_type_id'] ?? null);
     $profileSpecializationName = normalizeOptionalString($fresh['profile_specialization_type_name'] ?? null);
+    $profileSpecializationIds = employeeSpecializationGetUserAssignments($conn, $id);
+    if (empty($profileSpecializationIds) && $profileSpecializationId !== null) {
+        $profileSpecializationIds = [$profileSpecializationId];
+    }
+    $profileSpecializationNames = [];
+    foreach ($profileSpecializationIds as $specializationId) {
+        $specializationRow = findSpecializationTypeById($conn, $specializationId);
+        if ($specializationRow !== null) {
+            $profileSpecializationNames[] = (string)($specializationRow['name'] ?? '');
+        }
+    }
+    $profileSpecializationServiceIds = employeeSpecializationResolveServiceIds($conn, $profileSpecializationIds);
+    $profileSpecializationServiceNames = employeeSpecializationResolveServiceNames($conn, $profileSpecializationIds);
 
     $profileGovernmentAccounts = [
         1 => normalizeAccountNumber($fresh['profile_sss_account_number'] ?? null),
@@ -1100,6 +1123,10 @@ try {
         'employee_position' => $fresh['role'] ?? $roleName,
         'employee_specialization_type_id' => $profileSpecializationId,
         'employee_specialization_type_name' => $profileSpecializationName,
+        'employee_specialization_type_ids' => $profileSpecializationIds,
+        'employee_specialization_type_names' => array_values(array_filter($profileSpecializationNames, 'strlen')),
+        'employee_specialization_service_ids' => $profileSpecializationServiceIds,
+        'employee_specialization_service_names' => $profileSpecializationServiceNames,
         'employee_financial_details' => $details,
         'employee_financial_details_ids' => $detailIds,
         'employee_financial_details_text' => $detailText,

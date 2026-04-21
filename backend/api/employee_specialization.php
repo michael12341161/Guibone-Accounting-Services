@@ -337,7 +337,6 @@ if (!function_exists('monitoring_get_security_settings')) {
             }
         }
 
-        monitoring_upsert_security_settings($conn, $settings);
         return $settings;
     }
 }
@@ -1023,6 +1022,7 @@ function employeeSpecializationForeignKeyExists(PDO $conn, string $tableName, st
 
 function employeeSpecializationPayloadProvided(array $employeeDetails): bool {
     return array_key_exists('specialization_type_id', $employeeDetails)
+        || array_key_exists('specialization_type_ids', $employeeDetails)
         || array_key_exists('specialization_type_ID', $employeeDetails);
 }
 
@@ -1041,6 +1041,14 @@ function employeeSpecializationNormalizeId($value): ?int {
 }
 
 function employeeSpecializationPayloadId(array $employeeDetails): ?int {
+    if (array_key_exists('specialization_type_ids', $employeeDetails) && is_array($employeeDetails['specialization_type_ids'])) {
+        foreach ($employeeDetails['specialization_type_ids'] as $value) {
+            $id = employeeSpecializationNormalizeId($value);
+            if ($id !== null) {
+                return $id;
+            }
+        }
+    }
     if (array_key_exists('specialization_type_id', $employeeDetails)) {
         return employeeSpecializationNormalizeId($employeeDetails['specialization_type_id']);
     }
@@ -1048,6 +1056,170 @@ function employeeSpecializationPayloadId(array $employeeDetails): ?int {
         return employeeSpecializationNormalizeId($employeeDetails['specialization_type_ID']);
     }
     return null;
+}
+
+function employeeSpecializationPayloadIds(array $employeeDetails): array {
+    $values = [];
+
+    if (array_key_exists('specialization_type_ids', $employeeDetails) && is_array($employeeDetails['specialization_type_ids'])) {
+        $values = $employeeDetails['specialization_type_ids'];
+    } else {
+        $singleValue = employeeSpecializationPayloadId($employeeDetails);
+        if ($singleValue !== null) {
+            $values = [$singleValue];
+        }
+    }
+
+    $ids = [];
+    foreach ($values as $value) {
+        $id = employeeSpecializationNormalizeId($value);
+        if ($id !== null) {
+            $ids[] = $id;
+        }
+    }
+
+    $ids = array_values(array_unique($ids));
+    sort($ids);
+    return $ids;
+}
+
+if (!defined('MONITORING_USER_SPECIALIZATION_ASSIGNMENTS_KEY')) {
+    define('MONITORING_USER_SPECIALIZATION_ASSIGNMENTS_KEY', 'user_specialization_assignments');
+}
+
+function employeeSpecializationRequireSettingsTable(PDO $conn): void {
+    monitoring_require_schema_columns(
+        $conn,
+        'settings',
+        ['Settings_ID', 'setting_key', 'setting_value'],
+        'user specialization settings'
+    );
+}
+
+function employeeSpecializationReadAssignments(PDO $conn): array {
+    employeeSpecializationRequireSettingsTable($conn);
+
+    $stmt = $conn->prepare(
+        'SELECT setting_value
+         FROM settings
+         WHERE setting_key = :setting_key
+         ORDER BY Settings_ID DESC
+         LIMIT 1'
+    );
+    $stmt->execute([':setting_key' => MONITORING_USER_SPECIALIZATION_ASSIGNMENTS_KEY]);
+    $rawValue = $stmt->fetchColumn();
+    if ($rawValue === false || $rawValue === null || trim((string)$rawValue) === '') {
+        return [];
+    }
+
+    $decoded = json_decode((string)$rawValue, true);
+    $users = is_array($decoded['users'] ?? null) ? $decoded['users'] : [];
+    $normalized = [];
+    foreach ($users as $userId => $specializationIds) {
+        $normalizedUserId = (int)$userId;
+        if ($normalizedUserId <= 0 || !is_array($specializationIds)) {
+            continue;
+        }
+
+        $ids = [];
+        foreach ($specializationIds as $specializationId) {
+            $id = employeeSpecializationNormalizeId($specializationId);
+            if ($id !== null) {
+                $ids[] = $id;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+        $normalized[(string)$normalizedUserId] = $ids;
+    }
+
+    return $normalized;
+}
+
+function employeeSpecializationWriteAssignments(PDO $conn, array $assignments): array {
+    employeeSpecializationRequireSettingsTable($conn);
+
+    $normalized = ['users' => []];
+    foreach ($assignments as $userId => $specializationIds) {
+        $normalizedUserId = (int)$userId;
+        if ($normalizedUserId <= 0 || !is_array($specializationIds)) {
+            continue;
+        }
+
+        $ids = [];
+        foreach ($specializationIds as $specializationId) {
+            $id = employeeSpecializationNormalizeId($specializationId);
+            if ($id !== null) {
+                $ids[] = $id;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+        $normalized['users'][(string)$normalizedUserId] = $ids;
+    }
+
+    $jsonValue = json_encode($normalized, JSON_UNESCAPED_SLASHES);
+    $existingStmt = $conn->prepare(
+        'SELECT Settings_ID
+         FROM settings
+         WHERE setting_key = :setting_key
+         ORDER BY Settings_ID DESC
+         LIMIT 1'
+    );
+    $existingStmt->execute([':setting_key' => MONITORING_USER_SPECIALIZATION_ASSIGNMENTS_KEY]);
+    $existingId = (int)($existingStmt->fetchColumn() ?: 0);
+
+    if ($existingId > 0) {
+        $updateStmt = $conn->prepare(
+            'UPDATE settings
+             SET setting_value = :setting_value
+             WHERE Settings_ID = :settings_id'
+        );
+        $updateStmt->execute([
+            ':setting_value' => $jsonValue,
+            ':settings_id' => $existingId,
+        ]);
+    } else {
+        $insertStmt = $conn->prepare(
+            'INSERT INTO settings (setting_key, setting_value)
+             VALUES (:setting_key, :setting_value)'
+        );
+        $insertStmt->execute([
+            ':setting_key' => MONITORING_USER_SPECIALIZATION_ASSIGNMENTS_KEY,
+            ':setting_value' => $jsonValue,
+        ]);
+    }
+
+    return $normalized['users'];
+}
+
+function employeeSpecializationSetUserAssignments(PDO $conn, int $userId, array $specializationIds): array {
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $assignments = employeeSpecializationReadAssignments($conn);
+    $ids = [];
+    foreach ($specializationIds as $specializationId) {
+        $id = employeeSpecializationNormalizeId($specializationId);
+        if ($id !== null) {
+            $ids[] = $id;
+        }
+    }
+    $ids = array_values(array_unique($ids));
+    sort($ids);
+
+    $assignments[(string)$userId] = $ids;
+    return employeeSpecializationWriteAssignments($conn, $assignments);
+}
+
+function employeeSpecializationGetUserAssignments(PDO $conn, int $userId): array {
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $assignments = employeeSpecializationReadAssignments($conn);
+    return is_array($assignments[(string)$userId] ?? null) ? $assignments[(string)$userId] : [];
 }
 
 function ensureEmployeeSpecializationSchema(PDO $conn): void {
@@ -1066,26 +1238,13 @@ function ensureEmployeeSpecializationSchema(PDO $conn): void {
 }
 
 function loadSpecializationTypes(PDO $conn): array {
-    ensureEmployeeSpecializationSchema($conn);
-
     $stmt = $conn->query(
         'SELECT specialization_type_ID AS id, Name AS name
          FROM specialization_type
          WHERE Name IS NOT NULL AND TRIM(Name) <> \'\'
          ORDER BY specialization_type_ID ASC'
     );
-    $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
-
-    if (!empty($rows)) {
-        return $rows;
-    }
-
-    return [
-        ['id' => 1, 'name' => 'Tax Filing'],
-        ['id' => 2, 'name' => 'Auditing'],
-        ['id' => 3, 'name' => 'Book Keeping'],
-        ['id' => 4, 'name' => 'Accounting Operations'],
-    ];
+    return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 }
 
 function findSpecializationTypeById(PDO $conn, $value): ?array {
@@ -1093,8 +1252,6 @@ function findSpecializationTypeById(PDO $conn, $value): ?array {
     if ($id === null) {
         return null;
     }
-
-    ensureEmployeeSpecializationSchema($conn);
 
     $stmt = $conn->prepare(
         'SELECT specialization_type_ID AS id, Name AS name
@@ -1106,3 +1263,66 @@ function findSpecializationTypeById(PDO $conn, $value): ?array {
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     return $row ?: null;
 }
+
+function employeeSpecializationResolveServiceIds(PDO $conn, array $specializationIds): array {
+    $settings = monitoring_get_specialization_management_settings($conn);
+    $configMap = is_array($settings['specializations'] ?? null) ? $settings['specializations'] : [];
+    $serviceIds = [];
+
+    foreach ($specializationIds as $specializationId) {
+        $normalizedSpecializationId = employeeSpecializationNormalizeId($specializationId);
+        if ($normalizedSpecializationId === null) {
+            continue;
+        }
+
+        $config = is_array($configMap[(string)$normalizedSpecializationId] ?? null)
+            ? $configMap[(string)$normalizedSpecializationId]
+            : [];
+
+        foreach ((array)($config['service_ids'] ?? []) as $serviceId) {
+            $normalizedServiceId = (int)$serviceId;
+            if ($normalizedServiceId > 0) {
+                $serviceIds[] = $normalizedServiceId;
+            }
+        }
+    }
+
+    $serviceIds = array_values(array_unique($serviceIds));
+    sort($serviceIds);
+    return $serviceIds;
+}
+
+function employeeSpecializationResolveServiceNames(PDO $conn, array $specializationIds): array {
+    $serviceIds = employeeSpecializationResolveServiceIds($conn, $specializationIds);
+    if (empty($serviceIds)) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($serviceIds), '?'));
+    $stmt = $conn->prepare(
+        "SELECT Services_type_Id AS id, Name AS name
+         FROM services_type
+         WHERE Services_type_Id IN ($placeholders)"
+    );
+    $stmt->execute($serviceIds);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $nameMap = [];
+    foreach ($rows as $row) {
+        $serviceId = (int)($row['id'] ?? 0);
+        $serviceName = trim((string)($row['name'] ?? ''));
+        if ($serviceId > 0 && $serviceName !== '') {
+            $nameMap[$serviceId] = $serviceName;
+        }
+    }
+
+    $serviceNames = [];
+    foreach ($serviceIds as $serviceId) {
+        if (isset($nameMap[$serviceId])) {
+            $serviceNames[] = $nameMap[$serviceId];
+        }
+    }
+
+    return array_values(array_unique($serviceNames));
+}
+require_once __DIR__ . '/management_catalog_settings_helper.php';

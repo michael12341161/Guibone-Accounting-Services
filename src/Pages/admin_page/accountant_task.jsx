@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
   api,
+  fetchSpecializationTypes,
   fetchAvailableServices,
   fetchTaskWorkloadSettings,
   saveTaskWorkloadSettings,
+  updateServiceType,
 } from "../../services/api";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -20,6 +22,12 @@ import { findClientById, getClientId, matchesClientId } from "../../utils/client
 import { joinPersonName } from "../../utils/person_name";
 import { remapIndexedStepMeta } from "../../utils/task_step_metadata";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
+import {
+  buildServiceBundleCollection,
+  cloneBundleSteps as cloneServiceBundleSteps,
+  getServiceBundleKey,
+  normalizeServiceNameKey,
+} from "../../utils/service_bundles";
 import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 import { filterTaskServiceOptions } from "../../utils/task_service_options";
 import {
@@ -64,6 +72,12 @@ const stepAssigneeLabel = (assignee) => {
   if (normalized === "secretary") return "Secretary";
   return "Accountant";
 };
+
+const hasBundleDraft = (drafts, bundleKey) =>
+  Object.prototype.hasOwnProperty.call(drafts || {}, bundleKey);
+
+const getBundleDraftSteps = (drafts, bundleKey, fallbackSteps) =>
+  cloneServiceBundleSteps(hasBundleDraft(drafts, bundleKey) ? drafts[bundleKey] : fallbackSteps);
 
 const stepAssigneeTone = (assignee) => {
   const normalized = normalizeStepAssignee(assignee);
@@ -504,118 +518,20 @@ function isActiveClient(client) {
 }
 
 function normalizeServiceMatchKey(value) {
-  const compact = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-
-  if (!compact) return "";
-  if (compact === "booking" || compact.includes("bookkeep")) return "bookkeeping";
-  if (compact.includes("taxfil")) return "taxfiling";
-  if (compact.includes("audit")) return "auditing";
-  if (compact.includes("taxcomp")) return "taxcomputation";
-  return compact;
+  return normalizeServiceNameKey(value);
 }
 
-const TASK_BUNDLE_TEMPLATES = [
-  {
-    key: "taxfiling",
-    label: "Tax Filing Bundle",
-    serviceName: "Tax Filing",
-    summary: "Ready-made filing workflow from document collection up to submission proof.",
-    steps: [
-      { assignee: "secretary", text: "Collect and validate the client's tax source documents for the filing period." },
-      { assignee: "accountant", text: "Review records and reconcile transactions that affect the tax filing." },
-      { assignee: "accountant", text: "Prepare the tax return and compute the amount due or refund." },
-      { assignee: "owner", text: "Review the prepared return and approve it before submission." },
-      { assignee: "secretary", text: "Submit the filing and save the official proof of submission." },
-    ],
-  },
-  {
-    key: "auditing",
-    label: "Auditing Bundle",
-    serviceName: "Auditing",
-    summary: "Standard audit flow for requirements, testing, review, and report release.",
-    steps: [
-      { assignee: "secretary", text: "Request the audit requirements and prior records from the client." },
-      { assignee: "accountant", text: "Organize the working papers and supporting schedules." },
-      { assignee: "accountant", text: "Perform audit testing and document the findings." },
-      { assignee: "owner", text: "Review the findings and approve the final audit report." },
-      { assignee: "secretary", text: "Release the completed audit report to the client." },
-    ],
-  },
-  {
-    key: "bookkeeping",
-    label: "Book Keeping Bundle",
-    serviceName: "Book Keeping",
-    summary: "Recurring bookkeeping flow for encoding, reconciliation, and report review.",
-    steps: [
-      { assignee: "secretary", text: "Collect bookkeeping documents, receipts, and supporting files from the client." },
-      { assignee: "accountant", text: "Record and categorize the transactions for the covered period." },
-      { assignee: "accountant", text: "Reconcile the bank records and subsidiary ledgers." },
-      { assignee: "accountant", text: "Prepare the bookkeeping summary and draft reports." },
-      { assignee: "owner", text: "Review the reports and confirm the bookkeeping output." },
-    ],
-  },
-  {
-    key: "taxcomputation",
-    label: "Tax Computation Bundle",
-    serviceName: "Tax Computation",
-    summary: "Template for validating records, computing taxes due, and final client-ready output.",
-    steps: [
-      { assignee: "secretary", text: "Gather income, expense, and deductible documents needed for tax computation." },
-      { assignee: "accountant", text: "Validate the source records and prepare the tax computation worksheet." },
-      { assignee: "accountant", text: "Compute taxes due and document adjustments or discrepancies." },
-      { assignee: "owner", text: "Review the computation and approve the finalized figures." },
-      { assignee: "secretary", text: "Send the approved tax computation summary to the client." },
-    ],
-  },
-  {
-    key: "processing",
-    label: "Processing Bundle",
-    serviceName: "Processing",
-    summary: "Default processing flow for requirements checking, forms, review, and submission tracking.",
-    steps: [
-      { assignee: "secretary", text: "Confirm the client's requirements and identify missing documents." },
-      { assignee: "secretary", text: "Prepare the processing checklist and required forms." },
-      { assignee: "accountant", text: "Review the submitted details and attachments for completeness." },
-      { assignee: "secretary", text: "Submit the processed documents and track the status update." },
-    ],
-  },
-];
-
-function findTaskBundleTemplate(bundleKey) {
-  return TASK_BUNDLE_TEMPLATES.find((template) => template.key === bundleKey) || null;
-}
-
-function cloneBundleSteps(steps) {
-  return (Array.isArray(steps) ? steps : []).map((step) => ({
-    assignee: normalizeStepAssignee(step?.assignee, "accountant"),
-    text: String(step?.text || ""),
-  }));
-}
-
-function getTaskBundleTemplateKey(serviceName) {
-  const serviceKey = normalizeServiceMatchKey(serviceName);
-  if (!serviceKey) return "";
-
-  return (
-    TASK_BUNDLE_TEMPLATES.find(
-      (template) => normalizeServiceMatchKey(template.serviceName) === serviceKey
-    )?.key || ""
-  );
-}
-
-function resolveTaskBundleServiceName(bundle, availableServices) {
-  const bundleKey = normalizeServiceMatchKey(bundle?.serviceName);
-  const matchedService = (Array.isArray(availableServices) ? availableServices : []).find(
-    (service) => normalizeServiceMatchKey(service?.name || "") === bundleKey
-  );
-
-  return String(matchedService?.name || bundle?.serviceName || "").trim();
+function isProcessingService(value) {
+  return normalizeServiceMatchKey(value) === "processing";
 }
 
 function getAccountantSpecialization(accountant) {
+  const names = Array.isArray(accountant?.employee_specialization_type_names)
+    ? accountant.employee_specialization_type_names.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (names.length > 0) {
+    return names.join(", ");
+  }
   return String(accountant?.employee_specialization_type_name || "").trim();
 }
 
@@ -638,11 +554,60 @@ function isAccountantUser(user) {
   return getUserRoleLabel(user).toLowerCase() === "accountant";
 }
 
-function accountantMatchesService(accountant, serviceName) {
-  if (isSecretaryUser(accountant)) return true;
+function getUserSpecializationIds(user) {
+  const values = Array.isArray(user?.employee_specialization_type_ids)
+    ? user.employee_specialization_type_ids
+    : [user?.employee_specialization_type_id];
+
+  return values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function getUserSpecializationNames(user) {
+  const values = Array.isArray(user?.employee_specialization_type_names)
+    ? user.employee_specialization_type_names
+    : [user?.employee_specialization_type_name];
+
+  return values
+    .map((value) => normalizeServiceMatchKey(value))
+    .filter(Boolean);
+}
+
+function userMatchesEnabledService(user, serviceName, activeSpecializationById, activeSpecializationByName) {
   const serviceKey = normalizeServiceMatchKey(serviceName);
-  if (!serviceKey) return true;
-  return normalizeServiceMatchKey(getAccountantSpecialization(accountant)) === serviceKey;
+  const enabledSpecializations = [];
+
+  getUserSpecializationIds(user).forEach((specializationId) => {
+    const match = activeSpecializationById.get(specializationId);
+    if (match) {
+      enabledSpecializations.push(match);
+    }
+  });
+
+  getUserSpecializationNames(user).forEach((specializationName) => {
+    const match = activeSpecializationByName.get(specializationName);
+    if (match) {
+      enabledSpecializations.push(match);
+    }
+  });
+
+  if (enabledSpecializations.length === 0) {
+    return false;
+  }
+
+  if (!serviceKey) {
+    return true;
+  }
+
+  return enabledSpecializations.some((specialization) => {
+    const serviceKeys = Array.isArray(specialization?.serviceKeys) ? specialization.serviceKeys : [];
+    if (serviceKeys.length > 0) {
+      return serviceKeys.includes(serviceKey);
+    }
+
+    return normalizeServiceMatchKey(specialization?.name) === serviceKey;
+  });
 }
 
 function ClientPicker({ clients, value, onChange }) {
@@ -983,6 +948,7 @@ export default function AdminAccountantTaskManagement() {
   const [clients, setClients] = useState([]);
   const [services, setServices] = useState([]);
   const [accountants, setAccountants] = useState([]);
+  const [specializations, setSpecializations] = useState([]);
 
   // To-Do filters
   const [todoSearch, setTodoSearch] = useState("");
@@ -1011,6 +977,7 @@ export default function AdminAccountantTaskManagement() {
   const [selectedBundleKey, setSelectedBundleKey] = useState("");
   const [editingBundleKey, setEditingBundleKey] = useState("");
   const [bundleDraftSteps, setBundleDraftSteps] = useState({});
+  const [savingBundleKey, setSavingBundleKey] = useState("");
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
   const [didLoadClients, setDidLoadClients] = useState(false);
 
@@ -1041,16 +1008,61 @@ export default function AdminAccountantTaskManagement() {
   const activeClients = useMemo(() => {
     return (Array.isArray(clients) ? clients : []).filter(isActiveClient);
   }, [clients]);
+  const activeSpecializationById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(specializations) ? specializations : []).forEach((specialization) => {
+      if (specialization?.disabled) return;
+      const specializationId = Number(specialization?.id);
+      if (!Number.isFinite(specializationId) || specializationId <= 0) return;
+      map.set(specializationId, {
+        name: String(specialization?.name || "").trim(),
+        serviceKeys: (Array.isArray(specialization?.service_names) ? specialization.service_names : [])
+          .map((value) => normalizeServiceMatchKey(value))
+          .filter(Boolean),
+      });
+    });
+    return map;
+  }, [specializations]);
+  const activeSpecializationByName = useMemo(() => {
+    const map = new Map();
+    activeSpecializationById.forEach((value) => {
+      const nameKey = normalizeServiceMatchKey(value?.name);
+      if (nameKey) {
+        map.set(nameKey, value);
+      }
+    });
+    return map;
+  }, [activeSpecializationById]);
   const matchingAccountants = useMemo(() => {
     return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      accountantMatchesService(accountant, form.service_name || form.title)
+      userMatchesEnabledService(
+        accountant,
+        form.service_name || form.title,
+        activeSpecializationById,
+        activeSpecializationByName
+      )
     );
-  }, [accountants, form.service_name, form.title]);
+  }, [accountants, activeSpecializationById, activeSpecializationByName, form.service_name, form.title]);
+  const selectedCreateTaskServiceName = String(form.service_name || form.title || "").trim();
+  const partnerUsesAllSpecializations = isProcessingService(selectedCreateTaskServiceName);
   const partnerAccountants = useMemo(() => {
     return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      isAccountantUser(accountant) && accountantMatchesService(accountant, form.service_name || form.title)
+      isAccountantUser(accountant) &&
+      (partnerUsesAllSpecializations ||
+        userMatchesEnabledService(
+          accountant,
+          selectedCreateTaskServiceName,
+          activeSpecializationById,
+          activeSpecializationByName
+        ))
     );
-  }, [accountants, form.service_name, form.title]);
+  }, [
+    accountants,
+    activeSpecializationById,
+    activeSpecializationByName,
+    partnerUsesAllSpecializations,
+    selectedCreateTaskServiceName,
+  ]);
   const selectedAssignee = useMemo(
     () => (Array.isArray(accountants) ? accountants : []).find((accountant) => String(accountant.id) === String(form.accountant_id || "")) || null,
     [accountants, form.accountant_id]
@@ -1073,25 +1085,43 @@ export default function AdminAccountantTaskManagement() {
     canViewTaskLimit &&
     (Number(user?.role_id || user?.roleId || 0) === 1 ||
       String(user?.role || user?.role_name || "").trim().toLowerCase() === "admin");
+  const resolveBundleKeyForService = (serviceName, serviceId = "") => {
+    const normalizedServiceId = String(serviceId || "").trim();
+    if (normalizedServiceId) {
+      const matchedById = (Array.isArray(services) ? services : []).find(
+        (service) => String(service?.id ?? service?.Services_type_Id ?? "").trim() === normalizedServiceId
+      );
+      if (matchedById) {
+        return String(matchedById?.id ?? matchedById?.Services_type_Id ?? "").trim();
+      }
+    }
+
+    const targetKey = normalizeServiceMatchKey(serviceName);
+    if (!targetKey) return "";
+
+    const matchedService = (Array.isArray(services) ? services : []).find(
+      (service) => normalizeServiceMatchKey(service?.name || "") === targetKey
+    );
+
+    return String(matchedService?.id || getServiceBundleKey(serviceName) || "").trim();
+  };
   const selectedServiceDuration = useMemo(
     () => getEstimatedServiceDuration(form.service_name || form.title),
     [form.service_name, form.title]
   );
   const suggestedBundleKey = useMemo(
-    () => getTaskBundleTemplateKey(form.service_name || form.title),
-    [form.service_name, form.title]
+    () => resolveBundleKeyForService(form.service_name || form.title),
+    [form.service_name, form.title, services]
   );
   const bundleTemplates = useMemo(() => {
-    return TASK_BUNDLE_TEMPLATES.map((template) => {
-      const resolvedServiceName = resolveTaskBundleServiceName(template, services);
-      const isAvailable = !form.client_id || Boolean(resolvedServiceName);
-      const draftSteps = bundleDraftSteps[template.key];
+    return buildServiceBundleCollection(services).map((bundle) => {
+      const isAvailable = !form.client_id || Boolean(bundle.serviceName);
+      const draftSteps = bundleDraftSteps[bundle.key];
 
       return {
-        ...template,
-        serviceName: resolvedServiceName || template.serviceName,
+        ...bundle,
         isAvailable,
-        steps: cloneBundleSteps(draftSteps || template.steps),
+        steps: cloneServiceBundleSteps(draftSteps || bundle.steps),
       };
     });
   }, [bundleDraftSteps, form.client_id, services]);
@@ -1131,15 +1161,23 @@ export default function AdminAccountantTaskManagement() {
     let stop = false;
     (async () => {
       try {
-        const [c, t, u] = await Promise.all([
+        const [c, t, u, specializationRes] = await Promise.all([
           api.get("client_list.php"),
           api.get("task_list.php"),
           api.get("user_list.php"),
+          fetchSpecializationTypes({
+            params: {
+              include_disabled: 1,
+            },
+          }),
         ]);
         if (!stop) {
           setClients(Array.isArray(c.data?.clients) ? c.data.clients : []);
           setDidLoadClients(true);
           if (Array.isArray(t.data?.tasks)) setTasks(t.data.tasks);
+          setSpecializations(
+            Array.isArray(specializationRes?.data?.specialization_types) ? specializationRes.data.specialization_types : []
+          );
           if (Array.isArray(u.data?.users)) {
             const accs = u.data.users.filter((x) => {
               const role = String(x.role || "").toLowerCase();
@@ -1257,11 +1295,25 @@ export default function AdminAccountantTaskManagement() {
   }, [form.service_name, form.title, selectedAppointmentId, selectedBundleKey]);
 
   useEffect(() => {
+    if (!selectedAppointmentId || selectedBundleKey || !suggestedBundleKey) return;
+    setSelectedBundleKey(suggestedBundleKey);
+  }, [selectedAppointmentId, selectedBundleKey, suggestedBundleKey]);
+
+  useEffect(() => {
+    const hasSelectedService = String(form.service_name || form.title || "").trim();
+    if (!hasSelectedService) return;
+    if (!suggestedBundleKey) return;
+    if (selectedBundle) return;
+    setSelectedBundleKey(suggestedBundleKey);
+  }, [form.service_name, form.title, selectedBundle, selectedBundleKey, suggestedBundleKey]);
+
+  useEffect(() => {
     const appointment = location.state?.prefillTaskFromAppointment;
     if (!appointment) return undefined;
 
     const nextClientId = String(appointment?.clientId || "").trim();
     const nextServiceName = String(appointment?.serviceName || "").trim();
+    const nextServiceId = String(appointment?.serviceId || "").trim();
     const nextDueDate = String(appointment?.date || "").trim();
 
     if (!nextClientId || !nextServiceName) {
@@ -1270,7 +1322,7 @@ export default function AdminAccountantTaskManagement() {
       return undefined;
     }
 
-    const autoBundleKey = getTaskBundleTemplateKey(nextServiceName);
+    const autoBundleKey = resolveBundleKeyForService(nextServiceName, nextServiceId);
     const fallbackDueDate = getAutoDueDateForService(nextServiceName) || "";
 
     setForm((current) => ({
@@ -1280,7 +1332,7 @@ export default function AdminAccountantTaskManagement() {
       service_name: nextServiceName,
       accountant_id: "",
       partner_id: "",
-      due_date: nextDueDate || fallbackDueDate,
+      due_date: fallbackDueDate || nextDueDate,
     }));
     setSelectedAppointmentId(String(appointment?.id || ""));
     setSelectedBundleKey(autoBundleKey);
@@ -1312,7 +1364,7 @@ export default function AdminAccountantTaskManagement() {
 
   const handleServiceSelection = (value, options = {}) => {
     const autoDueDate = getAutoDueDateForService(value);
-    const autoBundleKey = getTaskBundleTemplateKey(value);
+    const autoBundleKey = resolveBundleKeyForService(value);
     if (options.clearAppointment !== false) {
       setSelectedAppointmentId("");
     }
@@ -1344,10 +1396,11 @@ export default function AdminAccountantTaskManagement() {
 
   const startBundleEditing = (bundleKey) => {
     setBundleDraftSteps((current) => {
-      if (current[bundleKey]) return current;
+      if (hasBundleDraft(current, bundleKey)) return current;
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
       return {
         ...current,
-        [bundleKey]: cloneBundleSteps(findTaskBundleTemplate(bundleKey)?.steps),
+        [bundleKey]: cloneServiceBundleSteps(sourceBundle?.steps),
       };
     });
     setEditingBundleKey(bundleKey);
@@ -1355,7 +1408,8 @@ export default function AdminAccountantTaskManagement() {
 
   const updateBundleStep = (bundleKey, stepIndex, changes) => {
     setBundleDraftSteps((current) => {
-      const source = cloneBundleSteps(current[bundleKey] || findTaskBundleTemplate(bundleKey)?.steps);
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+      const source = getBundleDraftSteps(current, bundleKey, sourceBundle?.steps);
       if (!source[stepIndex]) return current;
 
       source[stepIndex] = {
@@ -1380,14 +1434,75 @@ export default function AdminAccountantTaskManagement() {
 
   const addBundleStep = (bundleKey) => {
     setBundleDraftSteps((current) => {
-      const source = cloneBundleSteps(current[bundleKey] || findTaskBundleTemplate(bundleKey)?.steps);
-      source.push({ assignee: "accountant", text: "New bundle step" });
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+      const source = getBundleDraftSteps(current, bundleKey, sourceBundle?.steps);
+      source.push({ assignee: "accountant", text: "" });
       return {
         ...current,
         [bundleKey]: source,
       };
     });
     setEditingBundleKey(bundleKey);
+  };
+
+  const removeBundleStep = (bundleKey, stepIndex) => {
+    setBundleDraftSteps((current) => {
+      const sourceBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+      const source = getBundleDraftSteps(current, bundleKey, sourceBundle?.steps);
+      if (!source[stepIndex]) return current;
+
+      return {
+        ...current,
+        [bundleKey]: source.filter((_, index) => index !== stepIndex),
+      };
+    });
+    setEditingBundleKey(bundleKey);
+  };
+
+  const finishBundleEditing = async (bundleKey) => {
+    const activeBundle = bundleTemplates.find((bundle) => bundle.key === bundleKey);
+    if (!activeBundle) {
+      return;
+    }
+
+    const nextSteps = getBundleDraftSteps(bundleDraftSteps, bundleKey, activeBundle?.steps).map((step) => ({
+      assignee: normalizeStepAssignee(step?.assignee, "accountant"),
+      text: String(step?.text || ""),
+    }));
+
+    const serviceId = Number(activeBundle?.id || 0);
+    if (!Number.isInteger(serviceId) || serviceId <= 0) {
+      showErrorToast("Unable to save bundle steps because the service record is missing.");
+      return;
+    }
+
+    try {
+      setSavingBundleKey(bundleKey);
+      await updateServiceType({
+        service_id: serviceId,
+        name: activeBundle.serviceName,
+        disabled: Boolean(activeBundle.disabled),
+        bundle_steps: nextSteps,
+      });
+
+      setServices((current) =>
+        (Array.isArray(current) ? current : []).map((service) =>
+          String(service?.id ?? "") === String(serviceId)
+            ? { ...service, bundle_steps: nextSteps }
+            : service
+        )
+      );
+      setBundleDraftSteps((current) => ({
+        ...current,
+        [bundleKey]: nextSteps,
+      }));
+      setEditingBundleKey("");
+      showSuccessToast("Bundle steps saved to the database.");
+    } catch (error) {
+      showErrorToast(error?.response?.data?.message || error?.message || "Failed to save bundle steps.");
+    } finally {
+      setSavingBundleKey("");
+    }
   };
 
   const resetBundleDraft = (bundleKey) => {
@@ -1470,7 +1585,7 @@ export default function AdminAccountantTaskManagement() {
     }
     if (selectedAssigneeIsSecretary) {
       if (partnerAccountants.length === 0) {
-        setError("No accountant partners match the selected service right now.");
+        setError("No accountant partners are available right now.");
         return;
       }
       if (!String(form.partner_id || "").trim()) {
@@ -1478,7 +1593,7 @@ export default function AdminAccountantTaskManagement() {
         return;
       }
       if (!partnerAccountants.some((accountant) => String(accountant.id) === String(form.partner_id))) {
-        setError("Please select a partner accountant whose specialization matches the selected service.");
+        setError("Please select a valid partner accountant for the secretary.");
         return;
       }
     }
@@ -1630,12 +1745,14 @@ export default function AdminAccountantTaskManagement() {
 
   useEffect(() => {
     const nextBundleKey = suggestedBundleKey || "";
-    setSelectedBundleKey((current) => (current === nextBundleKey ? current : nextBundleKey));
 
-    if (!nextBundleKey || (editingBundleKey && editingBundleKey !== nextBundleKey)) {
-      setEditingBundleKey("");
-    }
-  }, [editingBundleKey, suggestedBundleKey]);
+    setSelectedBundleKey((current) => {
+      if (!nextBundleKey) {
+        return current;
+      }
+      return current || nextBundleKey;
+    });
+  }, [suggestedBundleKey]);
 
   const staffWorkloadRows = useMemo(() => {
     const taskCountsByStaffId = new Map();
@@ -1689,7 +1806,7 @@ export default function AdminAccountantTaskManagement() {
 
     const serviceName = String(taskAssigneeEditCtx.serviceName || "").trim();
     const available = (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      accountantMatchesService(accountant, serviceName)
+      userMatchesEnabledService(accountant, serviceName, activeSpecializationById, activeSpecializationByName)
     );
     const currentId = String(taskAssigneeEditCtx.currentAssigneeId || "").trim();
     if (!currentId) return available;
@@ -1701,13 +1818,16 @@ export default function AdminAccountantTaskManagement() {
       (accountant) => String(accountant.id) === currentId
     );
     return currentAssignee ? [currentAssignee, ...available] : available;
-  }, [accountants, taskAssigneeEditCtx]);
+  }, [accountants, activeSpecializationById, activeSpecializationByName, taskAssigneeEditCtx]);
   const taskPartnerOptions = useMemo(() => {
     const serviceName = String(taskAssigneeEditCtx?.serviceName || "").trim();
+    const allowAllSpecializations = isProcessingService(serviceName);
     return (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      isAccountantUser(accountant) && accountantMatchesService(accountant, serviceName)
+      isAccountantUser(accountant) &&
+      (allowAllSpecializations ||
+        userMatchesEnabledService(accountant, serviceName, activeSpecializationById, activeSpecializationByName))
     );
-  }, [accountants, taskAssigneeEditCtx]);
+  }, [accountants, activeSpecializationById, activeSpecializationByName, taskAssigneeEditCtx]);
   const selectedTaskAssignee = useMemo(() => {
     if (!taskAssigneeEditValue) return null;
     return taskAssigneeOptions.find((accountant) => String(accountant.id) === String(taskAssigneeEditValue)) || null;
@@ -1731,8 +1851,13 @@ export default function AdminAccountantTaskManagement() {
     );
     if (!currentAssignee) return true;
 
-    return accountantMatchesService(currentAssignee, taskAssigneeEditCtx?.serviceName);
-  }, [accountants, taskAssigneeEditCtx]);
+    return userMatchesEnabledService(
+      currentAssignee,
+      taskAssigneeEditCtx?.serviceName,
+      activeSpecializationById,
+      activeSpecializationByName
+    );
+  }, [accountants, activeSpecializationById, activeSpecializationByName, taskAssigneeEditCtx]);
 
   useEffect(() => {
     if (selectedTaskAssigneeIsSecretary) return;
@@ -2012,7 +2137,7 @@ export default function AdminAccountantTaskManagement() {
       (accountant) => String(accountant.id) === normalizedCurrentId
     );
     const matchingAssignees = (Array.isArray(accountants) ? accountants : []).filter((accountant) =>
-      accountantMatchesService(accountant, serviceName)
+      userMatchesEnabledService(accountant, serviceName, activeSpecializationById, activeSpecializationByName)
     );
     const hasCurrent = matchingAssignees.some((accountant) => String(accountant.id) === normalizedCurrentId);
     const nextDefaultValue = currentAssignee ? normalizedCurrentId : String(matchingAssignees[0]?.id || "");
@@ -2081,7 +2206,15 @@ export default function AdminAccountantTaskManagement() {
         setTaskEditError("Please assign an accountant or secretary.");
         return;
       }
-      if (!nextAssignee || !accountantMatchesService(nextAssignee, taskAssigneeEditCtx.serviceName)) {
+      if (
+        !nextAssignee ||
+        !userMatchesEnabledService(
+          nextAssignee,
+          taskAssigneeEditCtx.serviceName,
+          activeSpecializationById,
+          activeSpecializationByName
+        )
+      ) {
         setTaskEditError("Please assign a matching accountant or secretary for the selected service.");
         return;
       }
@@ -2095,7 +2228,7 @@ export default function AdminAccountantTaskManagement() {
     }
     if (shouldRequirePartner) {
       if (!taskPartnerOptions.length) {
-        setTaskEditError("No accountant partners match this service right now.");
+        setTaskEditError("No accountant partners are available right now.");
         return;
       }
       if (!nextPartnerId) {
@@ -2103,7 +2236,7 @@ export default function AdminAccountantTaskManagement() {
         return;
       }
       if (!taskPartnerOptions.some((accountant) => String(accountant.id) === nextPartnerId)) {
-        setTaskEditError("Please select a partner accountant whose specialization matches this service.");
+        setTaskEditError("Please select a valid partner accountant for the secretary.");
         return;
       }
     }
@@ -2325,6 +2458,7 @@ export default function AdminAccountantTaskManagement() {
                         setError("");
                       }}
                       serviceName={form.service_name || form.title}
+                      filterByService={!partnerUsesAllSpecializations}
                       disabled={partnerAccountants.length === 0}
                     />
                     <p className="mt-1 text-[11px] text-slate-500">
@@ -2332,7 +2466,9 @@ export default function AdminAccountantTaskManagement() {
                     </p>
                     {partnerAccountants.length === 0 ? (
                       <p className="mt-1 text-[11px] text-rose-600">
-                        No partner accountant matches this task specialization yet.
+                        {partnerUsesAllSpecializations
+                          ? "No partner accountant is available yet."
+                          : "No partner accountant matches this task specialization yet."}
                       </p>
                     ) : null}
                     {selectedPartnerAccountant ? (
@@ -3074,34 +3210,35 @@ export default function AdminAccountantTaskManagement() {
                         type="button"
                         variant="secondary"
                         size="sm"
-                        disabled={!bundle.isAvailable}
-                        onClick={() => {
+                        disabled={!bundle.isAvailable || savingBundleKey === bundle.key}
+                        onClick={async () => {
                           if (isEditing) {
-                            setEditingBundleKey("");
+                            await finishBundleEditing(bundle.key);
                             return;
                           }
                           startBundleEditing(bundle.key);
                         }}
                       >
-                        {isEditing ? "Done Editing" : "Edit Steps"}
+                        {savingBundleKey === bundle.key ? "Saving..." : isEditing ? "Done Editing" : "Edit Steps"}
                       </Button>
                       <Button
                         type="button"
                         variant="secondary"
                         size="sm"
-                        disabled={!bundle.isAvailable}
+                        disabled={!bundle.isAvailable || savingBundleKey === bundle.key}
                         onClick={() => addBundleStep(bundle.key)}
                       >
                         Add Step
                       </Button>
                       {isEditing ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => resetBundleDraft(bundle.key)}
-                        >
-                          Reset Steps
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={savingBundleKey === bundle.key}
+                            onClick={() => resetBundleDraft(bundle.key)}
+                          >
+                            Reset Steps
                         </Button>
                       ) : null}
                       {suggestedBundleKey ? (
@@ -3129,45 +3266,65 @@ export default function AdminAccountantTaskManagement() {
                   </div>
 
                   <div className="mt-4 grid gap-2">
-                    {bundle.steps.map((step, index) => (
-                      <div
-                        key={`${bundle.key}-step-${index}`}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2"
-                      >
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Step {index + 1}
-                          </span>
+                    {bundle.steps.length ? (
+                      bundle.steps.map((step, index) => (
+                        <div
+                          key={`${bundle.key}-step-${index}`}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                                Step {index + 1}
+                              </span>
+                              {isEditing ? (
+                                <select
+                                  value={step.assignee}
+                                  onChange={(e) =>
+                                    updateBundleStep(bundle.key, index, { assignee: e.target.value })
+                                  }
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                  <option value="accountant">Accountant</option>
+                                  <option value="secretary">Secretary</option>
+                                  <option value="owner">Owner</option>
+                                </select>
+                              ) : (
+                                <span>{stepAssigneeLabel(step.assignee)}</span>
+                              )}
+                            </div>
+                            {isEditing ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={savingBundleKey === bundle.key}
+                                onClick={() => removeBundleStep(bundle.key, index)}
+                              >
+                                Remove Step
+                              </Button>
+                            ) : null}
+                          </div>
                           {isEditing ? (
-                            <select
-                              value={step.assignee}
+                            <textarea
+                              rows={2}
+                              value={step.text}
                               onChange={(e) =>
-                                updateBundleStep(bundle.key, index, { assignee: e.target.value })
+                                updateBundleStep(bundle.key, index, { text: e.target.value })
                               }
-                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            >
-                              <option value="accountant">Accountant</option>
-                              <option value="secretary">Secretary</option>
-                              <option value="owner">Owner</option>
-                            </select>
+                              className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                              placeholder="Describe the bundle step"
+                            />
                           ) : (
-                            <span>{stepAssigneeLabel(step.assignee)}</span>
+                            <div className="mt-1 text-sm text-slate-700">{step.text}</div>
                           )}
                         </div>
-                        {isEditing ? (
-                          <textarea
-                            rows={2}
-                            value={step.text}
-                            onChange={(e) =>
-                              updateBundleStep(bundle.key, index, { text: e.target.value })
-                            }
-                            className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                          />
-                        ) : (
-                          <div className="mt-1 text-sm text-slate-700">{step.text}</div>
-                        )}
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                        No bundle steps yet. Use Add Step to create one.
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
               );
@@ -3398,6 +3555,7 @@ export default function AdminAccountantTaskManagement() {
                   setTaskEditError("");
                 }}
                 serviceName={taskAssigneeEditCtx?.serviceName || ""}
+                filterByService={!isProcessingService(taskAssigneeEditCtx?.serviceName || "")}
                 disabled={taskAssigneeSaving || taskPartnerOptions.length === 0}
               />
               <div className="mt-2 text-[11px] text-slate-500">
@@ -3405,7 +3563,9 @@ export default function AdminAccountantTaskManagement() {
               </div>
               {taskPartnerOptions.length === 0 ? (
                 <div className="mt-2 text-[11px] text-rose-600">
-                  No partner accountant matches this task specialization yet.
+                  {isProcessingService(taskAssigneeEditCtx?.serviceName || "")
+                    ? "No partner accountant is available yet."
+                    : "No partner accountant matches this task specialization yet."}
                 </div>
               ) : null}
               {selectedTaskPartnerAccountant ? (

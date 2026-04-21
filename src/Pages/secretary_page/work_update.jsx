@@ -384,7 +384,7 @@ const cleanDescription = (desc) => {
   // [Progress] 80
   // [Priority] Medium
   // [Deadline] 25/02/2026
-  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|StepPending|Archived|SecretaryArchived|CreatedAt)\]\s*.*$/gim, "");
+  d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|StepPending|Archived|SecretaryArchived|CreatedAt|Appointment_ID)\]\s*.*$/gim, "");
   d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
   d = d.replace(/\s*\[Done\]\s*/gi, " ");
 

@@ -180,12 +180,34 @@ export function normalizeServiceOptions(rows) {
     return [];
   }
 
-  const names = rows
-    .map((entry) => (typeof entry === "string" ? entry : entry?.Name || entry?.name))
-    .map((name) => String(name || "").trim())
+  const normalized = rows
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return { id: "", name: String(entry).trim(), disabled: false, bundle_steps: [] };
+      }
+
+      const name = String(entry?.Name || entry?.name || "").trim();
+      if (!name) return null;
+
+      return {
+        ...entry,
+        id: entry?.Services_type_Id ?? entry?.services_type_id ?? entry?.id ?? "",
+        name,
+        disabled: Boolean(entry?.disabled),
+        bundle_steps: Array.isArray(entry?.bundle_steps) ? entry.bundle_steps : [],
+      };
+    })
     .filter(Boolean);
 
-  return Array.from(new Set(names)).map((name) => ({ name }));
+  const seen = new Set();
+  return normalized.filter((service) => {
+    const key = String(service?.id || "").trim() || String(service?.name || "").trim().toLowerCase();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function fetchAvailableServices(clientId, config = {}) {
@@ -205,6 +227,111 @@ export async function fetchAvailableServices(clientId, config = {}) {
       services: normalizeServiceOptions(response?.data?.services || response?.data),
     },
   };
+}
+
+export async function createServiceType(payload, config = {}) {
+  return api.post(
+    "services_create.php",
+    payload,
+    config
+  );
+}
+
+export async function updateServiceType(payload, config = {}) {
+  return api.post(
+    "services_update.php",
+    payload,
+    config
+  );
+}
+
+function normalizeRoleOptions(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows
+    .map((entry) => {
+      const name = String(entry?.Role_name || entry?.role_name || entry?.name || "").trim();
+      const id = entry?.Role_id ?? entry?.role_id ?? entry?.id ?? "";
+      if (!name || id === "") {
+        return null;
+      }
+
+      return {
+        ...entry,
+        id,
+        name,
+        disabled: Boolean(entry?.disabled),
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeSpecializationOptions(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows
+    .map((entry) => {
+      const name = String(entry?.Name || entry?.specialization_name || entry?.name || "").trim();
+      const id = entry?.specialization_type_ID ?? entry?.specialization_id ?? entry?.id ?? "";
+      if (!name || id === "") {
+        return null;
+      }
+
+      return {
+        ...entry,
+        id,
+        name,
+        disabled: Boolean(entry?.disabled),
+        service_ids: Array.isArray(entry?.service_ids) ? entry.service_ids.map((value) => Number(value)).filter(Number.isFinite) : [],
+        service_names: Array.isArray(entry?.service_names) ? entry.service_names.map((value) => String(value).trim()).filter(Boolean) : [],
+      };
+    })
+    .filter(Boolean);
+}
+
+export async function fetchRoles(config = {}) {
+  const response = await api.get("role_list.php", config);
+
+  return {
+    ...response,
+    data: {
+      ...response?.data,
+      roles: normalizeRoleOptions(response?.data?.roles || response?.data),
+    },
+  };
+}
+
+export async function createRole(payload, config = {}) {
+  return api.post("role_create.php", payload, config);
+}
+
+export async function updateRole(payload, config = {}) {
+  return api.post("role_update.php", payload, config);
+}
+
+export async function fetchSpecializationTypes(config = {}) {
+  const response = await api.get("specialization_type_list.php", config);
+
+  return {
+    ...response,
+    data: {
+      ...response?.data,
+      specialization_types: normalizeSpecializationOptions(response?.data?.specialization_types || response?.data),
+      services: normalizeServiceOptions(response?.data?.services || []),
+    },
+  };
+}
+
+export async function createSpecializationType(payload, config = {}) {
+  return api.post("specialization_type_create.php", payload, config);
+}
+
+export async function updateSpecializationType(payload, config = {}) {
+  return api.post("specialization_type_update.php", payload, config);
 }
 
 export const DEFAULT_SECURITY_SETTINGS = Object.freeze({

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LogIn, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 import Swal from "sweetalert2";
-import { useNavigate } from "react-router-dom";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
@@ -18,7 +17,6 @@ import {
   DEFAULT_SECURITY_SETTINGS,
   fetchSecuritySettings,
   requestModuleAccess,
-  switchToClientAccount,
 } from "../../services/api";
 import { buildBusinessAddress } from "../../utils/business_location";
 import { validatePasswordValue } from "../../utils/passwordValidation";
@@ -116,6 +114,42 @@ function getStatusPillClass(status) {
   if (statusText === "active") return "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (statusText === "-") return "bg-slate-50 text-slate-600 border-slate-200";
   return "bg-rose-50 text-rose-700 border-rose-200";
+}
+
+function resolveClientStatusId(client) {
+  const statusId = Number.parseInt(String(client?.status_id ?? client?.statusId ?? "").trim(), 10);
+  if (Number.isFinite(statusId) && statusId > 0) {
+    return statusId;
+  }
+
+  const statusText = String(client?.status || "").trim().toLowerCase();
+  if (statusText === "active") return 1;
+  if (statusText === "inactive") return 2;
+  return null;
+}
+
+function matchesClientStatusFilter(client, statusFilter) {
+  const normalizedFilter = String(statusFilter || "").trim().toLowerCase();
+  if (!normalizedFilter || normalizedFilter === "all") {
+    return true;
+  }
+
+  const statusText = String(client?.status || "").trim().toLowerCase();
+  const statusId = resolveClientStatusId(client);
+
+  if (normalizedFilter === "active") {
+    return statusText === "active" || statusId === 1;
+  }
+
+  if (normalizedFilter === "inactive") {
+    return statusText === "inactive" || statusId === 2;
+  }
+
+  return statusText === normalizedFilter;
+}
+
+function getClientStatusPageLabel(statusId) {
+  return Number(statusId) === 2 ? "Inactive Users" : "Client Management";
 }
 
 function fullName(client) {
@@ -596,9 +630,14 @@ function AddClientModal({
   );
 }
 
-export default function ClientManagement() {
-  const navigate = useNavigate();
-  const { user, login } = useAuth();
+export default function ClientManagement({
+  clientStatusFilter = "active",
+  pageTitle = "Client Management",
+  pageDescription = "Manage active client profiles and business information from the admin dashboard.",
+  emptyMessage = "No active clients found.",
+  showAddClientButton = true,
+}) {
+  const { user } = useAuth();
   const { permissions } = useModulePermissions();
   const [clients, setClients] = useState([]);
   const [businessTypes, setBusinessTypes] = useState([]);
@@ -631,7 +670,6 @@ export default function ClientManagement() {
   const [editingClient, setEditingClient] = useState(null);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
-  const [switchingClientAccountId, setSwitchingClientAccountId] = useState(null);
   const [statusActionClientId, setStatusActionClientId] = useState(null);
   const locationRequestIdRef = useRef(0);
 
@@ -641,7 +679,6 @@ export default function ClientManagement() {
   const canAddNewClient = hasFeatureActionAccess(user, "client-management", "add-new-client", permissions);
   const canViewClientLocation = hasFeatureActionAccess(user, "client-management", "location", permissions);
   const canUploadRequiredDocuments = hasFeatureActionAccess(user, "client-management", "file-upload", permissions);
-  const isAdminUser = Number(user?.role_id ?? user?.role ?? 0) === 1;
 
   const promptClientManagementAccess = useCallback(async () => {
     if (requestingAccess) {
@@ -684,50 +721,6 @@ export default function ClientManagement() {
       setRequestingAccess(false);
     }
   }, [requestingAccess]);
-
-  const openClientAccount = useCallback(async (client) => {
-    const clientId = Number(client?.id ?? 0);
-    const hasClientUserAccount = Number(client?.user_id ?? 0) > 0 && Number(client?.role_id ?? 0) === 4;
-    if (!isAdminUser || clientId <= 0 || !hasClientUserAccount) {
-      return;
-    }
-
-    const clientLabel = fullName(client) || "this client";
-    const result = await Swal.fire({
-      icon: "question",
-      title: "Access client account?",
-      text: `Are you sure you want to access ${clientLabel}'s account?`,
-      showCancelButton: true,
-      confirmButtonText: "Access Account",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-      cancelButtonColor: "#64748b",
-      reverseButtons: true,
-    });
-
-    if (!result.isConfirmed) {
-      return;
-    }
-
-    try {
-      setSwitchingClientAccountId(clientId);
-      const response = await switchToClientAccount(clientId);
-      const nextUser = response?.data?.user;
-      if (!nextUser) {
-        throw new Error(response?.data?.message || "Unable to open the client account.");
-      }
-
-      login(nextUser);
-      navigate("/client", { replace: true });
-    } catch (err) {
-      showErrorToast({
-        title: err?.response?.data?.message || err?.message || "Unable to access the client account.",
-        duration: 2400,
-      });
-    } finally {
-      setSwitchingClientAccountId(null);
-    }
-  }, [isAdminUser, login, navigate]);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -1272,6 +1265,14 @@ export default function ClientManagement() {
       const res = await api.post("client_create.php", payload);
       if (res?.data?.success) {
         const updatedClientId = normalizeIdValue(editingClient.id);
+        const updatedStatusId = normalizeIdValue(form.status_id) || 1;
+        const movedToAnotherPage = !matchesClientStatusFilter(
+          { status_id: updatedStatusId, status: updatedStatusId === 1 ? "Active" : "Inactive" },
+          clientStatusFilter
+        );
+        const successMessage = movedToAnotherPage
+          ? `Client updated successfully and moved to ${getClientStatusPageLabel(updatedStatusId)}.`
+          : "Client updated successfully.";
         let uploadSummary = { uploaded: [], failed: [] };
         if (updatedClientId) {
           uploadSummary = await uploadClientDocuments(updatedClientId, documentFiles);
@@ -1286,9 +1287,9 @@ export default function ClientManagement() {
         }
 
         if (uploadSummary.uploaded.length) {
-          setSuccess(`Client updated successfully. Uploaded: ${uploadSummary.uploaded.join(", ")}`);
+          setSuccess(`${successMessage} Uploaded: ${uploadSummary.uploaded.join(", ")}`);
         } else {
-          setSuccess("Client updated successfully.");
+          setSuccess(successMessage);
         }
       } else {
         setError(res?.data?.message || "Failed to update client.");
@@ -1379,8 +1380,8 @@ export default function ClientManagement() {
         title: nextStatusLabel === "Active" ? "Client account activated." : "Client account set to inactive.",
         description:
           nextStatusLabel === "Active"
-            ? "The client can log in and use forgot password again."
-            : "The client can no longer log in until the account is reactivated.",
+            ? `The client can log in and use forgot password again. This client now appears on the ${getClientStatusPageLabel(nextId)} page.`
+            : `The client can no longer log in until the account is reactivated. This client now appears on the ${getClientStatusPageLabel(nextId)} page.`,
       });
     } catch (err) {
       setClients((prev) =>
@@ -1392,9 +1393,14 @@ export default function ClientManagement() {
     }
   }, [canSetClientAccountStatus]);
 
+  const statusFilteredClients = useMemo(() => {
+    const list = Array.isArray(clients) ? clients : [];
+    return list.filter((client) => matchesClientStatusFilter(client, clientStatusFilter));
+  }, [clientStatusFilter, clients]);
+
   const businessTypeOptions = useMemo(() => {
-    return buildBusinessTypeOptions(businessTypes, clients);
-  }, [businessTypes, clients]);
+    return buildBusinessTypeOptions(businessTypes, statusFilteredClients);
+  }, [businessTypes, statusFilteredClients]);
 
   const businessAddressValue = useMemo(
     () => ({
@@ -1415,7 +1421,7 @@ export default function ClientManagement() {
   );
 
   const rows = useMemo(() => {
-    const list = Array.isArray(clients) ? clients : [];
+    const list = statusFilteredClients;
     const q = String(search || "").trim().toLowerCase();
     const selected = String(businessTypeFilter || "All").trim().toLowerCase();
 
@@ -1446,7 +1452,7 @@ export default function ClientManagement() {
         address.includes(q)
       );
     });
-  }, [clients, search, businessTypeFilter]);
+  }, [businessTypeFilter, search, statusFilteredClients]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
 
@@ -1547,29 +1553,6 @@ export default function ClientManagement() {
         width: "26%",
         render: (_, row) => (
           <div className="flex min-w-max flex-nowrap items-center justify-end gap-1">
-            {isAdminUser ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="shrink-0 gap-1 px-2.5"
-                onClick={() => {
-                  void openClientAccount(row.raw);
-                }}
-                disabled={
-                  switchingClientAccountId === Number(row.raw?.id ?? 0) ||
-                  Number(row.raw?.user_id ?? 0) <= 0 ||
-                  Number(row.raw?.role_id ?? 0) !== 4
-                }
-                title={
-                  Number(row.raw?.user_id ?? 0) > 0 && Number(row.raw?.role_id ?? 0) === 4
-                    ? "Access client account"
-                    : "No linked client account"
-                }
-              >
-                <LogIn className="h-3.5 w-3.5" strokeWidth={1.8} />
-                {switchingClientAccountId === Number(row.raw?.id ?? 0) ? "Opening..." : "Account"}
-              </Button>
-            ) : null}
             <IconButton
               size="sm"
               variant="secondary"
@@ -1617,14 +1600,11 @@ export default function ClientManagement() {
       canSetClientAccountStatus,
       canViewClientLocation,
       canViewClientManagement,
-      isAdminUser,
       onOpenEdit,
       onOpenLocation,
       onViewInfo,
-      openClientAccount,
       promptClientManagementAccess,
       statusActionClientId,
-      switchingClientAccountId,
       toggleClientStatus,
     ]
   );
@@ -1634,7 +1614,7 @@ export default function ClientManagement() {
       <Card compact>
         <CardHeader
           action={
-            canAddNewClient ? (
+            canAddNewClient && showAddClientButton ? (
               <Button
                 variant="success"
                 size="sm"
@@ -1649,8 +1629,8 @@ export default function ClientManagement() {
             ) : null
           }
         >
-          <CardTitle>Client Management</CardTitle>
-          <CardDescription>Manage client profiles and business information from the admin dashboard.</CardDescription>
+          <CardTitle>{pageTitle}</CardTitle>
+          <CardDescription>{pageDescription}</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -1700,7 +1680,7 @@ export default function ClientManagement() {
             keyField="key"
             compact
             striped={false}
-            emptyMessage="No clients found."
+            emptyMessage={emptyMessage}
             className="shadow-none"
           />
 

@@ -261,6 +261,7 @@ function module_permissions_notify_granted_access(
     $roleMap = [
         'secretary' => defined('MONITORING_ROLE_SECRETARY') ? (int)MONITORING_ROLE_SECRETARY : 2,
         'accountant' => defined('MONITORING_ROLE_ACCOUNTANT') ? (int)MONITORING_ROLE_ACCOUNTANT : 3,
+        'client' => defined('MONITORING_ROLE_CLIENT') ? (int)MONITORING_ROLE_CLIENT : 4,
     ];
 
     $senderId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
@@ -308,6 +309,7 @@ function module_permissions_notify_revoked_access(
     $roleMap = [
         'secretary' => defined('MONITORING_ROLE_SECRETARY') ? (int)MONITORING_ROLE_SECRETARY : 2,
         'accountant' => defined('MONITORING_ROLE_ACCOUNTANT') ? (int)MONITORING_ROLE_ACCOUNTANT : 3,
+        'client' => defined('MONITORING_ROLE_CLIENT') ? (int)MONITORING_ROLE_CLIENT : 4,
     ];
 
     $senderId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;

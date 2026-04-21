@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
 require_once __DIR__ . '/task_deadline_monitor.php';
+require_once __DIR__ . '/employee_specialization.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -72,6 +73,16 @@ function resolveTaskPartnerId(string $description): int {
     $raw = readTaskMetaLine($description, 'PartnerId');
     $value = (int)$raw;
     return $value > 0 ? $value : 0;
+}
+
+function taskListAccountantCanAccessService(PDO $conn, int $userId, int $serviceId): bool {
+    if ($userId <= 0 || $serviceId <= 0) {
+        return false;
+    }
+
+    $specializationIds = employeeSpecializationGetUserAssignments($conn, $userId);
+    $allowedServiceIds = employeeSpecializationResolveServiceIds($conn, $specializationIds);
+    return in_array($serviceId, $allowedServiceIds, true);
 }
 
 function resolveUserDisplayName(PDO $conn, int $userId): string {
@@ -261,6 +272,12 @@ try {
             $roleId === MONITORING_ROLE_ACCOUNTANT
             && (int)($row['accountant_id'] ?? 0) !== (int)$sessionUser['id']
             && $partnerId !== (int)$sessionUser['id']
+        ) {
+            continue;
+        }
+        if (
+            $roleId === MONITORING_ROLE_ACCOUNTANT
+            && !taskListAccountantCanAccessService($conn, (int)$sessionUser['id'], (int)($row['service_id'] ?? 0))
         ) {
             continue;
         }

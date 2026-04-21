@@ -62,25 +62,12 @@ if (!function_exists('monitoring_ensure_user_employment_status_column')) {
 
         $checked = true;
         monitoring_require_schema_table($conn, 'user', 'user account status');
-
-        if (!monitoring_schema_column_exists($conn, 'user', 'Employment_status_id')) {
-            $conn->exec(
-                'ALTER TABLE user
-                 ADD COLUMN Employment_status_id INT(11) DEFAULT NULL AFTER Role_id'
-            );
-        }
-
-        $activeEmploymentStatusId = monitoring_default_employment_status_id($conn);
-        $seedStatement = $conn->prepare(
-            'UPDATE user
-             SET Employment_status_id = :active_status_id
-             WHERE (Employment_status_id IS NULL OR Employment_status_id = 0)
-               AND (Role_id IS NULL OR Role_id <> :client_role_id)'
+        monitoring_require_schema_columns(
+            $conn,
+            'user',
+            ['Employment_status_id'],
+            'user account status'
         );
-        $seedStatement->execute([
-            ':active_status_id' => $activeEmploymentStatusId,
-            ':client_role_id' => MONITORING_ROLE_CLIENT,
-        ]);
     }
 }
 

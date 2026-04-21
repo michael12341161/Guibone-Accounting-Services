@@ -10,7 +10,7 @@ export function LayoutFooter({
   className = "",
 }) {
   return (
-    <footer className={classNames("border-t border-slate-200 bg-white/80", className)}>
+    <footer className={classNames("mt-auto w-full border-t border-slate-200 bg-white/80 backdrop-blur-sm", className)}>
       <div className="mx-auto flex max-w-7xl flex-col gap-1 px-6 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         {title ? <span>{title}</span> : null}
         {subtitle ? <span>{subtitle}</span> : null}

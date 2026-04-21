@@ -442,22 +442,7 @@ function monitoring_task_deadline_status_ids(PDO $conn): array
         return $cache;
     }
 
-    $overdueId = monitoring_resolve_status_id($conn, 'TASK', ['Overdue']);
-    if (!$overdueId) {
-        try {
-            $insert = $conn->prepare(
-                'INSERT INTO status (Status_group, Status_name)
-                 VALUES (:grp, :name)'
-            );
-            $insert->execute([
-                ':grp' => 'TASK',
-                ':name' => 'Overdue',
-            ]);
-            $overdueId = (int)($conn->lastInsertId() ?: 0);
-        } catch (Throwable $__) {
-            $overdueId = (int)(monitoring_resolve_status_id($conn, 'TASK', ['Overdue']) ?: 0);
-        }
-    }
+    $overdueId = (int)(monitoring_resolve_status_id($conn, 'TASK', ['Overdue']) ?: 0);
 
     $cache = [
         'Not Started' => (int)(monitoring_resolve_status_id($conn, 'TASK', ['Not Started', 'Pending']) ?: 0),

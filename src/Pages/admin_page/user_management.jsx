@@ -6,10 +6,22 @@ import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
-import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../services/api";
+import {
+  api,
+  DEFAULT_SECURITY_SETTINGS,
+  fetchRoles,
+  fetchSecuritySettings,
+  fetchSpecializationTypes,
+} from "../../services/api";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { validatePasswordValue } from "../../utils/passwordValidation";
-import { showConfirmDialog, showDangerConfirmDialog, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import {
+  showConfirmDialog,
+  showDangerConfirmDialog,
+  showErrorToast,
+  showSuccessToast,
+  useErrorToast,
+} from "../../utils/feedback";
 import {
   normalizeMiddleName,
   normalizeMiddleNameOrNull,
@@ -21,9 +33,9 @@ const ACCOUNT_TYPE_SSS = 1;
 const ACCOUNT_TYPE_PAGIBIG = 2;
 const ACCOUNT_TYPE_PHILHEALTH = 3;
 const DEFAULT_SPECIALIZATION_TYPES = [
-  { id: 1, name: "Tax Filing" },
-  { id: 2, name: "Auditing" },
-  { id: 3, name: "Book Keeping" },
+  { id: 1, name: "Tax Filing Operations" },
+  { id: 2, name: "Auditing Operations" },
+  { id: 3, name: "Book Keeping Operations" },
   { id: 4, name: "Accounting Operations" },
 ];
 
@@ -38,20 +50,34 @@ function normalizeSelectValue(value) {
 }
 
 function resolveSpecializationName(user, specializationTypes = []) {
+  const directNames = Array.isArray(user?.employee_specialization_type_names)
+    ? user.employee_specialization_type_names.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (directNames.length > 0) {
+    return directNames.join(", ");
+  }
+
   const directName = String(user?.employee_specialization_type_name || "").trim();
-  if (directName) {
-    return directName;
+  if (directName) return directName;
+
+  const specializationIds = Array.isArray(user?.employee_specialization_type_ids)
+    ? user.employee_specialization_type_ids.map(normalizeSelectValue).filter(Boolean)
+    : [];
+  const resolvedNames = specializationIds
+    .map((specializationId) => {
+      const matchedSpecialization = specializationTypes.find(
+        (specialization) => String(specialization?.id ?? "") === specializationId
+      );
+      return String(matchedSpecialization?.name || "").trim();
+    })
+    .filter(Boolean);
+  if (resolvedNames.length > 0) {
+    return resolvedNames.join(", ");
   }
 
   const specializationId = normalizeSelectValue(user?.employee_specialization_type_id);
-  if (!specializationId) {
-    return "";
-  }
-
-  const matchedSpecialization = specializationTypes.find(
-    (specialization) => String(specialization?.id ?? "") === specializationId
-  );
-
+  if (!specializationId) return "";
+  const matchedSpecialization = specializationTypes.find((specialization) => String(specialization?.id ?? "") === specializationId);
   return String(matchedSpecialization?.name || "").trim();
 }
 
@@ -75,6 +101,29 @@ function resolveUserStatus(user) {
   return user?.id ? "Active" : "-";
 }
 
+function matchesUserStatusFilter(user, statusFilter) {
+  const normalizedFilter = String(statusFilter || "").trim().toLowerCase();
+  if (!normalizedFilter || normalizedFilter === "all") {
+    return true;
+  }
+
+  const status = resolveUserStatus(user).trim().toLowerCase();
+  if (normalizedFilter === "active") {
+    return status === "active";
+  }
+  if (normalizedFilter === "inactive") {
+    return status === "inactive";
+  }
+
+  return status === normalizedFilter;
+}
+
+function getUserStatusPageLabel(statusValue) {
+  return String(statusValue || "").trim().toLowerCase() === "inactive"
+    ? "Inactive User"
+    : "User Management";
+}
+
 function getStatusPillClass(status) {
   const statusText = String(status || "-").trim().toLowerCase();
   if (statusText === "active") {
@@ -95,7 +144,7 @@ function createInitialForm() {
     username: "",
     email: "",
     password: "",
-    role: "Secretary",
+    role: "",
     employee: {
       first_name: "",
       middle_name: "",
@@ -106,8 +155,55 @@ function createInitialForm() {
       pagibig_account_number: "",
       philhealth_account_number: "",
       specialization_type_id: "",
+      specialization_type_ids: [],
     },
   };
+}
+
+function normalizeSpecializationSelections(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => normalizeSelectValue(entry))
+        .filter(Boolean)
+    )
+  );
+}
+
+function isValidPhoneNumber(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return true;
+  return /^(\+63|0)?\d{10}$/.test(normalized.replace(/[^\d+]/g, ""));
+}
+
+function isValidDateOfBirth(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return true;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  if (date > today) return false;
+  let age = today.getFullYear() - date.getFullYear();
+  const monthDelta = today.getMonth() - date.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < date.getDate())) {
+    age -= 1;
+  }
+  return age >= 18 && age <= 100;
+}
+
+function isValidGovernmentAccountNumber(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return true;
+  return /^[0-9-]{6,20}$/.test(normalized);
+}
+
+function isAdminRoleName(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "admin" || normalized === "administrator";
 }
 
 function parseAccountNumberFromDetail(detail) {
@@ -193,10 +289,17 @@ function mapEmployeeFromUser(user) {
     pagibig_account_number: governmentAccounts.pagibig_account_number,
     philhealth_account_number: governmentAccounts.philhealth_account_number,
     specialization_type_id: normalizeSelectValue(user?.employee_specialization_type_id),
+    specialization_type_ids: normalizeSpecializationSelections(user?.employee_specialization_type_ids),
   };
 }
 
-export default function UserManagement() {
+export default function UserManagement({
+  userStatusFilter = "active",
+  pageTitle = "User Management",
+  pageDescription,
+  emptyMessage = "No active users found.",
+  showAddUserButton = true,
+}) {
   const { user } = useAuth();
   const { permissions } = useModulePermissions();
   const canViewUsers = hasFeatureActionAccess(user, "user-management", "view", permissions);
@@ -204,9 +307,10 @@ export default function UserManagement() {
   const canSetUserAccountStatus = hasFeatureActionAccess(user, "user-management", "account-status", permissions);
   const canAddUsers = hasFeatureActionAccess(user, "user-management", "add-user", permissions);
   const canManageUsers = canEditUsers || canAddUsers;
-  const userManagementDescription = canManageUsers
-    ? "Manage secretary and accountant accounts from the admin dashboard."
-    : "View secretary and accountant accounts in read-only mode.";
+  const defaultPageDescription = canManageUsers
+    ? `Manage ${String(userStatusFilter).trim().toLowerCase() === "inactive" ? "inactive" : "active"} secretary and accountant accounts from the admin dashboard.`
+    : `View ${String(userStatusFilter).trim().toLowerCase() === "inactive" ? "inactive" : "active"} secretary and accountant accounts in read-only mode.`;
+  const userManagementDescription = pageDescription || defaultPageDescription;
   const [users, setUsers] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -222,6 +326,7 @@ export default function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingUser, setEditingUser] = useState(null);
   const [specializationTypes, setSpecializationTypes] = useState(DEFAULT_SPECIALIZATION_TYPES);
+  const [roleChoices, setRoleChoices] = useState([]);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [statusActionUserId, setStatusActionUserId] = useState(null);
   const viewGovernmentAccounts = useMemo(() => extractGovernmentAccountNumbers(viewUser), [viewUser]);
@@ -235,9 +340,18 @@ export default function UserManagement() {
 
     (async () => {
       try {
-        const [usersRes, specializationRes] = await Promise.allSettled([
+        const [usersRes, specializationRes, rolesRes] = await Promise.allSettled([
           api.get("user_list.php"),
-          api.get("specialization_type_list.php"),
+          fetchSpecializationTypes({
+            params: {
+              include_disabled: 0,
+            },
+          }),
+          fetchRoles({
+            params: {
+              include_disabled: 0,
+            },
+          }),
         ]);
 
         if (mounted && usersRes.status === "fulfilled" && Array.isArray(usersRes.value.data?.users)) {
@@ -250,7 +364,16 @@ export default function UserManagement() {
             : [];
           if (nextOptions.length > 0) {
             setSpecializationTypes(nextOptions);
+          } else {
+            setSpecializationTypes([]);
           }
+        }
+
+        if (mounted && rolesRes.status === "fulfilled") {
+          const nextRoles = Array.isArray(rolesRes.value.data?.roles)
+            ? rolesRes.value.data.roles.filter((role) => !isAdminRoleName(role?.name))
+            : [];
+          setRoleChoices(nextRoles);
         }
       } catch (_) {
         // Keep the view usable even when the endpoints are unavailable.
@@ -299,6 +422,51 @@ export default function UserManagement() {
             .map((option) => option.value)
         : value;
     setForm((prev) => ({ ...prev, employee: { ...(prev.employee || {}), [name]: nextValue } }));
+  };
+
+  const handleSpecializationCheckboxChange = (specializationId) => {
+    setForm((prev) => {
+      const currentIds = new Set(normalizeSpecializationSelections(prev.employee?.specialization_type_ids));
+      const normalizedId = normalizeSelectValue(specializationId);
+      if (!normalizedId) {
+        return prev;
+      }
+
+      if (currentIds.has(normalizedId)) {
+        currentIds.delete(normalizedId);
+      } else {
+        currentIds.add(normalizedId);
+      }
+
+      const nextIds = Array.from(currentIds);
+      return {
+        ...prev,
+        employee: {
+          ...(prev.employee || {}),
+          specialization_type_ids: nextIds,
+          specialization_type_id: nextIds[0] || "",
+        },
+      };
+    });
+  };
+
+  const validateEmployeeDetails = () => {
+    if (!isValidPhoneNumber(form.employee?.phone_number)) {
+      return "Enter a valid phone number.";
+    }
+    if (!isValidDateOfBirth(form.employee?.date_of_birth)) {
+      return "Enter a valid date of birth for an employee aged 18 to 100.";
+    }
+    if (!isValidGovernmentAccountNumber(form.employee?.sss_account_number)) {
+      return "Enter a valid SSS account number.";
+    }
+    if (!isValidGovernmentAccountNumber(form.employee?.pagibig_account_number)) {
+      return "Enter a valid Pag-IBIG account number.";
+    }
+    if (!isValidGovernmentAccountNumber(form.employee?.philhealth_account_number)) {
+      return "Enter a valid PhilHealth account number.";
+    }
+    return "";
   };
 
   const resetForm = ({ clearMessages = true } = { clearMessages: true }) => {
@@ -374,10 +542,18 @@ export default function UserManagement() {
 
     if (!form.username || !form.email || !form.password || !form.role) {
       setError("All fields are required.");
+      showErrorToast("All fields are required.");
       return;
     }
     if (!String(form?.employee?.first_name || "").trim() || !String(form?.employee?.last_name || "").trim()) {
       setError("Employee first and last name are required.");
+      showErrorToast("Employee first and last name are required.");
+      return;
+    }
+    const employeeValidationMessage = validateEmployeeDetails();
+    if (employeeValidationMessage) {
+      setError(employeeValidationMessage);
+      showErrorToast(employeeValidationMessage);
       return;
     }
 
@@ -386,6 +562,7 @@ export default function UserManagement() {
     });
     if (passwordValidationError) {
       setError(passwordValidationError);
+      showErrorToast(passwordValidationError);
       return;
     }
 
@@ -407,6 +584,7 @@ export default function UserManagement() {
           pagibig_account_number: String(form.employee?.pagibig_account_number || "").trim() || null,
           philhealth_account_number: String(form.employee?.philhealth_account_number || "").trim() || null,
           specialization_type_id: normalizeSelectValue(form.employee?.specialization_type_id) || null,
+          specialization_type_ids: normalizeSpecializationSelections(form.employee?.specialization_type_ids),
         },
       });
 
@@ -456,10 +634,18 @@ export default function UserManagement() {
 
     if (!form.username || !form.email || !form.role) {
       setError("All fields are required.");
+      showErrorToast("All fields are required.");
       return;
     }
     if (!String(form?.employee?.first_name || "").trim() || !String(form?.employee?.last_name || "").trim()) {
       setError("Employee first and last name are required.");
+      showErrorToast("Employee first and last name are required.");
+      return;
+    }
+    const employeeValidationMessage = validateEmployeeDetails();
+    if (employeeValidationMessage) {
+      setError(employeeValidationMessage);
+      showErrorToast(employeeValidationMessage);
       return;
     }
 
@@ -469,6 +655,7 @@ export default function UserManagement() {
     });
     if (passwordValidationError) {
       setError(passwordValidationError);
+      showErrorToast(passwordValidationError);
       return;
     }
 
@@ -491,6 +678,7 @@ export default function UserManagement() {
             pagibig_account_number: String(form.employee?.pagibig_account_number || "").trim() || null,
             philhealth_account_number: String(form.employee?.philhealth_account_number || "").trim() || null,
             specialization_type_id: normalizeSelectValue(form.employee?.specialization_type_id) || null,
+            specialization_type_ids: normalizeSpecializationSelections(form.employee?.specialization_type_ids),
           },
         };
         if (form.password) payload.password = form.password;
@@ -521,7 +709,7 @@ export default function UserManagement() {
     }
   };
 
-  const roleOptions = ["All", "Accountant", "Secretary"];
+  const roleOptions = ["All", ...roleChoices.map((role) => String(role?.name || "").trim()).filter(Boolean)];
 
   const toggleUserStatus = useCallback(async (targetUser) => {
     if (!targetUser?.id) return;
@@ -585,8 +773,8 @@ export default function UserManagement() {
         title: nextStatus === "Active" ? "User account activated." : "User account set to inactive.",
         description:
           nextStatus === "Active"
-            ? "The user can log in and use forgot password again."
-            : "The user can no longer log in until the account is reactivated.",
+            ? `The user can log in and use forgot password again. This user now appears on the ${getUserStatusPageLabel(nextStatus)} page.`
+            : `The user can no longer log in until the account is reactivated. This user now appears on the ${getUserStatusPageLabel(nextStatus)} page.`,
       });
     } catch (requestError) {
       setError(requestError?.response?.data?.message || requestError?.message || "Failed to update user status.");
@@ -595,8 +783,12 @@ export default function UserManagement() {
     }
   }, [canSetUserAccountStatus]);
 
+  const statusFilteredUsers = useMemo(() => {
+    return users.filter((entry) => matchesUserStatusFilter(entry, userStatusFilter));
+  }, [userStatusFilter, users]);
+
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
+    return statusFilteredUsers.filter((user) => {
       const roleText = String(user?.role || "").toLowerCase();
       if (roleText !== "accountant" && roleText !== "secretary") return false;
 
@@ -620,7 +812,7 @@ export default function UserManagement() {
         status.includes(q)
       );
     });
-  }, [users, roleFilter, search, specializationTypes]);
+  }, [roleFilter, search, specializationTypes, statusFilteredUsers]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
 
@@ -743,12 +935,18 @@ export default function UserManagement() {
         <CardHeader
           action={
             canManageUsers ? (
-              <Button variant="success" size="sm" onClick={openAddModal} disabled={!canAddUsers}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 6a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 12 6z" />
-                </svg>
-                Add User
-              </Button>
+              showAddUserButton ? (
+                <Button variant="success" size="sm" onClick={openAddModal} disabled={!canAddUsers}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 6a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 12 6z" />
+                  </svg>
+                  Add User
+                </Button>
+              ) : (
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                  Filtered view
+                </span>
+              )
             ) : (
               <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
                 Read-only view
@@ -756,7 +954,7 @@ export default function UserManagement() {
             )
           }
         >
-          <CardTitle>User Management</CardTitle>
+          <CardTitle>{pageTitle}</CardTitle>
           <CardDescription>{userManagementDescription}</CardDescription>
         </CardHeader>
 
@@ -808,7 +1006,7 @@ export default function UserManagement() {
             keyField="key"
             compact
             striped={false}
-            emptyMessage="No users found."
+            emptyMessage={emptyMessage}
             className="shadow-none"
           />
 
@@ -916,8 +1114,12 @@ export default function UserManagement() {
                   onChange={handleChange}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
                 >
-                  <option value="Secretary">Secretary</option>
-                  <option value="Accountant">Accountant</option>
+                  <option value="">Select Role</option>
+                  {roleChoices.map((role) => (
+                    <option key={role.id} value={role.name}>
+                      {role.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -997,19 +1199,29 @@ export default function UserManagement() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Specialization</label>
-                <select
-                  name="specialization_type_id"
-                  value={form.employee?.specialization_type_id || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                >
-                  <option value="">Select specialization</option>
-                  {specializationTypes.map((specialization) => (
-                    <option key={specialization.id} value={String(specialization.id)}>
-                      {specialization.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-slate-300 px-3 py-2">
+                  {specializationTypes.length === 0 ? (
+                    <div className="text-sm text-slate-500">No active specializations available.</div>
+                  ) : (
+                    specializationTypes.map((specialization) => {
+                      const specializationId = String(specialization.id);
+                      const checked = normalizeSpecializationSelections(form.employee?.specialization_type_ids).includes(
+                        specializationId
+                      );
+                      return (
+                        <label key={specialization.id} className="flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleSpecializationCheckboxChange(specializationId)}
+                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>{specialization.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               <div className="sm:col-span-2">
@@ -1122,8 +1334,12 @@ export default function UserManagement() {
                   onChange={handleChange}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
                 >
-                  <option value="Secretary">Secretary</option>
-                  <option value="Accountant">Accountant</option>
+                  <option value="">Select Role</option>
+                  {roleChoices.map((role) => (
+                    <option key={role.id} value={role.name}>
+                      {role.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1203,19 +1419,29 @@ export default function UserManagement() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Specialization</label>
-                <select
-                  name="specialization_type_id"
-                  value={form.employee?.specialization_type_id || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                >
-                  <option value="">Select specialization</option>
-                  {specializationTypes.map((specialization) => (
-                    <option key={specialization.id} value={String(specialization.id)}>
-                      {specialization.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-slate-300 px-3 py-2">
+                  {specializationTypes.length === 0 ? (
+                    <div className="text-sm text-slate-500">No active specializations available.</div>
+                  ) : (
+                    specializationTypes.map((specialization) => {
+                      const specializationId = String(specialization.id);
+                      const checked = normalizeSpecializationSelections(form.employee?.specialization_type_ids).includes(
+                        specializationId
+                      );
+                      return (
+                        <label key={specialization.id} className="flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleSpecializationCheckboxChange(specializationId)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>{specialization.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               <div className="sm:col-span-2">

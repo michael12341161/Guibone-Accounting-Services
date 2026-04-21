@@ -82,10 +82,16 @@ function normalizeSessionUser(user) {
     return null;
   }
 
-  return {
+  const normalizedUser = {
     ...user,
     security_settings: normalizeSecuritySettings(user.security_settings),
   };
+
+  if (Object.prototype.hasOwnProperty.call(normalizedUser, "impersonation")) {
+    delete normalizedUser.impersonation;
+  }
+
+  return normalizedUser;
 }
 
 function buildComparableSessionUser(user) {
@@ -110,7 +116,6 @@ function buildComparableSessionUser(user) {
     registration_source: normalizedUser.registration_source ?? null,
     approval_status: normalizedUser.approval_status ?? null,
     security_settings: normalizeSecuritySettings(normalizedUser.security_settings),
-    impersonation: normalizedUser.impersonation ?? null,
   };
 }
 

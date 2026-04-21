@@ -40,7 +40,7 @@ const HEADER_SELECT_CLASS =
 const LABEL_CLASS = "text-xs font-semibold uppercase tracking-[0.16em] text-slate-500";
 const LOGO_SIZE = 102;
 const SIGNATURE_PAD_HEIGHT = 220;
-const TEXT_ALIGNMENTS = ["left", "center", "right"];
+const TEXT_ALIGNMENTS = ["", "left", "center", "right"];
 const DEFAULT_PAGE_SIZE = "A4";
 const DEFAULT_FONT_KEY = "arial";
 const HORIZONTAL_ALIGNMENT_GUTTER = 100;
@@ -371,7 +371,7 @@ function createDefaultAddedText(overrides = {}) {
     text: "",
     fontSize: 18,
     bold: false,
-    align: "center",
+    align: "",
     color: "#000000",
     ...overrides,
   };
@@ -389,6 +389,60 @@ function createDefaultSignatureLine(overrides = {}) {
     signatureSrc: "",
     ...overrides,
   };
+}
+
+function createAssetLabel(prefix, templateEntry, index) {
+  const serviceLabel = getServiceLabel(templateEntry?.serviceKey || DEFAULT_SERVICE_KEY);
+  const editorName = String(templateEntry?.editorName || "").trim();
+  if (editorName) {
+    return `${prefix} ${index + 1} • ${serviceLabel} • ${editorName}`;
+  }
+  return `${prefix} ${index + 1} • ${serviceLabel}`;
+}
+
+function collectReusableLogoAssets(savedTemplates = []) {
+  const seen = new Set();
+  const assets = [];
+
+  savedTemplates.forEach((entry) => {
+    const logoSrc = String(entry?.template?.logoSrc || "").trim();
+    if (!logoSrc || seen.has(logoSrc)) {
+      return;
+    }
+
+    seen.add(logoSrc);
+    assets.push({
+      id: `logo-${assets.length + 1}`,
+      src: logoSrc,
+      label: createAssetLabel("Logo", entry, assets.length),
+    });
+  });
+
+  return assets;
+}
+
+function collectReusableSignatureAssets(savedTemplates = []) {
+  const seen = new Set();
+  const assets = [];
+
+  savedTemplates.forEach((entry) => {
+    const signatureBlocks = Array.isArray(entry?.template?.signatureBlocks) ? entry.template.signatureBlocks : [];
+    signatureBlocks.forEach((block) => {
+      const signatureSrc = String(block?.signatureSrc || "").trim();
+      if (!signatureSrc || seen.has(signatureSrc)) {
+        return;
+      }
+
+      seen.add(signatureSrc);
+      assets.push({
+        id: `signature-${assets.length + 1}`,
+        src: signatureSrc,
+        label: createAssetLabel("Signature", entry, assets.length),
+      });
+    });
+  });
+
+  return assets;
 }
 
 function EditableNumberInput({ value, min = 0, max = Number.MAX_SAFE_INTEGER, onValueChange, className = FIELD_CLASS }) {
@@ -718,19 +772,23 @@ function sanitizeLegacyTemplate(template) {
 }
 
 function normalizeAlignment(value, fallback) {
-  return TEXT_ALIGNMENTS.includes(value) ? value : fallback;
+  const normalized = String(value ?? "");
+  return TEXT_ALIGNMENTS.includes(normalized) ? normalized : fallback;
 }
 
 function normalizeAddedText(block, pageConfig) {
   const defaults = createDefaultAddedText();
   const pageWidth = pageConfig.width;
   const pageHeight = pageConfig.height;
-  const width = clampNumber(block?.width, 160, pageWidth - 40, defaults.width);
+  const maxWidth = Math.max(160, pageWidth - HORIZONTAL_ALIGNMENT_GUTTER * 2);
+  const width = clampNumber(block?.width, 160, maxWidth, defaults.width);
+  const horizontalBounds = getCanvasAxisBounds(width, pageWidth, HORIZONTAL_ALIGNMENT_GUTTER);
+  const verticalBounds = getCanvasAxisBounds(40, pageHeight, VERTICAL_DRAG_GUTTER);
 
   return {
     id: typeof block?.id === "string" && block.id ? block.id : defaults.id,
-    x: clampNumber(block?.x, 0, pageWidth - width, defaults.x),
-    y: clampNumber(block?.y, 0, pageHeight - 40, defaults.y),
+    x: clampNumber(block?.x, horizontalBounds.min, horizontalBounds.max, defaults.x),
+    y: clampNumber(block?.y, verticalBounds.min, verticalBounds.max, defaults.y),
     width,
     text: String(block?.text ?? defaults.text),
     fontSize: clampNumber(block?.fontSize, 12, 48, defaults.fontSize),
@@ -744,12 +802,15 @@ function normalizeSignatureLine(block, pageConfig) {
   const defaults = createDefaultSignatureLine();
   const pageWidth = pageConfig.width;
   const pageHeight = pageConfig.height;
-  const width = clampNumber(block?.width, 140, pageWidth - 40, defaults.width);
+  const maxWidth = Math.max(140, pageWidth - HORIZONTAL_ALIGNMENT_GUTTER * 2);
+  const width = clampNumber(block?.width, 140, maxWidth, defaults.width);
+  const horizontalBounds = getCanvasAxisBounds(width, pageWidth, HORIZONTAL_ALIGNMENT_GUTTER);
+  const verticalBounds = getCanvasAxisBounds(50, pageHeight, VERTICAL_DRAG_GUTTER);
 
   return {
     id: typeof block?.id === "string" && block.id ? block.id : defaults.id,
-    x: clampNumber(block?.x, 0, pageWidth - width, defaults.x),
-    y: clampNumber(block?.y, 0, pageHeight - 50, defaults.y),
+    x: clampNumber(block?.x, horizontalBounds.min, horizontalBounds.max, defaults.x),
+    y: clampNumber(block?.y, verticalBounds.min, verticalBounds.max, defaults.y),
     width,
     label: String(block?.label ?? defaults.label),
     fontSize: clampNumber(block?.fontSize, 8, 32, defaults.fontSize),
@@ -887,7 +948,10 @@ function generateCertificate(template, serviceKey = DEFAULT_SERVICE_KEY) {
   const pageWidth = pageConfig.width;
   const pageHeight = pageConfig.height;
   const logoSize = clampNumber(logoBlock.size, 72, 180, defaults.logoBlock.size);
-  const contentWidth = clampNumber(block.width, 180, pageWidth - 80, defaults.contentBlock.width);
+  const contentMaxWidth = Math.max(180, pageWidth - HORIZONTAL_ALIGNMENT_GUTTER * 2);
+  const contentWidth = clampNumber(block.width, 180, contentMaxWidth, defaults.contentBlock.width);
+  const contentXBounds = getCanvasAxisBounds(contentWidth, pageWidth, HORIZONTAL_ALIGNMENT_GUTTER);
+  const contentYBounds = getCanvasAxisBounds(40, pageHeight, VERTICAL_DRAG_GUTTER);
   const textBlocks = Array.isArray(normalizedTemplate?.textBlocks)
     ? normalizedTemplate.textBlocks
     : normalizedTemplate?.extraTextBlock?.enabled
@@ -912,8 +976,8 @@ function generateCertificate(template, serviceKey = DEFAULT_SERVICE_KEY) {
       size: logoSize,
     },
     contentBlock: {
-      x: clampNumber(block.x, 0, pageWidth - contentWidth, defaults.contentBlock.x),
-      y: clampNumber(block.y, 0, pageHeight - 40, defaults.contentBlock.y),
+      x: clampNumber(block.x, contentXBounds.min, contentXBounds.max, defaults.contentBlock.x),
+      y: clampNumber(block.y, contentYBounds.min, contentYBounds.max, defaults.contentBlock.y),
       width: contentWidth,
       text: String(block.text ?? defaults.contentBlock.text),
       fontSize: clampNumber(block.fontSize, 14, 64, defaults.contentBlock.fontSize),
@@ -1162,9 +1226,10 @@ function CertificatePrintOutput({ certificate }) {
     left: `${certificate.contentBlock.x}px`,
     top: `${certificate.contentBlock.y}px`,
     width: `${certificate.contentBlock.width}px`,
+    boxSizing: "border-box",
     fontSize: `${certificate.contentBlock.fontSize}px`,
     fontWeight: certificate.contentBlock.bold ? 700 : 400,
-    textAlign: certificate.contentBlock.align,
+    textAlign: certificate.contentBlock.align || undefined,
     color: certificate.contentBlock.color,
     fontFamily: fontConfig.family,
   };
@@ -1172,9 +1237,10 @@ function CertificatePrintOutput({ certificate }) {
     left: `${block.x}px`,
     top: `${block.y}px`,
     width: `${block.width}px`,
+    boxSizing: "border-box",
     fontSize: `${block.fontSize}px`,
     fontWeight: block.bold ? 700 : 400,
-    textAlign: block.align,
+    textAlign: block.align || undefined,
     color: block.color,
     fontFamily: fontConfig.family,
   });
@@ -1182,6 +1248,7 @@ function CertificatePrintOutput({ certificate }) {
     left: `${block.x}px`,
     top: `${block.y}px`,
     width: `${block.width}px`,
+    boxSizing: "border-box",
     fontSize: `${block.fontSize}px`,
     color: block.color,
     fontFamily: fontConfig.family,
@@ -1294,6 +1361,7 @@ export default function EditCertificate() {
   );
   const [selectedService, setSelectedService] = useState(DEFAULT_SERVICE_KEY);
   const [activeTemplateId, setActiveTemplateId] = useState(null);
+  const [savedTemplates, setSavedTemplates] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [template, setTemplateDraft] = useState(() => createDefaultTemplate(DEFAULT_SERVICE_KEY));
   const fileInputRef = useRef(null);
@@ -1319,6 +1387,8 @@ export default function EditCertificate() {
   const [signaturePadWidth, setSignaturePadWidth] = useState(720);
   const serviceLayoutPreset = getServiceLayoutPreset(selectedService);
   const selectedServiceLabel = getServiceLabel(selectedService);
+  const reusableLogoAssets = useMemo(() => collectReusableLogoAssets(savedTemplates), [savedTemplates]);
+  const reusableSignatureAssets = useMemo(() => collectReusableSignatureAssets(savedTemplates), [savedTemplates]);
 
   const setTemplate = useCallback((updater) => {
     setTemplateDraft((currentTemplate) => {
@@ -1592,12 +1662,14 @@ export default function EditCertificate() {
         if (isCancelled) return;
 
         if (targetTemplate) {
+          setSavedTemplates(parsedState.savedTemplates);
           setSelectedService(targetTemplate.serviceKey);
           setActiveTemplateId(targetTemplate.id);
           setTemplateDraft(targetTemplate.template);
           return;
         }
 
+        setSavedTemplates(parsedState.savedTemplates);
         setSelectedService(DEFAULT_SERVICE_KEY);
         setActiveTemplateId(null);
         setTemplateDraft(createDefaultTemplate(DEFAULT_SERVICE_KEY));
@@ -1855,7 +1927,13 @@ export default function EditCertificate() {
           createDefaultAddedText({
             text: getDefaultAddedTextLabel(blockCount),
             x: 120,
-            y: clampNumber(720 + blockCount * 70, 0, pageHeight - 40, 720),
+            y: clampNumber(
+              720 + blockCount * 70,
+              getCanvasAxisBounds(40, pageHeight, VERTICAL_DRAG_GUTTER).min,
+              getCanvasAxisBounds(40, pageHeight, VERTICAL_DRAG_GUTTER).max,
+              720
+            ),
+            align: "",
           }),
         ],
       };
@@ -1879,8 +1957,18 @@ export default function EditCertificate() {
         signatureBlocks: [
           ...current.signatureBlocks,
           createDefaultSignatureLine({
-            x: clampNumber(92 + lineCount * 240, 0, pageWidth - 140, 92),
-            y: clampNumber(pageHeight - 160, 0, pageHeight - 50, 865),
+            x: clampNumber(
+              92 + lineCount * 240,
+              getCanvasAxisBounds(140, pageWidth, HORIZONTAL_ALIGNMENT_GUTTER).min,
+              getCanvasAxisBounds(140, pageWidth, HORIZONTAL_ALIGNMENT_GUTTER).max,
+              92
+            ),
+            y: clampNumber(
+              pageHeight - 160,
+              getCanvasAxisBounds(50, pageHeight, VERTICAL_DRAG_GUTTER).min,
+              getCanvasAxisBounds(50, pageHeight, VERTICAL_DRAG_GUTTER).max,
+              865
+            ),
           }),
         ],
       };
@@ -1946,6 +2034,29 @@ export default function EditCertificate() {
     showSuccessToast("Signature drawing saved.");
   };
 
+  const applyReusableLogo = useCallback((logoSrc) => {
+    const normalizedLogoSrc = String(logoSrc || "").trim();
+    if (!normalizedLogoSrc) {
+      return;
+    }
+
+    setTemplate((current) => ({
+      ...current,
+      logoSrc: normalizedLogoSrc,
+    }));
+    showSuccessToast("Saved logo applied.");
+  }, [setTemplate]);
+
+  const applyReusableSignature = useCallback((blockId, signatureSrc) => {
+    const normalizedSignatureSrc = String(signatureSrc || "").trim();
+    if (!blockId || !normalizedSignatureSrc) {
+      return;
+    }
+
+    updateSignatureLine(blockId, "signatureSrc", normalizedSignatureSrc);
+    showSuccessToast("Saved signature applied.");
+  }, [updateSignatureLine]);
+
   useEffect(() => {
     const editor = inlineEditorRef.current;
     if (!editingTarget || !editor) return;
@@ -2009,13 +2120,19 @@ export default function EditCertificate() {
 
       if (dragState.kind === "content") {
         const contentHeight = targetNode?.offsetHeight || 0;
+        const contentXBounds = getCanvasAxisBounds(
+          currentCertificate.contentBlock.width,
+          currentPageWidth,
+          HORIZONTAL_ALIGNMENT_GUTTER
+        );
+        const contentYBounds = getCanvasAxisBounds(contentHeight, currentPageHeight, VERTICAL_DRAG_GUTTER);
 
         setTemplate((current) => ({
           ...current,
           contentBlock: {
             ...current.contentBlock,
-            x: clampNumber(rawX, 0, currentPageWidth - currentCertificate.contentBlock.width, currentCertificate.contentBlock.x),
-            y: clampNumber(rawY, 0, Math.max(0, currentPageHeight - contentHeight), currentCertificate.contentBlock.y),
+            x: clampNumber(rawX, contentXBounds.min, contentXBounds.max, currentCertificate.contentBlock.x),
+            y: clampNumber(rawY, contentYBounds.min, contentYBounds.max, currentCertificate.contentBlock.y),
           },
         }));
         return;
@@ -2029,6 +2146,8 @@ export default function EditCertificate() {
         }
 
         const blockHeight = targetNode?.offsetHeight || 0;
+        const textXBounds = getCanvasAxisBounds(activeBlock.width, currentPageWidth, HORIZONTAL_ALIGNMENT_GUTTER);
+        const textYBounds = getCanvasAxisBounds(blockHeight, currentPageHeight, VERTICAL_DRAG_GUTTER);
 
         setTemplate((current) => ({
           ...current,
@@ -2036,8 +2155,34 @@ export default function EditCertificate() {
             block.id === dragState.blockId
               ? {
                   ...block,
-                  x: clampNumber(rawX, 0, currentPageWidth - activeBlock.width, activeBlock.x),
-                  y: clampNumber(rawY, 0, Math.max(0, currentPageHeight - blockHeight), activeBlock.y),
+                  x: clampNumber(rawX, textXBounds.min, textXBounds.max, activeBlock.x),
+                  y: clampNumber(rawY, textYBounds.min, textYBounds.max, activeBlock.y),
+                }
+              : block
+          ),
+        }));
+        return;
+      }
+
+      if (dragState.kind === "signature") {
+        const activeBlock = currentCertificate.signatureBlocks.find((block) => block.id === dragState.blockId);
+        if (!activeBlock) {
+          clearDragState();
+          return;
+        }
+
+        const blockHeight = targetNode?.offsetHeight || 0;
+        const signatureXBounds = getCanvasAxisBounds(activeBlock.width, currentPageWidth, HORIZONTAL_ALIGNMENT_GUTTER);
+        const signatureYBounds = getCanvasAxisBounds(blockHeight, currentPageHeight, VERTICAL_DRAG_GUTTER);
+
+        setTemplate((current) => ({
+          ...current,
+          signatureBlocks: current.signatureBlocks.map((block) =>
+            block.id === dragState.blockId
+              ? {
+                  ...block,
+                  x: clampNumber(rawX, signatureXBounds.min, signatureXBounds.max, activeBlock.x),
+                  y: clampNumber(rawY, signatureYBounds.min, signatureYBounds.max, activeBlock.y),
                 }
               : block
           ),
@@ -2065,7 +2210,6 @@ export default function EditCertificate() {
 
   const handleDragStart = (kind, blockId = null) => (event) => {
     if (editingTarget || !sheetRef.current) return;
-    if (kind !== "logo") return;
 
     event.preventDefault();
 
@@ -2176,6 +2320,7 @@ export default function EditCertificate() {
     left: `${certificate.contentBlock.x}px`,
     top: `${certificate.contentBlock.y}px`,
     width: `${certificate.contentBlock.width}px`,
+    boxSizing: "border-box",
     fontSize: `${certificate.contentBlock.fontSize}px`,
     fontWeight: certificate.contentBlock.bold ? 700 : 400,
     textAlign: certificate.contentBlock.align,
@@ -2194,6 +2339,7 @@ export default function EditCertificate() {
     left: `${block.x}px`,
     top: `${block.y}px`,
     width: `${block.width}px`,
+    boxSizing: "border-box",
     fontSize: `${block.fontSize}px`,
     fontWeight: block.bold ? 700 : 400,
     textAlign: block.align,
@@ -2204,6 +2350,7 @@ export default function EditCertificate() {
     left: `${block.x}px`,
     top: `${block.y}px`,
     width: `${block.width}px`,
+    boxSizing: "border-box",
     fontSize: `${block.fontSize}px`,
     color: block.color,
     fontFamily: fontConfig.family,
@@ -2455,7 +2602,7 @@ export default function EditCertificate() {
                             stopInlineEditing();
                           }
                         }}
-                        className="absolute z-20 resize-none border-0 bg-transparent px-0 py-0 font-sans leading-[1.55] outline-none"
+                        className="absolute z-20 resize-none bg-transparent px-2 py-2 font-sans leading-[1.55] outline-none"
                         style={{
                           ...contentStyle,
                           width: editingBounds?.width ? `${editingBounds.width}px` : contentStyle.width,
@@ -2466,9 +2613,12 @@ export default function EditCertificate() {
                       />
                     ) : (
                       <div
+                        onPointerDown={handleDragStart("content")}
                         onDoubleClick={startInlineEditing("content")}
                         data-drag-key={getDragKey("content")}
-                        className="absolute z-10 select-none whitespace-pre-wrap break-words font-sans leading-[1.55]"
+                        className={`absolute z-10 select-none whitespace-pre-wrap break-words px-2 py-2 font-sans leading-[1.55] cursor-grab touch-none active:cursor-grabbing ${
+                          dragTarget === getDragKey("content") ? "outline outline-2 outline-slate-300/70" : ""
+                        }`}
                         style={contentStyle}
                       >
                         {certificate.contentBlock.text}
@@ -2493,7 +2643,7 @@ export default function EditCertificate() {
                             stopInlineEditing();
                           }
                         }}
-                      className="absolute z-20 resize-none border-0 bg-transparent px-0 py-0 font-sans leading-[1.45] outline-none"
+                      className="absolute z-20 resize-none bg-transparent px-2 py-2 font-sans leading-[1.45] outline-none"
                       style={{
                         ...getTextBlockStyle(block),
                         width: editingBounds?.width ? `${editingBounds.width}px` : `${block.width}px`,
@@ -2505,9 +2655,12 @@ export default function EditCertificate() {
                   ) : (
                       <div
                         key={block.id}
+                        onPointerDown={handleDragStart("text", block.id)}
                         onDoubleClick={startInlineEditing("text", block.id)}
                         data-drag-key={getDragKey("text", block.id)}
-                        className="absolute z-10 select-none whitespace-pre-wrap break-words font-sans leading-[1.45]"
+                        className={`absolute z-10 select-none whitespace-pre-wrap break-words px-2 py-2 font-sans leading-[1.45] cursor-grab touch-none active:cursor-grabbing ${
+                          dragTarget === getDragKey("text", block.id) ? "outline outline-2 outline-slate-300/70" : ""
+                        }`}
                         style={getTextBlockStyle(block)}
                       >
                         {block.text || getDefaultAddedTextLabel(index)}
@@ -2526,7 +2679,10 @@ export default function EditCertificate() {
                       <div
                         key={block.id}
                         data-drag-key={getDragKey("signature", block.id)}
-                        className="absolute z-10 select-none rounded-xl px-2 py-2 text-center font-sans"
+                        onPointerDown={handleDragStart("signature", block.id)}
+                        className={`absolute z-10 select-none rounded-xl px-2 py-2 text-center font-sans cursor-grab touch-none active:cursor-grabbing ${
+                          dragTarget === getDragKey("signature", block.id) ? "outline outline-2 outline-slate-300/70" : ""
+                        }`}
                         style={getSignatureStyle(block)}
                       >
                         {block.signatureSrc ? (
@@ -2579,6 +2735,25 @@ export default function EditCertificate() {
                   {hasLogo ? "Replace logo" : "Add logo"}
                 </Button>
               </div>
+
+              {reusableLogoAssets.length ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-700">Reuse saved logo</div>
+                  <div className="grid gap-2">
+                    {reusableLogoAssets.map((asset) => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => applyReusableLogo(asset.src)}
+                        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                      >
+                        <img src={asset.src} alt="" className="h-12 w-12 rounded-full object-cover" />
+                        <span className="text-sm font-medium text-slate-700">{asset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {hasLogo ? (
                 <>
@@ -2738,7 +2913,15 @@ export default function EditCertificate() {
 
                       <div>
                         <div className="text-sm font-medium text-slate-700">Text alignment</div>
-                        <div className="mt-2 grid grid-cols-3 gap-2">
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <Button
+                            variant={block.align === "" ? "primary" : "secondary"}
+                            size="sm"
+                            onClick={() => updateTextBlock(block.id, "align", "")}
+                            className="w-full"
+                          >
+                            Free
+                          </Button>
                           <Button
                             variant={block.align === "left" ? "primary" : "secondary"}
                             size="sm"
@@ -2766,6 +2949,9 @@ export default function EditCertificate() {
                             <AlignRight className="h-4 w-4" />
                             Right
                           </Button>
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          Free keeps the block unaligned so you can place it anywhere on the certificate.
                         </div>
                       </div>
 
@@ -2834,6 +3020,23 @@ export default function EditCertificate() {
                         <Button variant="secondary" size="sm" onClick={() => openSignaturePad(block.id)}>
                           {normalizedBlock.signatureSrc ? "Replace drawing" : "Draw signature"}
                         </Button>
+                        {reusableSignatureAssets.length ? (
+                          <select
+                            value=""
+                            onChange={(event) => {
+                              applyReusableSignature(block.id, event.target.value);
+                              event.target.value = "";
+                            }}
+                            className={HEADER_SELECT_CLASS}
+                          >
+                            <option value="">Use saved signature</option>
+                            {reusableSignatureAssets.map((asset) => (
+                              <option key={asset.id} value={asset.src}>
+                                {asset.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
                         {normalizedBlock.signatureSrc ? (
                           <Button variant="secondary" size="sm" onClick={() => clearSavedSignature(block.id)}>
                             <Trash2 className="h-4 w-4" />

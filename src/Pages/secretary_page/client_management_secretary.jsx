@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LogIn, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 import Swal from "sweetalert2";
-import { useNavigate } from "react-router-dom";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
@@ -23,7 +22,6 @@ import {
   DEFAULT_SECURITY_SETTINGS,
   fetchSecuritySettings,
   requestModuleAccess,
-  switchToClientAccount,
 } from "../../services/api";
 import { buildBusinessAddress } from "../../utils/business_location";
 import { validatePasswordValue } from "../../utils/passwordValidation";
@@ -34,7 +32,7 @@ import {
   normalizePersonName,
 } from "../../utils/person_name";
 import { showConfirmDialog, showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
-import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
+import { hasFeatureActionAccess } from "../../utils/module_permissions";
 
 const PAGE_SIZE = 10;
 const FALLBACK_BUSINESS_TYPES = [
@@ -623,8 +621,7 @@ function AddClientModal({
 }
 
 export default function ClientManagementSecretary() {
-  const navigate = useNavigate();
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const { permissions } = useModulePermissions();
   const [clients, setClients] = useState([]);
   const [businessTypes, setBusinessTypes] = useState(FALLBACK_BUSINESS_TYPES);
@@ -656,7 +653,6 @@ export default function ClientManagementSecretary() {
   const [editDocuments, setEditDocuments] = useState([]);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
-  const [switchingClientAccountId, setSwitchingClientAccountId] = useState(null);
   const [statusActionClientId, setStatusActionClientId] = useState(null);
   const locationRequestIdRef = useRef(0);
 
@@ -666,7 +662,6 @@ export default function ClientManagementSecretary() {
   const canAddNewClient = hasFeatureActionAccess(user, "client-management", "add-new-client", permissions);
   const canViewClientLocation = hasFeatureActionAccess(user, "client-management", "location", permissions);
   const canUploadRequiredDocuments = hasFeatureActionAccess(user, "client-management", "file-upload", permissions);
-  const canAccessClientAccount = hasModuleAccess(user, "client-account", permissions);
   const {
     provinceOptions,
     cityOptions,
@@ -1227,50 +1222,6 @@ export default function ClientManagementSecretary() {
     }
   };
 
-  const openClientAccount = async (client) => {
-    const clientId = Number(client?.id ?? 0);
-    const hasClientUserAccount = Number(client?.user_id ?? 0) > 0 && Number(client?.role_id ?? 0) === 4;
-    if (!canAccessClientAccount || clientId <= 0 || !hasClientUserAccount) {
-      return;
-    }
-
-    const clientLabel = fullName(client) || "this client";
-    const result = await Swal.fire({
-      icon: "question",
-      title: "Access client account?",
-      text: `Are you sure you want to access ${clientLabel}'s account?`,
-      showCancelButton: true,
-      confirmButtonText: "Access Account",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-      cancelButtonColor: "#64748b",
-      reverseButtons: true,
-    });
-
-    if (!result.isConfirmed) {
-      return;
-    }
-
-    try {
-      setSwitchingClientAccountId(clientId);
-      const response = await switchToClientAccount(clientId);
-      const nextUser = response?.data?.user;
-      if (!nextUser) {
-        throw new Error(response?.data?.message || "Unable to open the client account.");
-      }
-
-      login(nextUser);
-      navigate("/client", { replace: true });
-    } catch (err) {
-      showErrorToast({
-        title: err?.response?.data?.message || err?.message || "Unable to access the client account.",
-        duration: 2400,
-      });
-    } finally {
-      setSwitchingClientAccountId(null);
-    }
-  };
-
   const viewDocumentMap = useMemo(() => {
     const map = new Map();
     viewDocuments.forEach((document) => {
@@ -1607,29 +1558,6 @@ export default function ClientManagementSecretary() {
         width: "26%",
         render: (_, row) => (
           <div className="flex min-w-max flex-nowrap items-center justify-end gap-1">
-            {canAccessClientAccount ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="shrink-0 gap-1 px-2.5"
-                onClick={() => {
-                  void openClientAccount(row.raw);
-                }}
-                disabled={
-                  switchingClientAccountId === Number(row.raw?.id ?? 0) ||
-                  Number(row.raw?.user_id ?? 0) <= 0 ||
-                  Number(row.raw?.role_id ?? 0) !== 4
-                }
-                title={
-                  Number(row.raw?.user_id ?? 0) > 0 && Number(row.raw?.role_id ?? 0) === 4
-                    ? "Access client account"
-                    : "No linked client account"
-                }
-              >
-                <LogIn className="h-3.5 w-3.5" strokeWidth={1.8} />
-                {switchingClientAccountId === Number(row.raw?.id ?? 0) ? "Opening..." : "Account"}
-              </Button>
-            ) : null}
             <IconButton
               size="sm"
               variant="secondary"
@@ -1673,7 +1601,6 @@ export default function ClientManagementSecretary() {
       },
     ],
     [
-      canAccessClientAccount,
       canEditClientManagement,
       canSetClientAccountStatus,
       canViewClientLocation,
@@ -1681,10 +1608,8 @@ export default function ClientManagementSecretary() {
       onOpenEdit,
       onOpenLocation,
       onViewInfo,
-      openClientAccount,
       promptClientManagementAccess,
       statusActionClientId,
-      switchingClientAccountId,
       toggleClientStatus,
     ]
   );

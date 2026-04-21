@@ -220,6 +220,26 @@ function mapUserRow(array $row): array {
     $employeePosition = $row['role'] ?? null;
     $employeeSpecializationId = employeeSpecializationNormalizeId($row['profile_specialization_type_id'] ?? null);
     $employeeSpecializationName = normalizeOptionalString($row['profile_specialization_type_name'] ?? null);
+    $employeeSpecializationIds = [];
+    if (isset($row['_specialization_assignments']) && is_array($row['_specialization_assignments'])) {
+        $employeeSpecializationIds = array_values($row['_specialization_assignments']);
+    } elseif ($employeeSpecializationId !== null) {
+        $employeeSpecializationIds = [$employeeSpecializationId];
+    }
+    $employeeSpecializationNames = [];
+    if (isset($row['_specialization_names']) && is_array($row['_specialization_names'])) {
+        $employeeSpecializationNames = array_values($row['_specialization_names']);
+    } elseif ($employeeSpecializationName !== null) {
+        $employeeSpecializationNames = [$employeeSpecializationName];
+    }
+    $employeeSpecializationServiceIds = [];
+    if (isset($row['_specialization_service_ids']) && is_array($row['_specialization_service_ids'])) {
+        $employeeSpecializationServiceIds = array_values($row['_specialization_service_ids']);
+    }
+    $employeeSpecializationServiceNames = [];
+    if (isset($row['_specialization_service_names']) && is_array($row['_specialization_service_names'])) {
+        $employeeSpecializationServiceNames = array_values($row['_specialization_service_names']);
+    }
 
     return [
         'id' => isset($row['id']) ? (int)$row['id'] : 0,
@@ -250,6 +270,10 @@ function mapUserRow(array $row): array {
         'employee_position' => $employeePosition,
         'employee_specialization_type_id' => $employeeSpecializationId,
         'employee_specialization_type_name' => $employeeSpecializationName,
+        'employee_specialization_type_ids' => $employeeSpecializationIds,
+        'employee_specialization_type_names' => $employeeSpecializationNames,
+        'employee_specialization_service_ids' => $employeeSpecializationServiceIds,
+        'employee_specialization_service_names' => $employeeSpecializationServiceNames,
         'employee_financial_details' => $details,
         'employee_financial_details_ids' => $detailIds,
         'employee_financial_details_text' => $detailText,
@@ -300,7 +324,6 @@ try {
 
     $sessionUser = $sessionUser ?? monitoring_require_auth();
 
-    ensureEmployeeSpecializationSchema($conn);
     monitoring_ensure_user_employment_status_column($conn);
     $profileImageSelect = buildProfileImageSelect($conn);
     $canViewAllUsers = monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
@@ -349,6 +372,35 @@ try {
     );
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $specializationAssignments = employeeSpecializationReadAssignments($conn);
+    $specializationTypes = loadSpecializationTypes($conn);
+    $specializationNameMap = [];
+    foreach ($specializationTypes as $specializationType) {
+        $specializationId = employeeSpecializationNormalizeId($specializationType['id'] ?? null);
+        $specializationName = normalizeOptionalString($specializationType['name'] ?? null);
+        if ($specializationId !== null && $specializationName !== null) {
+            $specializationNameMap[$specializationId] = $specializationName;
+        }
+    }
+    foreach ($rows as &$row) {
+        $userId = isset($row['id']) ? (int)$row['id'] : 0;
+        $assignedIds = $userId > 0 && is_array($specializationAssignments[(string)$userId] ?? null)
+            ? $specializationAssignments[(string)$userId]
+            : [];
+        $assignedNames = [];
+        foreach ($assignedIds as $assignedId) {
+            if (isset($specializationNameMap[$assignedId])) {
+                $assignedNames[] = $specializationNameMap[$assignedId];
+            }
+        }
+        $assignedServiceIds = employeeSpecializationResolveServiceIds($conn, $assignedIds);
+        $assignedServiceNames = employeeSpecializationResolveServiceNames($conn, $assignedIds);
+        $row['_specialization_assignments'] = $assignedIds;
+        $row['_specialization_names'] = $assignedNames;
+        $row['_specialization_service_ids'] = $assignedServiceIds;
+        $row['_specialization_service_names'] = $assignedServiceNames;
+    }
+    unset($row);
     $users = array_map(function ($row) {
         return mapUserRow($row);
     }, $rows);
