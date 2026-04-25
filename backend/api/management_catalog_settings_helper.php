@@ -1,11 +1,81 @@
 <?php
 
+require_once __DIR__ . '/status_helpers.php';
+
 const MONITORING_ROLE_MANAGEMENT_SETTINGS_KEY = 'role_management_settings';
 const MONITORING_SPECIALIZATION_MANAGEMENT_SETTINGS_KEY = 'specialization_management_settings';
 const MONITORING_ROLE_SPECIALIZATION_DEFAULTS = [
     'secretary' => ['Accounting Operations'],
     'accountant' => ['Tax Filing Operations', 'Auditing Operations', 'Book Keeping Operations'],
 ];
+const MONITORING_PERMISSION_PAGE_STATUS_GROUP = 'PERMISSION_PAGE';
+const MONITORING_PERMISSION_PAGE_UNLOCKED_STATUS = 'Unlocked';
+const MONITORING_PERMISSION_PAGE_LOCKED_STATUS = 'Locked';
+
+if (!function_exists('monitoring_permission_page_require_schema')) {
+    function monitoring_permission_page_require_schema(PDO $conn): void
+    {
+        monitoring_require_schema_columns(
+            $conn,
+            'role',
+            ['Role_id', 'Role_name', 'Permission_page_status_id'],
+            'permission page role status'
+        );
+        monitoring_require_schema_columns(
+            $conn,
+            'status',
+            ['Status_id', 'Status_group', 'Status_name'],
+            'permission page role status'
+        );
+    }
+}
+
+if (!function_exists('monitoring_permission_page_status_name')) {
+    function monitoring_permission_page_status_name(bool $locked): string
+    {
+        return $locked ? MONITORING_PERMISSION_PAGE_LOCKED_STATUS : MONITORING_PERMISSION_PAGE_UNLOCKED_STATUS;
+    }
+}
+
+if (!function_exists('monitoring_permission_page_status_id')) {
+    function monitoring_permission_page_status_id(PDO $conn, bool $locked): int
+    {
+        monitoring_permission_page_require_schema($conn);
+
+        $statusId = monitoring_resolve_status_id(
+            $conn,
+            MONITORING_PERMISSION_PAGE_STATUS_GROUP,
+            [monitoring_permission_page_status_name($locked)]
+        );
+        if ($statusId === null || $statusId <= 0) {
+            throw new RuntimeException(
+                'Missing permission page statuses in the status table. Import the latest monitoring.sql update first.'
+            );
+        }
+
+        return (int)$statusId;
+    }
+}
+
+if (!function_exists('monitoring_permission_page_validate_status_id')) {
+    function monitoring_permission_page_validate_status_id(PDO $conn, $statusId): ?int
+    {
+        $normalizedStatusId = (int)($statusId ?? 0);
+        if ($normalizedStatusId <= 0) {
+            return null;
+        }
+
+        monitoring_permission_page_require_schema($conn);
+        return monitoring_validate_status_id($conn, MONITORING_PERMISSION_PAGE_STATUS_GROUP, $normalizedStatusId);
+    }
+}
+
+if (!function_exists('monitoring_permission_page_is_locked')) {
+    function monitoring_permission_page_is_locked(?string $statusName): bool
+    {
+        return monitoring_status_matches($statusName, [MONITORING_PERMISSION_PAGE_LOCKED_STATUS]);
+    }
+}
 
 if (!function_exists('monitoring_management_settings_require_table')) {
     function monitoring_management_settings_require_table(PDO $conn): void

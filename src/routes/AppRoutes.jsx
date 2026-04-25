@@ -44,11 +44,15 @@ import AdminSettings from "../settings/admin_settings";
 import SchedulingManagementAdmin from "../Pages/admin_page/scheduling_management_admin";
 import CertificatePage from "../Pages/certificate/certificate";
 import EditCertificate from "../Pages/certificate/Edit_certificate";
+import WorkspaceDashboard from "../Pages/workspace_page/workspace_dashboard";
 import { ModuleAccessGate } from "../components/layout/module_access_gate";
 import TaskClientAppointmentsPage from "../Pages/shared/task_client_appointments";
 import { RouteLoadingPanel } from "../components/layout/route_loading_panel";
+import { ROLE_IDS } from "../utils/helpers";
 
-function RoleProtectedRoute({ allowedRoleId, LayoutComponent }) {
+const BUILTIN_ROLE_IDS = new Set(Object.values(ROLE_IDS));
+
+function RoleProtectedRoute({ allowedRoleId, allowRole, LayoutComponent }) {
   const navigate = useNavigate();
   const { user, role, logout, isAuthReady } = useAuth();
   const hasResolvedUser = Boolean(user?.id || user?.username);
@@ -74,7 +78,10 @@ function RoleProtectedRoute({ allowedRoleId, LayoutComponent }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (role !== allowedRoleId) {
+  const canAccessRoute =
+    typeof allowRole === "function" ? allowRole(role, user) : role === allowedRoleId;
+
+  if (!canAccessRoute) {
     return <Navigate to={getHomePathForRole(user.role_id)} replace />;
   }
 
@@ -204,12 +211,42 @@ const privateRouteGroups = [
       { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
     ],
   },
+  {
+    path: "/workspace",
+    allowRole: (roleId) => Number.isInteger(roleId) && roleId > 0 && !BUILTIN_ROLE_IDS.has(roleId),
+    component: WorkspaceDashboard,
+    children: [
+      { path: "appointments", element: withModuleAccess("appointments", <AdminAppointmentManagement />) },
+      { path: "work-update/history", element: withModuleAccess("work-update", <TasksUpdateHistory />, "history") },
+      { path: "work-update", element: withModuleAccess("work-update", <AdminWorkUpdate />) },
+      { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
+      { path: "settings", element: withModuleAccess("settings", <AdminSettings />) },
+      { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
+      { path: "users/inactive-users", element: withModuleAccess("user-management", <InactiveEmployee />) },
+      { path: "permissions", element: withModuleAccess("permissions", <Permissions />) },
+      { path: "new-specialization", element: withModuleAccess("user-management", <NewSpecialization />) },
+      { path: "new-role", element: withModuleAccess("user-management", <NewRole />) },
+      { path: "client-management", element: withModuleAccess("client-management", <ClientManagement />) },
+      { path: "client-management/inactive-users", element: withModuleAccess("client-management", <InactiveClients />) },
+      { path: "documents", element: withModuleAccess("documents", <DocumentAdminPage />) },
+      { path: "certificate", element: withModuleAccess("certificate", <CertificatePage />) },
+      { path: "certificate/edit", element: withModuleAccess("edit-certificate", <EditCertificate />) },
+      { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
+      { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
+      { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
+      { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
+      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
+      { path: "new-services", element: withModuleAccess("tasks", <NewServices />) },
+      { path: "reports", element: withModuleAccess("reports", <AdminReports />) },
+      { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
+    ],
+  },
 ];
 
-function createPrivateRoute({ path, roleId, component: LayoutComponent, children }) {
+function createPrivateRoute({ path, roleId, allowRole, component: LayoutComponent, children }) {
   return {
     path,
-    element: <RoleProtectedRoute allowedRoleId={roleId} LayoutComponent={LayoutComponent} />,
+    element: <RoleProtectedRoute allowedRoleId={roleId} allowRole={allowRole} LayoutComponent={LayoutComponent} />,
     children,
   };
 }

@@ -562,18 +562,19 @@ INSERT INTO `permissions` (`permission_id`, `module_key`, `action_key`, `permiss
 
 CREATE TABLE `role` (
   `Role_id` int(11) NOT NULL,
-  `Role_name` varchar(100) NOT NULL
+  `Role_name` varchar(100) NOT NULL,
+  `Permission_page_status_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `role`
 --
 
-INSERT INTO `role` (`Role_id`, `Role_name`) VALUES
-(1, 'Admin'),
-(2, 'Secretary'),
-(3, 'Accountant'),
-(4, 'Client');
+INSERT INTO `role` (`Role_id`, `Role_name`, `Permission_page_status_id`) VALUES
+(1, 'Admin', 24),
+(2, 'Secretary', 24),
+(3, 'Accountant', 24),
+(4, 'Client', 24);
 
 -- --------------------------------------------------------
 
@@ -933,7 +934,9 @@ INSERT INTO `status` (`Status_id`, `Status_group`, `Status_name`) VALUES
 (20, 'TASK', 'Incomplete'),
 (21, 'TASK', 'Overdue'),
 (22, 'DOCUMENTS', 'Renewed'),
-(23, 'DOCUMENTS', 'Expired');
+(23, 'DOCUMENTS', 'Expired'),
+(24, 'PERMISSION_PAGE', 'Unlocked'),
+(25, 'PERMISSION_PAGE', 'Locked');
 
 -- --------------------------------------------------------
 
@@ -1142,7 +1145,8 @@ ALTER TABLE `permissions`
 -- Indexes for table `role`
 --
 ALTER TABLE `role`
-  ADD PRIMARY KEY (`Role_id`);
+  ADD PRIMARY KEY (`Role_id`),
+  ADD KEY `Permission_page_status_id` (`Permission_page_status_id`);
 
 --
 -- Indexes for table `role_permissions`
@@ -1435,6 +1439,12 @@ ALTER TABLE `notifications`
 --
 ALTER TABLE `permissions`
   ADD CONSTRAINT `permissions_ibfk_1` FOREIGN KEY (`User_ID`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Constraints for table `role`
+--
+ALTER TABLE `role`
+  ADD CONSTRAINT `role_ibfk_1` FOREIGN KEY (`Permission_page_status_id`) REFERENCES `status` (`Status_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `role_permissions`

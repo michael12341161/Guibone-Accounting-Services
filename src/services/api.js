@@ -276,6 +276,11 @@ function normalizeRoleOptions(rows) {
         id,
         name,
         disabled: Boolean(entry?.disabled),
+        permission_page_status_id: entry?.permission_page_status_id ?? entry?.Permission_page_status_id ?? null,
+        permission_page_status_name: String(
+          entry?.permission_page_status_name ?? entry?.Permission_page_status_name ?? ""
+        ).trim(),
+        editing_locked: Boolean(entry?.editing_locked),
         specialization_type_ids: specializationTypeIds,
         specialization_type_names: specializationTypeNames,
       };

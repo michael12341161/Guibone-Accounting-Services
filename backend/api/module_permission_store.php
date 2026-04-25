@@ -2,8 +2,8 @@
 
 require_once __DIR__ . '/connection-pdo.php';
 
-if (!function_exists('monitoring_module_permission_role_key_map')) {
-    function monitoring_module_permission_role_key_map(): array
+if (!function_exists('monitoring_module_permission_builtin_role_key_map')) {
+    function monitoring_module_permission_builtin_role_key_map(): array
     {
         return [
             (int)(defined('MONITORING_ROLE_ADMIN') ? MONITORING_ROLE_ADMIN : 1) => 'admin',
@@ -14,16 +14,78 @@ if (!function_exists('monitoring_module_permission_role_key_map')) {
     }
 }
 
-if (!function_exists('monitoring_module_permission_role_id_map')) {
-    function monitoring_module_permission_role_id_map(): array
+if (!function_exists('monitoring_module_permission_role_key_for_id')) {
+    function monitoring_module_permission_role_key_for_id(int $roleId): ?string
     {
-        static $map = null;
-        if ($map !== null) {
-            return $map;
+        if ($roleId <= 0) {
+            return null;
         }
 
+        $builtinMap = monitoring_module_permission_builtin_role_key_map();
+        if (isset($builtinMap[$roleId])) {
+            return $builtinMap[$roleId];
+        }
+
+        return 'role_' . $roleId;
+    }
+}
+
+if (!function_exists('monitoring_module_permission_select_role_ids')) {
+    function monitoring_module_permission_select_role_ids(?PDO $conn = null): array
+    {
+        $roleIds = [];
+
+        if ($conn instanceof PDO) {
+            monitoring_require_schema_columns($conn, 'role', ['Role_id'], 'role');
+
+            $stmt = $conn->query(
+                'SELECT Role_id
+                 FROM role
+                 WHERE Role_id IS NOT NULL
+                 ORDER BY Role_id ASC'
+            );
+
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $value) {
+                $roleId = (int)$value;
+                if ($roleId > 0) {
+                    $roleIds[$roleId] = true;
+                }
+            }
+        }
+
+        foreach (array_keys(monitoring_module_permission_builtin_role_key_map()) as $builtinRoleId) {
+            $roleIds[(int)$builtinRoleId] = true;
+        }
+
+        $normalizedRoleIds = array_map('intval', array_keys($roleIds));
+        sort($normalizedRoleIds, SORT_NUMERIC);
+
+        return $normalizedRoleIds;
+    }
+}
+
+if (!function_exists('monitoring_module_permission_role_key_map')) {
+    function monitoring_module_permission_role_key_map(?PDO $conn = null): array
+    {
         $map = [];
-        foreach (monitoring_module_permission_role_key_map() as $roleId => $roleKey) {
+        foreach (monitoring_module_permission_select_role_ids($conn) as $roleId) {
+            $roleKey = monitoring_module_permission_role_key_for_id((int)$roleId);
+            if ($roleKey === null || $roleKey === '') {
+                continue;
+            }
+
+            $map[(int)$roleId] = $roleKey;
+        }
+
+        return $map;
+    }
+}
+
+if (!function_exists('monitoring_module_permission_role_id_map')) {
+    function monitoring_module_permission_role_id_map(?PDO $conn = null): array
+    {
+        $map = [];
+        foreach (monitoring_module_permission_role_key_map($conn) as $roleId => $roleKey) {
             $map[$roleKey] = (int)$roleId;
         }
 
@@ -49,26 +111,84 @@ if (!function_exists('monitoring_module_permission_uses_independent_access')) {
 }
 
 if (!function_exists('monitoring_module_permission_empty_role_map')) {
-    function monitoring_module_permission_empty_role_map(): array
+    function monitoring_module_permission_empty_role_map(?PDO $conn = null, ?array $roleKeys = null): array
     {
-        return [
-            'admin' => false,
-            'secretary' => false,
-            'accountant' => false,
-            'client' => false,
-        ];
+        $resolvedRoleKeys = [];
+
+        if (is_array($roleKeys)) {
+            foreach ($roleKeys as $roleKey) {
+                $normalizedRoleKey = trim((string)$roleKey);
+                if ($normalizedRoleKey !== '') {
+                    $resolvedRoleKeys[$normalizedRoleKey] = true;
+                }
+            }
+        }
+
+        if (empty($resolvedRoleKeys)) {
+            foreach (array_keys(monitoring_module_permission_role_id_map($conn)) as $roleKey) {
+                $resolvedRoleKeys[$roleKey] = true;
+            }
+        }
+
+        $map = [];
+        foreach (array_keys($resolvedRoleKeys) as $roleKey) {
+            $map[$roleKey] = false;
+        }
+
+        return $map;
     }
 }
 
 if (!function_exists('monitoring_module_permission_role_defaults')) {
-    function monitoring_module_permission_role_defaults(array $definition): array
+    function monitoring_module_permission_role_defaults(array $definition, ?PDO $conn = null, ?array $roleKeys = null): array
     {
-        return [
-            'admin' => (bool)($definition['admin'] ?? false),
-            'secretary' => (bool)($definition['secretary'] ?? false),
-            'accountant' => (bool)($definition['accountant'] ?? false),
-            'client' => (bool)($definition['client'] ?? false),
-        ];
+        $defaults = monitoring_module_permission_empty_role_map($conn, $roleKeys);
+
+        foreach (array_keys($defaults) as $roleKey) {
+            $defaults[$roleKey] = (bool)($definition[$roleKey] ?? false);
+        }
+
+        return $defaults;
+    }
+}
+
+if (!function_exists('monitoring_module_permission_known_role_keys')) {
+    function monitoring_module_permission_known_role_keys(array $permissions, ?PDO $conn = null): array
+    {
+        $roleKeys = monitoring_module_permission_empty_role_map($conn);
+
+        foreach ($permissions as $modulePermissions) {
+            if (!is_array($modulePermissions)) {
+                continue;
+            }
+
+            foreach ($modulePermissions as $key => $value) {
+                $normalizedKey = trim((string)$key);
+                if ($normalizedKey !== '' && $normalizedKey !== 'actions') {
+                    $roleKeys[$normalizedKey] = true;
+                }
+            }
+
+            $actions = $modulePermissions['actions'] ?? [];
+            if (!is_array($actions)) {
+                continue;
+            }
+
+            foreach ($actions as $actionPermissions) {
+                if (!is_array($actionPermissions)) {
+                    continue;
+                }
+
+                foreach ($actionPermissions as $key => $value) {
+                    $normalizedKey = trim((string)$key);
+                    if ($normalizedKey !== '' && $normalizedKey !== 'actions') {
+                        $roleKeys[$normalizedKey] = true;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_keys($roleKeys));
     }
 }
 
@@ -137,34 +257,24 @@ if (!function_exists('monitoring_module_permission_parse_name')) {
 }
 
 if (!function_exists('monitoring_module_permission_normalize_against_reference')) {
-    function monitoring_module_permission_normalize_against_reference(array $permissions, array $reference): array
+    function monitoring_module_permission_normalize_against_reference(array $permissions, array $reference, ?PDO $conn = null): array
     {
         $normalized = [];
+        $roleKeys = monitoring_module_permission_known_role_keys($reference, $conn);
 
         foreach ($reference as $moduleKey => $moduleDefinition) {
             $featurePermissions = isset($permissions[$moduleKey]) && is_array($permissions[$moduleKey])
                 ? $permissions[$moduleKey]
                 : [];
-            $defaultFeaturePermissions = monitoring_module_permission_role_defaults($moduleDefinition);
+            $defaultFeaturePermissions = monitoring_module_permission_role_defaults($moduleDefinition, $conn, $roleKeys);
+            $normalized[$moduleKey] = monitoring_module_permission_empty_role_map($conn, $roleKeys);
 
-            $normalized[$moduleKey] = [
-                'admin' => monitoring_module_permission_normalize_bool(
-                    $featurePermissions['admin'] ?? null,
-                    (bool)$defaultFeaturePermissions['admin']
-                ),
-                'secretary' => monitoring_module_permission_normalize_bool(
-                    $featurePermissions['secretary'] ?? null,
-                    (bool)$defaultFeaturePermissions['secretary']
-                ),
-                'accountant' => monitoring_module_permission_normalize_bool(
-                    $featurePermissions['accountant'] ?? null,
-                    (bool)$defaultFeaturePermissions['accountant']
-                ),
-                'client' => monitoring_module_permission_normalize_bool(
-                    $featurePermissions['client'] ?? null,
-                    (bool)$defaultFeaturePermissions['client']
-                ),
-            ];
+            foreach ($roleKeys as $roleKey) {
+                $normalized[$moduleKey][$roleKey] = monitoring_module_permission_normalize_bool(
+                    $featurePermissions[$roleKey] ?? null,
+                    (bool)($defaultFeaturePermissions[$roleKey] ?? false)
+                );
+            }
 
             if (!isset($moduleDefinition['actions']) || !is_array($moduleDefinition['actions'])) {
                 continue;
@@ -182,39 +292,27 @@ if (!function_exists('monitoring_module_permission_normalize_against_reference')
                     : (($moduleKey === 'tasks' && isset($featureActions['show-actions']) && is_array($featureActions['show-actions']))
                         ? $featureActions['show-actions']
                         : (!$hasStoredActions ? $featurePermissions : []));
-                $defaultActionPermissions = monitoring_module_permission_role_defaults($actionDefinition);
+                $defaultActionPermissions = monitoring_module_permission_role_defaults($actionDefinition, $conn, $roleKeys);
+                $normalized[$moduleKey]['actions'][$actionKey] = monitoring_module_permission_empty_role_map($conn, $roleKeys);
 
-                $normalized[$moduleKey]['actions'][$actionKey] = [
-                    'admin' => monitoring_module_permission_normalize_bool(
-                        $actionPermissions['admin'] ?? null,
-                        (bool)$defaultActionPermissions['admin']
-                    ),
-                    'secretary' => monitoring_module_permission_normalize_bool(
-                        $actionPermissions['secretary'] ?? null,
-                        (bool)$defaultActionPermissions['secretary']
-                    ),
-                    'accountant' => monitoring_module_permission_normalize_bool(
-                        $actionPermissions['accountant'] ?? null,
-                        (bool)$defaultActionPermissions['accountant']
-                    ),
-                    'client' => monitoring_module_permission_normalize_bool(
-                        $actionPermissions['client'] ?? null,
-                        (bool)$defaultActionPermissions['client']
-                    ),
-                ];
+                foreach ($roleKeys as $roleKey) {
+                    $normalized[$moduleKey]['actions'][$actionKey][$roleKey] = monitoring_module_permission_normalize_bool(
+                        $actionPermissions[$roleKey] ?? null,
+                        (bool)($defaultActionPermissions[$roleKey] ?? false)
+                    );
+                }
             }
 
             if (monitoring_module_permission_uses_independent_access($moduleKey)) {
                 continue;
             }
 
-            $normalized[$moduleKey]['admin'] = false;
-            $normalized[$moduleKey]['secretary'] = false;
-            $normalized[$moduleKey]['accountant'] = false;
-            $normalized[$moduleKey]['client'] = false;
+            foreach ($roleKeys as $roleKey) {
+                $normalized[$moduleKey][$roleKey] = false;
+            }
 
             foreach ($normalized[$moduleKey]['actions'] as $actionPermissions) {
-                foreach (['admin', 'secretary', 'accountant', 'client'] as $roleKey) {
+                foreach ($roleKeys as $roleKey) {
                     if (!empty($actionPermissions[$roleKey])) {
                         $normalized[$moduleKey][$roleKey] = true;
                     }
@@ -227,9 +325,9 @@ if (!function_exists('monitoring_module_permission_normalize_against_reference')
 }
 
 if (!function_exists('monitoring_module_permission_normalize')) {
-    function monitoring_module_permission_normalize(array $permissions, array $reference): array
+    function monitoring_module_permission_normalize(array $permissions, array $reference, ?PDO $conn = null): array
     {
-        return monitoring_module_permission_normalize_against_reference($permissions, $reference);
+        return monitoring_module_permission_normalize_against_reference($permissions, $reference, $conn);
     }
 }
 
@@ -307,7 +405,7 @@ if (!function_exists('monitoring_module_permission_reference_catalog')) {
             $actionKey = $row['action_key'];
 
             if (!isset($catalog[$moduleKey]) || !is_array($catalog[$moduleKey])) {
-                $catalog[$moduleKey] = monitoring_module_permission_empty_role_map();
+                $catalog[$moduleKey] = monitoring_module_permission_empty_role_map($conn);
             }
 
             if ($actionKey === '') {
@@ -319,7 +417,7 @@ if (!function_exists('monitoring_module_permission_reference_catalog')) {
             }
 
             if (!isset($catalog[$moduleKey]['actions'][$actionKey]) || !is_array($catalog[$moduleKey]['actions'][$actionKey])) {
-                $catalog[$moduleKey]['actions'][$actionKey] = monitoring_module_permission_empty_role_map();
+                $catalog[$moduleKey]['actions'][$actionKey] = monitoring_module_permission_empty_role_map($conn);
             }
         }
 
@@ -333,7 +431,7 @@ if (!function_exists('monitoring_module_permissions_load')) {
         monitoring_module_permissions_ensure_store($conn);
 
         $permissions = monitoring_module_permission_reference_catalog($conn);
-        $roleKeyMap = monitoring_module_permission_role_key_map();
+        $roleKeyMap = monitoring_module_permission_role_key_map($conn);
         $stmt = $conn->query(
             'SELECT p.permission_id,
                     p.module_key,
@@ -373,7 +471,7 @@ if (!function_exists('monitoring_module_permissions_load')) {
             $permissions[$moduleKey][$roleKey] = $isAllowed;
         }
 
-        return monitoring_module_permission_normalize($permissions, $permissions);
+        return monitoring_module_permission_normalize($permissions, $permissions, $conn);
     }
 }
 
@@ -443,7 +541,7 @@ if (!function_exists('monitoring_module_permissions_save')) {
         monitoring_module_permissions_ensure_catalog_entries($conn, $permissions);
 
         $reference = monitoring_module_permissions_load($conn);
-        $normalized = monitoring_module_permission_normalize($permissions, $reference);
+        $normalized = monitoring_module_permission_normalize($permissions, $reference, $conn);
         $modifiedByUserId = monitoring_module_permission_normalize_user_id($modifiedByUserId);
 
         $catalogRows = monitoring_module_permission_catalog_rows($conn);
@@ -488,9 +586,9 @@ if (!function_exists('monitoring_module_permissions_save')) {
 
                 $valueSource = $actionKey === ''
                     ? $normalized[$moduleKey]
-                    : ($normalized[$moduleKey]['actions'][$actionKey] ?? monitoring_module_permission_empty_role_map());
+                    : ($normalized[$moduleKey]['actions'][$actionKey] ?? monitoring_module_permission_empty_role_map($conn));
 
-                foreach (monitoring_module_permission_role_id_map() as $roleKey => $roleId) {
+                foreach (monitoring_module_permission_role_id_map($conn) as $roleKey => $roleId) {
                     $compositeKey = (int)$roleId . ':' . $permissionId;
                     $isAllowed = !empty($valueSource[$roleKey]);
                     $existingRow = $existingRolePermissions[$compositeKey] ?? null;
@@ -544,7 +642,7 @@ if (!function_exists('monitoring_module_permissions_is_role_allowed')) {
         $permissions = monitoring_module_permissions_load($conn);
         $normalizedModuleKey = trim($moduleKey);
         $normalizedActionKey = trim((string)$actionKey);
-        $roleKey = monitoring_module_permission_role_key_map()[$roleId] ?? null;
+        $roleKey = monitoring_module_permission_role_key_for_id($roleId);
 
         if ($normalizedModuleKey === '' || $roleKey === null) {
             return false;

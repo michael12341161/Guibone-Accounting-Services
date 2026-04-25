@@ -8,6 +8,7 @@ import PieChart from "../../components/charts/PieChart";
 import Barchart from "../../components/charts/Barchart";
 import { DataTable } from "../../components/UI/table";
 import { api } from "../../services/api";
+import { firstNonEmptyString, readBracketMetaValue } from "../../utils/descriptionMeta";
 import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const TASK_STATUS_COLORS = {
@@ -84,6 +85,14 @@ function formatDate(value) {
     month: "short",
     day: "2-digit",
   });
+}
+
+function formatTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+
+  const match = raw.match(/^(\d{1,2}:\d{2})(?::\d{2})?$/);
+  return match ? match[1] : raw;
 }
 
 function startOfDay(dateValue) {
@@ -433,7 +442,24 @@ export default function SecretaryReports() {
         title: "Total Appointment",
         description: "Appointment status mix and appointment list in the selected window.",
         columns,
-        rows,
+        rows: rows.map((currentRow, idx) => {
+          const record = filteredAppointments[idx] ?? {};
+          const description = String(record?.Description ?? record?.description ?? "");
+          const service = firstNonEmptyString(
+            record?.service_name,
+            record?.service,
+            readBracketMetaValue(description, "Service"),
+            record?.Name
+          );
+          const notes = firstNonEmptyString(record?.notes, record?.Notes, readBracketMetaValue(description, "Notes"));
+
+          return {
+            ...currentRow,
+            client: record?.client_name || record?.Client_name || "-",
+            service: service || "-",
+            notes: notes ? notes.slice(0, 200) : "-",
+          };
+        }),
         emptyMessage: "No appointment activity in the selected range.",
       };
     }
@@ -465,7 +491,32 @@ export default function SecretaryReports() {
         title: "Total Consultation",
         description: "Consultation status mix and scheduling list in the selected window.",
         columns,
-        rows,
+        rows: rows.map((currentRow, idx) => {
+          const record = filteredConsultations[idx] ?? {};
+          const description = String(record?.Description ?? record?.description ?? "");
+          const dateRaw = record?.Date ?? record?.date ?? "";
+          const dateStr = dateRaw ? String(dateRaw).slice(0, 10) : "";
+          const timeRaw = firstNonEmptyString(record?.Time, record?.time, readBracketMetaValue(description, "Time"));
+          const title = firstNonEmptyString(
+            record?.Consultation_Service,
+            record?.consultation_service,
+            record?.service_name,
+            record?.service,
+            readBracketMetaValue(description, "Service"),
+            record?.Name,
+            record?.title,
+            record?.Title,
+            readBracketMetaValue(description, "Type")
+          );
+
+          return {
+            ...currentRow,
+            client: record?.Client_name ?? record?.client_name ?? "-",
+            title: title || "Consultation",
+            date: dateStr ? formatDate(dateStr) : "-",
+            time: formatTime(timeRaw),
+          };
+        }),
         emptyMessage: "No consultation records in the selected range.",
       };
     }

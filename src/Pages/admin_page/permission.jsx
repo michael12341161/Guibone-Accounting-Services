@@ -1,67 +1,286 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
+import { fetchRoles, updateRole } from "../../services/api";
 import { showErrorToast, showSuccessToast } from "../../utils/feedback";
 import {
   FEATURE_SECTIONS,
+  getRoleKeyFromId,
   getFeatureDefinition,
   createFeaturePermissions,
   featureUsesIndependentAccess,
+  mergePermissions,
 } from "../../utils/module_permissions";
-
-const ROLE_COLUMNS = [
-  { key: "secretary", label: "Secretary", description: "Office workflow and scheduling access." },
-  { key: "accountant", label: "Accountant", description: "Task and finance access." },
-  { key: "client", label: "Client", description: "Client portal access." },
-  { key: "admin", label: "Admin", description: "Full access across the system." },
-];
 
 const VISIBLE_FEATURE_SECTIONS = FEATURE_SECTIONS;
 const ROLE_EDITING_STORAGE_KEY = "monitoring:permission-role-editing-states";
+const ROLE_CATALOG_STORAGE_KEY = "monitoring:permission-role-catalog";
 
-function createRoleEditingStates() {
-  return ROLE_COLUMNS.reduce((states, role) => {
-    states[role.key] = true;
+const ROLE_DESCRIPTIONS = Object.freeze({
+  admin: "Full access across the system.",
+  secretary: "Office workflow and scheduling access.",
+  accountant: "Task and finance access.",
+  client: "Client portal access.",
+});
+
+function normalizeRoleLabel(roleKey) {
+  if (roleKey === "admin") return "Admin";
+  if (roleKey === "secretary") return "Secretary";
+  if (roleKey === "accountant") return "Accountant";
+  if (roleKey === "client") return "Client";
+
+  if (/^role_\d+$/.test(roleKey)) {
+    return `Role ${roleKey.replace("role_", "")}`;
+  }
+
+  return String(roleKey || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}
+
+function getRoleSortId(roleKey, fallbackId = null) {
+  const normalizedRoleKey = String(roleKey || "").trim().toLowerCase();
+  if (normalizedRoleKey === "admin") return 1;
+  if (normalizedRoleKey === "secretary") return 2;
+  if (normalizedRoleKey === "accountant") return 3;
+  if (normalizedRoleKey === "client") return 4;
+
+  const matchedRoleId = normalizedRoleKey.match(/^role_(\d+)$/);
+  if (matchedRoleId) {
+    return Number(matchedRoleId[1]);
+  }
+
+  const parsedFallbackId = Number(fallbackId);
+  return Number.isInteger(parsedFallbackId) && parsedFallbackId > 0 ? parsedFallbackId : -1;
+}
+
+function normalizeRoleCatalog(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return rows
+    .map((role) => {
+      const id = Number(role?.id);
+      const roleKey = getRoleKeyFromId(id);
+      const label = String(role?.name || "").trim();
+      if (!roleKey || !label) {
+        return null;
+      }
+
+      return {
+        id,
+        key: roleKey,
+        name: label,
+        disabled: Boolean(role?.disabled),
+        editingLocked: Boolean(role?.editingLocked ?? role?.editing_locked),
+      };
+    })
+    .filter((role) => {
+      if (!role || seen.has(role.key)) {
+        return false;
+      }
+
+      seen.add(role.key);
+      return true;
+    })
+    .sort((left, right) => {
+      const sortDifference = getRoleSortId(right.key, right.id) - getRoleSortId(left.key, left.id);
+      if (sortDifference !== 0) {
+        return sortDifference;
+      }
+
+      return String(left.name || "").localeCompare(String(right.name || ""));
+    });
+}
+
+function normalizeRoleCatalogPatch(changes) {
+  if (!changes || typeof changes !== "object") {
+    return {};
+  }
+
+  const nextChanges = { ...changes };
+  if (
+    Object.prototype.hasOwnProperty.call(nextChanges, "editingLocked") ||
+    Object.prototype.hasOwnProperty.call(nextChanges, "editing_locked")
+  ) {
+    const nextEditingLocked = Boolean(nextChanges.editingLocked ?? nextChanges.editing_locked);
+    nextChanges.editingLocked = nextEditingLocked;
+    nextChanges.editing_locked = nextEditingLocked;
+  }
+
+  return nextChanges;
+}
+
+function readCachedRoleCatalog() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    return normalizeRoleCatalog(JSON.parse(window.localStorage.getItem(ROLE_CATALOG_STORAGE_KEY) || "[]"));
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeCachedRoleCatalog(roles) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(ROLE_CATALOG_STORAGE_KEY, JSON.stringify(normalizeRoleCatalog(roles)));
+  } catch (_) {}
+}
+
+function collectPermissionRoleKeys(permissions) {
+  const roleKeys = new Set(["admin", "secretary", "accountant", "client"]);
+
+  if (!permissions || typeof permissions !== "object") {
+    return Array.from(roleKeys);
+  }
+
+  Object.values(permissions).forEach((featurePermissions) => {
+    if (!featurePermissions || typeof featurePermissions !== "object") {
+      return;
+    }
+
+    Object.keys(featurePermissions).forEach((key) => {
+      if (key && key !== "actions") {
+        roleKeys.add(key);
+      }
+    });
+
+    if (!featurePermissions.actions || typeof featurePermissions.actions !== "object") {
+      return;
+    }
+
+    Object.values(featurePermissions.actions).forEach((actionPermissions) => {
+      if (!actionPermissions || typeof actionPermissions !== "object") {
+        return;
+      }
+
+      Object.keys(actionPermissions).forEach((key) => {
+        if (key && key !== "actions") {
+          roleKeys.add(key);
+        }
+      });
+    });
+  });
+
+  return Array.from(roleKeys);
+}
+
+function buildRoleColumns(roles, permissions) {
+  const columns = [];
+  const seen = new Set();
+
+  normalizeRoleCatalog(roles).forEach((role) => {
+    const roleKey = getRoleKeyFromId(role?.id);
+    if (!roleKey || seen.has(roleKey)) {
+      return;
+    }
+
+    seen.add(roleKey);
+    columns.push({
+      id: role?.id,
+      key: roleKey,
+      label: String(role?.name || "").trim() || normalizeRoleLabel(roleKey),
+      description: ROLE_DESCRIPTIONS[roleKey] || "Custom role access.",
+      disabled: Boolean(role?.disabled),
+      editingLocked: Boolean(role?.editingLocked),
+      sortId: getRoleSortId(roleKey, role?.id),
+    });
+  });
+
+  collectPermissionRoleKeys(permissions).forEach((roleKey) => {
+    if (!roleKey || seen.has(roleKey)) {
+      return;
+    }
+
+    seen.add(roleKey);
+    columns.push({
+      id: null,
+      key: roleKey,
+      label: normalizeRoleLabel(roleKey),
+      description: ROLE_DESCRIPTIONS[roleKey] || "Custom role access.",
+      disabled: false,
+      editingLocked: undefined,
+      sortId: getRoleSortId(roleKey),
+    });
+  });
+
+  return columns
+    .sort((left, right) => {
+      const sortDifference = right.sortId - left.sortId;
+      if (sortDifference !== 0) {
+        return sortDifference;
+      }
+
+      return String(left.label || "").localeCompare(String(right.label || ""));
+    })
+    .map(({ sortId, ...role }) => role);
+}
+
+function createRoleEditingStates(roleColumns) {
+  return roleColumns.reduce((states, role) => {
+    states[role.key] = role.editingLocked !== true;
     return states;
   }, {});
 }
 
-function normalizeRoleEditingStates(storedStates) {
-  const defaults = createRoleEditingStates();
+function normalizeRoleEditingStates(storedStates, roleColumns) {
+  const defaults = createRoleEditingStates(roleColumns);
 
   if (!storedStates || typeof storedStates !== "object") {
     return defaults;
   }
 
-  return ROLE_COLUMNS.reduce((states, role) => {
+  return roleColumns.reduce((states, role) => {
+    if (typeof role.editingLocked === "boolean") {
+      states[role.key] = !role.editingLocked;
+      return states;
+    }
+
     states[role.key] = storedStates[role.key] !== false;
     return states;
   }, defaults);
 }
 
-function loadRoleEditingStates() {
+function loadRoleEditingStates(roleColumns) {
   if (typeof window === "undefined") {
-    return createRoleEditingStates();
+    return createRoleEditingStates(roleColumns);
   }
 
   try {
     const storedValue = window.localStorage.getItem(ROLE_EDITING_STORAGE_KEY);
     if (!storedValue) {
-      return createRoleEditingStates();
+      return createRoleEditingStates(roleColumns);
     }
 
-    return normalizeRoleEditingStates(JSON.parse(storedValue));
+    return normalizeRoleEditingStates(JSON.parse(storedValue), roleColumns);
   } catch (_) {
-    return createRoleEditingStates();
+    return createRoleEditingStates(roleColumns);
   }
 }
 
-function applyBulkRoleAccess(base, roleKey, enabled) {
+function permissionsHaveUnsavedChanges(currentPermissions, savedPermissions) {
+  return (
+    JSON.stringify(mergePermissions(currentPermissions ?? null)) !==
+    JSON.stringify(mergePermissions(savedPermissions ?? null))
+  );
+}
+
+function applyBulkRoleAccess(base, roleKey, enabled, roleKeys) {
   const next = { ...base };
 
   for (const section of FEATURE_SECTIONS) {
     for (const feature of section.features) {
-      const defaultFeaturePermissions = createFeaturePermissions(feature);
+      const defaultFeaturePermissions = createFeaturePermissions(feature, roleKeys);
       const featurePermissions = next[feature.key] || defaultFeaturePermissions;
       const merged = {
         ...featurePermissions,
@@ -106,7 +325,15 @@ export default function PermissionsPage() {
   const [draftPermissions, setDraftPermissions] = useState(null);
   const [savingRole, setSavingRole] = useState("");
   const [expandedFeatureDetails, setExpandedFeatureDetails] = useState(() => new Set());
-  const [roleEditingStates, setRoleEditingStates] = useState(loadRoleEditingStates);
+  const [availableRoles, setAvailableRoles] = useState(() => readCachedRoleCatalog());
+  const [rolesLoaded, setRolesLoaded] = useState(() => readCachedRoleCatalog().length > 0);
+  const [roleEditingStates, setRoleEditingStates] = useState({});
+
+  const roleColumns = useMemo(
+    () => buildRoleColumns(availableRoles, draftPermissions || permissions),
+    [availableRoles, draftPermissions, permissions]
+  );
+  const roleKeys = useMemo(() => roleColumns.map((role) => role.key), [roleColumns]);
 
   useEffect(() => {
     if (!permissions) {
@@ -117,6 +344,65 @@ export default function PermissionsPage() {
   }, [permissions]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadRoles = async () => {
+      try {
+        const response = await fetchRoles({
+          params: {
+            include_disabled: 1,
+          },
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextRoles = normalizeRoleCatalog(response?.data?.roles);
+        if (nextRoles.length > 0) {
+          setAvailableRoles(nextRoles);
+        }
+      } catch (_) {
+        if (!isMounted) {
+          return;
+        }
+      } finally {
+        if (isMounted) {
+          setRolesLoaded(true);
+        }
+      }
+    };
+
+    void loadRoles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (availableRoles.length === 0) {
+      return;
+    }
+
+    writeCachedRoleCatalog(availableRoles);
+  }, [availableRoles]);
+
+  useEffect(() => {
+    if (roleColumns.length === 0) {
+      return;
+    }
+
+    setRoleEditingStates((current) => {
+      if (current && Object.keys(current).length > 0) {
+        return normalizeRoleEditingStates(current, roleColumns);
+      }
+
+      return loadRoleEditingStates(roleColumns);
+    });
+  }, [roleColumns]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -124,10 +410,10 @@ export default function PermissionsPage() {
     try {
       window.localStorage.setItem(
         ROLE_EDITING_STORAGE_KEY,
-        JSON.stringify(normalizeRoleEditingStates(roleEditingStates))
+        JSON.stringify(normalizeRoleEditingStates(roleEditingStates, roleColumns))
       );
     } catch (_) {}
-  }, [roleEditingStates]);
+  }, [roleColumns, roleEditingStates]);
 
   const togglePermission = (featureKey, roleKey) => {
     const featureDefinition = getFeatureDefinition(featureKey);
@@ -140,7 +426,7 @@ export default function PermissionsPage() {
         return current;
       }
 
-      const defaultFeaturePermissions = createFeaturePermissions(featureDefinition);
+      const defaultFeaturePermissions = createFeaturePermissions(featureDefinition, roleKeys);
       const featurePermissions = current[featureKey] || defaultFeaturePermissions;
       const nextEnabled = !Boolean(featurePermissions[roleKey]);
       const currentActions = featurePermissions.actions || defaultFeaturePermissions.actions || {};
@@ -183,19 +469,12 @@ export default function PermissionsPage() {
     });
   };
 
-  const toggleRoleEditing = (roleKey) => {
-    setRoleEditingStates((current) => ({
-      ...current,
-      [roleKey]: !current[roleKey],
-    }));
-  };
-
   const setAllPermissionsForRole = (roleKey, enabled) => {
     setDraftPermissions((current) => {
       if (!current) {
         return current;
       }
-      return applyBulkRoleAccess(current, roleKey, enabled);
+      return applyBulkRoleAccess(current, roleKey, enabled, roleKeys);
     });
   };
 
@@ -212,7 +491,7 @@ export default function PermissionsPage() {
         return current;
       }
 
-      const defaultFeaturePermissions = createFeaturePermissions(featureDefinition);
+      const defaultFeaturePermissions = createFeaturePermissions(featureDefinition, roleKeys);
       const featurePermissions = current[featureKey] || defaultFeaturePermissions;
       const actionPermissions = featurePermissions.actions?.[actionKey] || defaultFeaturePermissions.actions?.[actionKey];
       if (!actionPermissions) {
@@ -242,23 +521,112 @@ export default function PermissionsPage() {
     });
   };
 
-  const handleSavePermissions = async (roleLabel) => {
-    if (!draftPermissions) {
+  const updateCachedRole = (roleId, changes) => {
+    const normalizedRoleId = Number(roleId);
+    if (!Number.isInteger(normalizedRoleId) || normalizedRoleId <= 0) {
       return;
     }
 
-    setSavingRole(roleLabel);
+    const normalizedChanges = normalizeRoleCatalogPatch(changes);
+
+    setAvailableRoles((current) =>
+      normalizeRoleCatalog(
+        current.map((role) =>
+          Number(role?.id) === normalizedRoleId
+            ? {
+                ...role,
+                ...normalizedChanges,
+              }
+            : role
+        )
+      )
+    );
+  };
+
+  const handleSavePermissions = async (
+    role,
+    { showSuccessOnSave = true, successTitle = "" } = {},
+    manageSavingState = true
+  ) => {
+    if (!draftPermissions) {
+      return false;
+    }
+
+    const roleKey = String(role?.key || "").trim();
+    const roleLabel = String(role?.label || "Role").trim() || "Role";
+    if (manageSavingState) {
+      setSavingRole(roleKey);
+    }
 
     try {
       const savedPermissions = await savePermissions(draftPermissions);
       setDraftPermissions(savedPermissions);
+      if (showSuccessOnSave) {
+        showSuccessToast({
+          title: successTitle || `${roleLabel} permissions saved`,
+          duration: 1800,
+        });
+      }
+      return true;
+    } catch (saveError) {
+      showErrorToast({
+        title: saveError?.response?.data?.message || "Unable to save permissions",
+        duration: 2200,
+      });
+      return false;
+    } finally {
+      if (manageSavingState) {
+        setSavingRole("");
+      }
+    }
+  };
+
+  const toggleRoleEditing = async (role) => {
+    const roleKey = String(role?.key || "").trim();
+    const roleLabel = String(role?.label || "Role").trim() || "Role";
+    const roleId = Number(role?.id);
+    if (!roleKey) {
+      return;
+    }
+
+    const isRoleEditingEnabled = roleEditingStates[roleKey] !== false;
+    const nextEditingEnabled = !isRoleEditingEnabled;
+    const nextEditingLocked = !nextEditingEnabled;
+
+    setSavingRole(roleKey);
+
+    try {
+      if (isRoleEditingEnabled && draftPermissions && permissionsHaveUnsavedChanges(draftPermissions, permissions)) {
+        const saved = await handleSavePermissions(role, { showSuccessOnSave: false }, false);
+        if (!saved) {
+          return;
+        }
+      }
+
+      let finalEditingLocked = nextEditingLocked;
+      if (Number.isInteger(roleId) && roleId > 0) {
+        const response = await updateRole({
+          role_id: roleId,
+          editing_locked: nextEditingLocked,
+        });
+        finalEditingLocked = Boolean(response?.data?.role?.editing_locked ?? nextEditingLocked);
+        updateCachedRole(roleId, response?.data?.role || { editing_locked: finalEditingLocked });
+      }
+
+      const finalEditingEnabled = !finalEditingLocked;
+
+      setRoleEditingStates((current) => ({
+        ...current,
+        [roleKey]: finalEditingEnabled,
+      }));
+
       showSuccessToast({
-        title: `${roleLabel} permissions saved`,
+        title: finalEditingEnabled ? `${roleLabel} unlocked` : `${roleLabel} saved and locked`,
         duration: 1800,
       });
     } catch (saveError) {
       showErrorToast({
-        title: saveError?.response?.data?.message || "Unable to save permissions",
+        title: saveError?.response?.data?.message || "Unable to update edit lock",
         duration: 2200,
       });
     } finally {
@@ -267,6 +635,10 @@ export default function PermissionsPage() {
   };
 
   if (isLoading && !draftPermissions) {
+    return <RouteLoadingPanel />;
+  }
+
+  if (!rolesLoaded && availableRoles.length === 0) {
     return <RouteLoadingPanel />;
   }
 
@@ -302,9 +674,10 @@ export default function PermissionsPage() {
       </div>
 
       <div className="flex flex-col gap-6">
-        {ROLE_COLUMNS.map((role) => {
+        {roleColumns.map((role) => {
           const enabledCount = countEnabledPermissionsForRole(currentPermissions, role.key);
           const isRoleEditingEnabled = roleEditingStates[role.key] !== false;
+          const isRoleSaving = savingRole === role.key;
 
           return (
             <section key={role.key} className="rounded-xl border border-slate-200 bg-white">
@@ -322,7 +695,7 @@ export default function PermissionsPage() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
                         type="button"
-                        disabled={!isRoleEditingEnabled}
+                        disabled={!isRoleEditingEnabled || isRoleSaving}
                         onClick={() => setAllPermissionsForRole(role.key, true)}
                         className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
@@ -330,7 +703,7 @@ export default function PermissionsPage() {
                       </button>
                       <button
                         type="button"
-                        disabled={!isRoleEditingEnabled}
+                        disabled={!isRoleEditingEnabled || isRoleSaving}
                         onClick={() => setAllPermissionsForRole(role.key, false)}
                         className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
@@ -338,22 +711,27 @@ export default function PermissionsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => toggleRoleEditing(role.key)}
+                        disabled={isRoleSaving}
+                        onClick={() => {
+                          void toggleRoleEditing(role);
+                        }}
                         className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                           isRoleEditingEnabled
                             ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
                             : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                        }`}
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
-                        {isRoleEditingEnabled ? "Lock edits" : "Unlock edits"}
+                        {isRoleSaving ? "Saving..." : isRoleEditingEnabled ? "Lock edits" : "Unlock edits"}
                       </button>
                       <button
                         type="button"
-                        disabled={!isRoleEditingEnabled || savingRole === role.label}
-                        onClick={() => handleSavePermissions(role.label)}
+                        disabled={!isRoleEditingEnabled || isRoleSaving}
+                        onClick={() => {
+                          void handleSavePermissions(role);
+                        }}
                         className="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                       >
-                        {savingRole === role.label ? "Saving..." : "Save"}
+                        {isRoleSaving ? "Saving..." : "Save"}
                       </button>
                     </div>
                   </div>
@@ -384,10 +762,10 @@ export default function PermissionsPage() {
                               <input
                                 type="checkbox"
                                 checked={checked}
-                                disabled={!isRoleEditingEnabled}
+                                disabled={!isRoleEditingEnabled || isRoleSaving}
                                 onChange={() => togglePermission(feature.key, role.key)}
                                 className={`mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 ${
-                                  !isRoleEditingEnabled ? "cursor-not-allowed opacity-60" : ""
+                                  !isRoleEditingEnabled || isRoleSaving ? "cursor-not-allowed opacity-60" : ""
                                 }`}
                               />
 
@@ -445,10 +823,10 @@ export default function PermissionsPage() {
                                             <input
                                               type="checkbox"
                                               checked={actionChecked}
-                                              disabled={!isRoleEditingEnabled}
+                                              disabled={!isRoleEditingEnabled || isRoleSaving}
                                               onChange={() => toggleActionPermission(feature.key, action.key, role.key)}
                                               className={`mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 ${
-                                                !isRoleEditingEnabled ? "cursor-not-allowed opacity-60" : ""
+                                                !isRoleEditingEnabled || isRoleSaving ? "cursor-not-allowed opacity-60" : ""
                                               }`}
                                             />
 

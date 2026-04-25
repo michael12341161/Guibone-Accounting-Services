@@ -252,17 +252,25 @@ function module_permissions_build_revoke_notification_message(array $revokedLabe
     return $title . ': ' . $body;
 }
 
+function module_permissions_target_role_map(PDO $conn): array
+{
+    $adminRoleId = defined('MONITORING_ROLE_ADMIN') ? (int)MONITORING_ROLE_ADMIN : 1;
+
+    return array_filter(
+        monitoring_module_permission_role_id_map($conn),
+        static function ($roleId) use ($adminRoleId): bool {
+            return (int)$roleId !== $adminRoleId;
+        }
+    );
+}
+
 function module_permissions_notify_granted_access(
     PDO $conn,
     array $previousPermissions,
     array $nextPermissions,
     array $sessionUser
 ): int {
-    $roleMap = [
-        'secretary' => defined('MONITORING_ROLE_SECRETARY') ? (int)MONITORING_ROLE_SECRETARY : 2,
-        'accountant' => defined('MONITORING_ROLE_ACCOUNTANT') ? (int)MONITORING_ROLE_ACCOUNTANT : 3,
-        'client' => defined('MONITORING_ROLE_CLIENT') ? (int)MONITORING_ROLE_CLIENT : 4,
-    ];
+    $roleMap = module_permissions_target_role_map($conn);
 
     $senderId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
     $notifiedCount = 0;
@@ -306,11 +314,7 @@ function module_permissions_notify_revoked_access(
     array $nextPermissions,
     array $sessionUser
 ): int {
-    $roleMap = [
-        'secretary' => defined('MONITORING_ROLE_SECRETARY') ? (int)MONITORING_ROLE_SECRETARY : 2,
-        'accountant' => defined('MONITORING_ROLE_ACCOUNTANT') ? (int)MONITORING_ROLE_ACCOUNTANT : 3,
-        'client' => defined('MONITORING_ROLE_CLIENT') ? (int)MONITORING_ROLE_CLIENT : 4,
-    ];
+    $roleMap = module_permissions_target_role_map($conn);
 
     $senderId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
     $notifiedCount = 0;

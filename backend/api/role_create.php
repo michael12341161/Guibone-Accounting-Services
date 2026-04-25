@@ -18,7 +18,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 try {
     monitoring_require_roles([MONITORING_ROLE_ADMIN]);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    monitoring_require_schema_columns($conn, 'role', ['Role_id', 'Role_name'], 'role');
+    monitoring_permission_page_require_schema($conn);
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
@@ -62,8 +62,15 @@ try {
         ]);
     }
 
-    $insertStmt = $conn->prepare('INSERT INTO role (Role_name) VALUES (:name)');
-    $insertStmt->execute([':name' => $roleName]);
+    $permissionPageStatusId = monitoring_permission_page_status_id($conn, false);
+    $insertStmt = $conn->prepare(
+        'INSERT INTO role (Role_name, Permission_page_status_id)
+         VALUES (:name, :permission_page_status_id)'
+    );
+    $insertStmt->execute([
+        ':name' => $roleName,
+        ':permission_page_status_id' => $permissionPageStatusId,
+    ]);
     $roleId = (int)$conn->lastInsertId();
     monitoring_set_role_management_config($conn, $roleId, [
         'disabled' => false,
@@ -77,6 +84,9 @@ try {
             'id' => $roleId,
             'name' => $roleName,
             'disabled' => false,
+            'permission_page_status_id' => $permissionPageStatusId,
+            'permission_page_status_name' => monitoring_permission_page_status_name(false),
+            'editing_locked' => false,
             'specialization_type_ids' => monitoring_get_role_effective_specialization_ids($conn, $roleId, $roleName),
             'specialization_type_names' => monitoring_get_role_effective_specialization_names($conn, $roleId, $roleName),
         ],

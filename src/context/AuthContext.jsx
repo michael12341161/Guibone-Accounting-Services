@@ -371,7 +371,12 @@ function clearStoredAuth() {
 }
 
 export function getHomePathForRole(roleId) {
-  return ROLE_HOME_PATHS[roleId] || "/";
+  const normalizedRoleId = Number(roleId);
+  if (ROLE_HOME_PATHS[normalizedRoleId]) {
+    return ROLE_HOME_PATHS[normalizedRoleId];
+  }
+
+  return Number.isInteger(normalizedRoleId) && normalizedRoleId > 0 ? "/workspace" : "/";
 }
 
 export function AuthProvider({ children }) {

@@ -51,10 +51,16 @@ export default function ClientBusinessStatusPage() {
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const documentsBasePath = useMemo(
-    () => (location.pathname.startsWith("/secretary") ? "/secretary" : "/admin"),
-    [location.pathname]
-  );
+  const documentsBasePath = useMemo(() => {
+    const workspaceKey = String(location.pathname || "").split("/").filter(Boolean)[0];
+    if (workspaceKey === "secretary") {
+      return "/secretary";
+    }
+    if (workspaceKey === "workspace") {
+      return "/workspace";
+    }
+    return "/admin";
+  }, [location.pathname]);
   const canOpenDocuments = hasModuleAccess(user, "documents", permissions);
   const canUploadDocuments = hasFeatureActionAccess(user, "documents", "upload", permissions);
   const documentButtonLabel = canUploadDocuments ? "Manage Permit" : "View Documents";

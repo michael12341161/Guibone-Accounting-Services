@@ -10,7 +10,90 @@ const ROLE_KEY_BY_ID = Object.freeze({
   [ROLE_IDS.ACCOUNTANT]: "accountant",
   [ROLE_IDS.CLIENT]: "client",
 });
+const BUILTIN_ROLE_KEYS = Object.freeze(Object.values(ROLE_KEY_BY_ID));
 const FEATURES_WITH_INDEPENDENT_ACTION_ACCESS = new Set(["certificate", "edit-certificate"]);
+
+function normalizeRoleKey(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized === "actions") {
+    return "";
+  }
+
+  return normalized;
+}
+
+function mergeRoleKeys(...groups) {
+  const roleKeys = new Set(BUILTIN_ROLE_KEYS);
+
+  groups.forEach((group) => {
+    if (Array.isArray(group)) {
+      group.forEach((value) => {
+        const normalized = normalizeRoleKey(value);
+        if (normalized) {
+          roleKeys.add(normalized);
+        }
+      });
+      return;
+    }
+
+    if (group && typeof group === "object") {
+      Object.keys(group).forEach((key) => {
+        const normalized = normalizeRoleKey(key);
+        if (normalized) {
+          roleKeys.add(normalized);
+        }
+      });
+      return;
+    }
+
+    const normalized = normalizeRoleKey(group);
+    if (normalized) {
+      roleKeys.add(normalized);
+    }
+  });
+
+  return Array.from(roleKeys);
+}
+
+function collectRoleKeysFromPermissions(permissions) {
+  const roleKeys = new Set(BUILTIN_ROLE_KEYS);
+
+  if (!permissions || typeof permissions !== "object") {
+    return Array.from(roleKeys);
+  }
+
+  Object.values(permissions).forEach((featurePermissions) => {
+    if (!featurePermissions || typeof featurePermissions !== "object") {
+      return;
+    }
+
+    Object.keys(featurePermissions).forEach((key) => {
+      const normalized = normalizeRoleKey(key);
+      if (normalized) {
+        roleKeys.add(normalized);
+      }
+    });
+
+    if (!featurePermissions.actions || typeof featurePermissions.actions !== "object") {
+      return;
+    }
+
+    Object.values(featurePermissions.actions).forEach((actionPermissions) => {
+      if (!actionPermissions || typeof actionPermissions !== "object") {
+        return;
+      }
+
+      Object.keys(actionPermissions).forEach((key) => {
+        const normalized = normalizeRoleKey(key);
+        if (normalized) {
+          roleKeys.add(normalized);
+        }
+      });
+    });
+  });
+
+  return Array.from(roleKeys);
+}
 
 function humanizePermissionKey(value) {
   return String(value || "")
@@ -402,7 +485,12 @@ export const FEATURE_SECTIONS = [
 ];
 
 export function getRoleKeyFromId(roleId) {
-  return ROLE_KEY_BY_ID[Number(roleId)] || null;
+  const normalizedRoleId = Number(roleId);
+  if (!Number.isInteger(normalizedRoleId) || normalizedRoleId <= 0) {
+    return null;
+  }
+
+  return ROLE_KEY_BY_ID[normalizedRoleId] || `role_${normalizedRoleId}`;
 }
 
 export function getModuleLabelByKey(moduleKey) {
@@ -455,42 +543,40 @@ export function getFeatureActionLabel(featureKey, actionKey) {
   return humanizePermissionKey(actionKey);
 }
 
-function createRolePermissions() {
-  return {
-    admin: false,
-    secretary: false,
-    accountant: false,
-    client: false,
-  };
-}
-
-function createActionPermissions(actions = []) {
-  return actions.reduce((accumulator, action) => {
-    accumulator[action.key] = createRolePermissions(action?.defaultAccess);
+function createRolePermissions(defaultAccess = {}, roleKeys = BUILTIN_ROLE_KEYS) {
+  return mergeRoleKeys(roleKeys, defaultAccess).reduce((accumulator, roleKey) => {
+    accumulator[roleKey] = Boolean(defaultAccess?.[roleKey]);
     return accumulator;
   }, {});
 }
 
-export function createFeaturePermissions(feature) {
-  const permissions = createRolePermissions(feature?.defaultAccess);
+function createActionPermissions(actions = [], roleKeys = BUILTIN_ROLE_KEYS) {
+  return actions.reduce((accumulator, action) => {
+    accumulator[action.key] = createRolePermissions(action?.defaultAccess, roleKeys);
+    return accumulator;
+  }, {});
+}
+
+export function createFeaturePermissions(feature, roleKeys = BUILTIN_ROLE_KEYS) {
+  const permissions = createRolePermissions(feature?.defaultAccess, roleKeys);
 
   if (Array.isArray(feature?.actions) && feature.actions.length > 0) {
-    permissions.actions = createActionPermissions(feature.actions);
+    permissions.actions = createActionPermissions(feature.actions, roleKeys);
   }
 
   return permissions;
 }
 
-export function createDefaultPermissions() {
+export function createDefaultPermissions(roleKeys = BUILTIN_ROLE_KEYS) {
   return FEATURE_SECTIONS.reduce((accumulator, section) => {
     section.features.forEach((feature) => {
-      accumulator[feature.key] = createFeaturePermissions(feature);
+      accumulator[feature.key] = createFeaturePermissions(feature, roleKeys);
     });
     return accumulator;
   }, {});
 }
 
-function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
+function resolveStoredFeaturePermissions(storedPermissions, featureKey, roleKeys = BUILTIN_ROLE_KEYS) {
   const directPermissions = storedPermissions?.[featureKey];
 
   if (featureKey === "certificate" && directPermissions && typeof directPermissions === "object") {
@@ -536,7 +622,7 @@ function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
       return directPermissions;
     }
 
-    const roleKeys = ["admin", "secretary", "accountant", "client"];
+    const availableRoleKeys = mergeRoleKeys(roleKeys, legacyMyTasks, directPermissions);
     const base =
       directPermissions && typeof directPermissions === "object"
         ? {
@@ -556,7 +642,7 @@ function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
     const actionsObj = base.actions && typeof base.actions === "object" ? base.actions : {};
     base.actions = actionsObj;
 
-    for (const roleKey of roleKeys) {
+    for (const roleKey of availableRoleKeys) {
       if (!legacyMyTasks[roleKey]) {
         continue;
       }
@@ -567,10 +653,7 @@ function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
       if (!anyActionForRole) {
         const existing = actionsObj["check-steps"] && typeof actionsObj["check-steps"] === "object" ? actionsObj["check-steps"] : {};
         actionsObj["check-steps"] = {
-          admin: false,
-          secretary: false,
-          accountant: false,
-          client: false,
+          ...createRolePermissions({}, availableRoleKeys),
           ...existing,
           [roleKey]: true,
         };
@@ -583,8 +666,9 @@ function resolveStoredFeaturePermissions(storedPermissions, featureKey) {
   return directPermissions;
 }
 
-export function mergePermissions(storedPermissions) {
-  const defaults = createDefaultPermissions();
+export function mergePermissions(storedPermissions, roleKeys = []) {
+  const availableRoleKeys = mergeRoleKeys(roleKeys, collectRoleKeysFromPermissions(storedPermissions));
+  const defaults = createDefaultPermissions(availableRoleKeys);
 
   if (!storedPermissions || typeof storedPermissions !== "object") {
     return defaults;
@@ -592,39 +676,37 @@ export function mergePermissions(storedPermissions) {
 
   return FEATURE_SECTIONS.reduce((accumulator, section) => {
     section.features.forEach((feature) => {
-      const storedFeature = resolveStoredFeaturePermissions(storedPermissions, feature.key);
-      const mergedFeature = {
-        admin: Boolean(storedFeature?.admin ?? defaults[feature.key].admin),
-        secretary: Boolean(storedFeature?.secretary ?? defaults[feature.key].secretary),
-        accountant: Boolean(storedFeature?.accountant ?? defaults[feature.key].accountant),
-        client: Boolean(storedFeature?.client ?? defaults[feature.key].client),
-      };
+      const storedFeature = resolveStoredFeaturePermissions(storedPermissions, feature.key, availableRoleKeys);
+      const mergedFeature = availableRoleKeys.reduce((featureAccumulator, roleKey) => {
+        featureAccumulator[roleKey] = Boolean(storedFeature?.[roleKey] ?? defaults[feature.key]?.[roleKey]);
+        return featureAccumulator;
+      }, {});
 
       if (Array.isArray(feature.actions) && feature.actions.length > 0) {
         const storedActions = storedFeature?.actions && typeof storedFeature.actions === "object" ? storedFeature.actions : {};
         const hasStoredActions = Object.keys(storedActions).length > 0;
         mergedFeature.actions = feature.actions.reduce((actionAccumulator, action) => {
-          const defaultActionPermissions = defaults[feature.key]?.actions?.[action.key] || createRolePermissions(action?.defaultAccess);
+          const defaultActionPermissions =
+            defaults[feature.key]?.actions?.[action.key] || createRolePermissions(action?.defaultAccess, availableRoleKeys);
           const storedActionPermissions =
             storedActions?.[action.key] ||
             (feature.key === "tasks" && storedActions?.["show-actions"] ? storedActions["show-actions"] : null) ||
             (!hasStoredActions && storedFeature && typeof storedFeature === "object" ? storedFeature : null);
 
-          actionAccumulator[action.key] = {
-            admin: Boolean(storedActionPermissions?.admin ?? defaultActionPermissions.admin),
-            secretary: Boolean(storedActionPermissions?.secretary ?? defaultActionPermissions.secretary),
-            accountant: Boolean(storedActionPermissions?.accountant ?? defaultActionPermissions.accountant),
-            client: Boolean(storedActionPermissions?.client ?? defaultActionPermissions.client),
-          };
+          actionAccumulator[action.key] = availableRoleKeys.reduce((permissionAccumulator, roleKey) => {
+            permissionAccumulator[roleKey] = Boolean(
+              storedActionPermissions?.[roleKey] ?? defaultActionPermissions?.[roleKey]
+            );
+            return permissionAccumulator;
+          }, {});
           return actionAccumulator;
         }, {});
 
         if (!featureUsesIndependentAccess(feature.key)) {
           const mergedActionValues = Object.values(mergedFeature.actions);
-          mergedFeature.admin = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.admin));
-          mergedFeature.secretary = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.secretary));
-          mergedFeature.accountant = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.accountant));
-          mergedFeature.client = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.client));
+          availableRoleKeys.forEach((roleKey) => {
+            mergedFeature[roleKey] = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.[roleKey]));
+          });
         }
       }
 

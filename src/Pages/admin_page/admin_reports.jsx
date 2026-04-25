@@ -8,6 +8,7 @@ import PieChart from "../../components/charts/PieChart";
 import Barchart from "../../components/charts/Barchart";
 import { DataTable } from "../../components/UI/table";
 import { api } from "../../services/api";
+import { firstNonEmptyString, readBracketMetaValue } from "../../utils/descriptionMeta";
 import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
 const CLIENT_APPROVAL_COLORS = {
@@ -107,6 +108,14 @@ function formatDate(value) {
   });
 }
 
+function formatTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+
+  const match = raw.match(/^(\d{1,2}:\d{2})(?::\d{2})?$/);
+  return match ? match[1] : raw;
+}
+
 function startOfDay(dateValue) {
   return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate());
 }
@@ -170,11 +179,12 @@ function isTaskClosed(task) {
 }
 
 function normalizeRoleLabel(user) {
-  const role = String(user?.role || user?.Role || user?.role_name || "").trim().toLowerCase();
-  if (role.includes("admin")) return "Admin";
-  if (role.includes("secretary")) return "Secretary";
-  if (role.includes("accountant")) return "Accountant";
-  if (role.includes("client")) return "Client";
+  const role = firstNonEmptyString(user?.role, user?.Role, user?.role_name, user?.Role_name).toLowerCase();
+  const roleId = Number(user?.role_id ?? user?.Role_id ?? user?.Role_ID ?? user?.roleId ?? 0);
+  if (role.includes("admin") || roleId === 1) return "Admin";
+  if (role.includes("secretary") || roleId === 2) return "Secretary";
+  if (role.includes("accountant") || roleId === 3) return "Accountant";
+  if (role.includes("client") || roleId === 4) return "Client";
   return "Other";
 }
 
@@ -188,6 +198,97 @@ function normalizeApprovalLabel(client) {
 
 function joinPersonName(parts) {
   return parts.filter(Boolean).join(" ").trim() || "—";
+}
+
+function composePersonName(parts) {
+  return parts
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function normalizeReportValue(value, fallback = "-") {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized === "--" || normalized === "—" || normalized === "â€”") {
+    return fallback;
+  }
+  return normalized;
+}
+
+function resolveClientDisplayName(client) {
+  const composedName = composePersonName([
+    client?.first_name || client?.First_name || client?.First_Name,
+    client?.middle_name || client?.Middle_name || client?.Middle_Name,
+    client?.last_name || client?.Last_name || client?.Last_Name,
+  ]);
+
+  return normalizeReportValue(
+    firstNonEmptyString(
+      client?.client_name,
+      client?.Client_name,
+      composedName,
+      client?.username,
+      client?.email,
+      client?.user_email,
+      client?.Email
+    ),
+    `Client #${client?.id ?? client?.client_id ?? client?.Client_ID ?? "?"}`
+  );
+}
+
+function resolveClientEmail(client) {
+  return normalizeReportValue(
+    firstNonEmptyString(client?.email, client?.Email, client?.user_email, client?.User_email)
+  );
+}
+
+function resolveClientBusinessName(client) {
+  return normalizeReportValue(
+    firstNonEmptyString(
+      client?.business_name,
+      client?.Business_Name,
+      client?.business_trade_name,
+      client?.business_brand,
+      client?.business_type,
+      client?.Business_type
+    )
+  );
+}
+
+function resolveEmployeeDisplayName(user) {
+  const profileName = composePersonName([
+    user?.first_name || user?.First_name || user?.First_Name,
+    user?.middle_name || user?.Middle_name || user?.Middle_Name,
+    user?.last_name || user?.Last_name || user?.Last_Name,
+  ]);
+  const employeeName = composePersonName([
+    user?.employee_first_name,
+    user?.employee_middle_name,
+    user?.employee_last_name,
+  ]);
+
+  return normalizeReportValue(
+    firstNonEmptyString(profileName, employeeName, user?.username, user?.email, user?.Email),
+    `User #${user?.id ?? user?.user_id ?? user?.User_ID ?? "?"}`
+  );
+}
+
+function resolveEmployeeUsername(user) {
+  return normalizeReportValue(firstNonEmptyString(user?.username, user?.Username));
+}
+
+function resolveEmployeeEmail(user) {
+  return normalizeReportValue(firstNonEmptyString(user?.email, user?.Email, user?.user_email, user?.User_email));
+}
+
+function resolveEmployeeRole(user) {
+  const normalizedRole = normalizeRoleLabel(user);
+  if (normalizedRole !== "Other") {
+    return normalizedRole;
+  }
+
+  return normalizeReportValue(firstNonEmptyString(user?.role, user?.Role, user?.role_name, user?.Role_name), "Other");
 }
 
 function safeFilenamePart(value) {
@@ -368,7 +469,11 @@ export default function AdminReports() {
   );
 
   const teamMembers = useMemo(
-    () => (Array.isArray(users) ? users : []).filter((user) => normalizeRoleLabel(user) !== "Client"),
+    () =>
+      (Array.isArray(users) ? users : []).filter((user) => {
+        const roleLabel = normalizeRoleLabel(user);
+        return roleLabel !== "Client" && roleLabel !== "Admin";
+      }),
     [users]
   );
 
@@ -557,7 +662,24 @@ export default function AdminReports() {
         title: "Total Appointment",
         description: "Appointment status mix and appointment list in the selected window.",
         columns,
-        rows,
+        rows: rows.map((currentRow, idx) => {
+          const record = filteredAppointments[idx] ?? {};
+          const description = String(record?.Description ?? record?.description ?? "");
+          const service = firstNonEmptyString(
+            record?.service_name,
+            record?.service,
+            readBracketMetaValue(description, "Service"),
+            record?.Name
+          );
+          const notes = firstNonEmptyString(record?.notes, record?.Notes, readBracketMetaValue(description, "Notes"));
+
+          return {
+            ...currentRow,
+            client: record?.client_name || record?.Client_name || "-",
+            service: service || "-",
+            notes: notes ? notes.slice(0, 200) : "-",
+          };
+        }),
         emptyMessage: "No appointment activity in the selected range.",
       };
     }
@@ -589,7 +711,32 @@ export default function AdminReports() {
         title: "Total Consultation",
         description: "Consultation status mix and scheduling list in the selected window.",
         columns,
-        rows,
+        rows: rows.map((currentRow, idx) => {
+          const record = filteredConsultations[idx] ?? {};
+          const description = String(record?.Description ?? record?.description ?? "");
+          const dateRaw = record?.Date ?? record?.date ?? "";
+          const dateStr = dateRaw ? String(dateRaw).slice(0, 10) : "";
+          const timeRaw = firstNonEmptyString(record?.Time, record?.time, readBracketMetaValue(description, "Time"));
+          const title = firstNonEmptyString(
+            record?.Consultation_Service,
+            record?.consultation_service,
+            record?.service_name,
+            record?.service,
+            readBracketMetaValue(description, "Service"),
+            record?.Name,
+            record?.title,
+            record?.Title,
+            readBracketMetaValue(description, "Type")
+          );
+
+          return {
+            ...currentRow,
+            client: record?.Client_name ?? record?.client_name ?? "-",
+            title: title || "Consultation",
+            date: dateStr ? formatDate(dateStr) : "-",
+            time: formatTime(timeRaw),
+          };
+        }),
         emptyMessage: "No consultation records in the selected range.",
       };
     }
@@ -649,7 +796,15 @@ export default function AdminReports() {
         title: "Total Clients",
         description: "Approval status mix and full client directory.",
         columns,
-        rows,
+        rows: rows.map((currentRow, idx) => {
+          const record = (Array.isArray(clients) ? clients : [])[idx] ?? {};
+          return {
+            ...currentRow,
+            name: resolveClientDisplayName(record),
+            email: resolveClientEmail(record),
+            business: resolveClientBusinessName(record),
+          };
+        }),
         emptyMessage: "No client records available.",
       };
     }
@@ -674,9 +829,18 @@ export default function AdminReports() {
       }));
       return {
         title: "Total Employees",
-        description: "Staff roles (non-client accounts) and team directory.",
+        description: "Staff roles (excluding admin and client accounts) and team directory.",
         columns,
-        rows,
+        rows: rows.map((currentRow, idx) => {
+          const record = teamMembers[idx] ?? {};
+          return {
+            ...currentRow,
+            name: resolveEmployeeDisplayName(record),
+            username: resolveEmployeeUsername(record),
+            email: resolveEmployeeEmail(record),
+            role: resolveEmployeeRole(record),
+          };
+        }),
         emptyMessage: "No employee accounts found.",
       };
     }
@@ -701,7 +865,14 @@ export default function AdminReports() {
       title: "Total Client Registrations",
       description: "Clients whose registration date falls in the selected window, grouped by month in the chart.",
       columns,
-      rows,
+      rows: rows.map((currentRow, idx) => {
+        const record = clientsRegisteredInRange[idx] ?? {};
+        return {
+          ...currentRow,
+          name: resolveClientDisplayName(record),
+          email: resolveClientEmail(record),
+        };
+      }),
       emptyMessage: "No client registrations in the selected range.",
     };
   }, [

@@ -18,7 +18,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 try {
     monitoring_require_roles([MONITORING_ROLE_ADMIN]);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    monitoring_require_schema_columns($conn, 'role', ['Role_id', 'Role_name'], 'role');
+    monitoring_permission_page_require_schema($conn);
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
@@ -31,15 +31,40 @@ try {
         respond(422, ['success' => false, 'message' => 'Role id is required.']);
     }
 
-    $roleStmt = $conn->prepare('SELECT Role_id, Role_name FROM role WHERE Role_id = :id LIMIT 1');
+    $roleStmt = $conn->prepare(
+        'SELECT Role_id, Role_name, Permission_page_status_id
+         FROM role
+         WHERE Role_id = :id
+         LIMIT 1'
+    );
     $roleStmt->execute([':id' => $roleId]);
     $existing = $roleStmt->fetch(PDO::FETCH_ASSOC);
     if (!$existing) {
         respond(404, ['success' => false, 'message' => 'Role not found.']);
     }
 
+    $settings = monitoring_get_role_management_settings($conn);
+    $existingRoleConfig = is_array($settings['roles'][(string)$roleId] ?? null) ? $settings['roles'][(string)$roleId] : [];
     $nextName = trim((string)($data['name'] ?? $data['role_name'] ?? $existing['Role_name'] ?? ''));
-    $disabled = !empty($data['disabled']);
+    $disabled = array_key_exists('disabled', $data)
+        ? !empty($data['disabled'])
+        : !empty($existingRoleConfig['disabled']);
+    $editingLocked = array_key_exists('editing_locked', $data)
+        ? !empty($data['editing_locked'])
+        : null;
+    $permissionPageStatusId = monitoring_permission_page_validate_status_id(
+        $conn,
+        $existing['Permission_page_status_id'] ?? null
+    ) ?? 0;
+    if ($editingLocked !== null) {
+        $permissionPageStatusId = monitoring_permission_page_status_id($conn, $editingLocked);
+    } elseif ($permissionPageStatusId <= 0) {
+        throw new RuntimeException(
+            'Role permission page statuses are missing or invalid. Import the latest monitoring.sql update first.'
+        );
+    }
+    $lockedPermissionPageStatusId = monitoring_permission_page_status_id($conn, true);
+    $finalEditingLocked = $permissionPageStatusId === $lockedPermissionPageStatusId;
     $specializationPayloadProvided = array_key_exists('specialization_type_ids', $data)
         || array_key_exists('allowed_specialization_type_ids', $data);
     $specializationIds = [];
@@ -85,13 +110,21 @@ try {
         respond(409, ['success' => false, 'message' => 'Another role already uses that name.']);
     }
 
-    $updateStmt = $conn->prepare('UPDATE role SET Role_name = :name WHERE Role_id = :id');
+    $updateStmt = $conn->prepare(
+        'UPDATE role
+         SET Role_name = :name,
+             Permission_page_status_id = :permission_page_status_id
+         WHERE Role_id = :id'
+    );
     $updateStmt->execute([
         ':name' => $nextName,
+        ':permission_page_status_id' => $permissionPageStatusId,
         ':id' => $roleId,
     ]);
 
-    $roleConfigPayload = ['disabled' => $disabled];
+    $roleConfigPayload = [
+        'disabled' => $disabled,
+    ];
     if ($specializationPayloadProvided) {
         $roleConfigPayload['specialization_type_ids'] = $specializationIds;
     }
@@ -99,11 +132,14 @@ try {
 
     respond(200, [
         'success' => true,
-        'message' => $disabled ? 'Role disabled successfully.' : 'Role updated successfully.',
+        'message' => 'Role updated successfully.',
         'role' => [
             'id' => $roleId,
             'name' => $nextName,
             'disabled' => $disabled,
+            'permission_page_status_id' => $permissionPageStatusId,
+            'permission_page_status_name' => monitoring_permission_page_status_name($finalEditingLocked),
+            'editing_locked' => $finalEditingLocked,
             'specialization_type_ids' => monitoring_get_role_effective_specialization_ids($conn, $roleId, $nextName),
             'specialization_type_names' => monitoring_get_role_effective_specialization_names($conn, $roleId, $nextName),
         ],
