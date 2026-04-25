@@ -156,7 +156,22 @@ try {
         }
         $filters[] = 'c.Client_ID = :client_id';
         $params[':client_id'] = $sessionClientId;
-    } elseif (!in_array($roleId, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY], true)) {
+    } elseif (!monitoring_user_has_role_or_any_module_access(
+        $conn,
+        $sessionUser,
+        [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY],
+        [
+            'client-management',
+            'new-client-management',
+            'documents',
+            'business-status',
+            'appointments',
+            'scheduling',
+            'tasks',
+            'reports',
+            ['module' => 'tasks', 'action' => 'client-appointments'],
+        ]
+    )) {
         monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
     } elseif (isset($_GET['client_id']) && trim((string)$_GET['client_id']) !== '') {
         $clientIdRaw = trim((string)$_GET['client_id']);

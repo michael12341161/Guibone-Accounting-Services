@@ -17,7 +17,7 @@ try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        monitoring_require_roles([MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY], $sessionUser);
+        monitoring_require_role_or_module_access($conn, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY], 'tasks', $sessionUser);
 
         respond(200, [
             'success' => true,
@@ -29,7 +29,7 @@ try {
         respond(405, ['success' => false, 'message' => 'Method not allowed']);
     }
 
-    monitoring_require_roles([MONITORING_ROLE_ADMIN], $sessionUser);
+    monitoring_require_role_or_module_access($conn, [MONITORING_ROLE_ADMIN], 'tasks', $sessionUser);
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);

@@ -205,7 +205,12 @@ try {
         $params[':cid'] = $clientId;
     }
 
-    if (!in_array($roleId, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY, MONITORING_ROLE_CLIENT, MONITORING_ROLE_ACCOUNTANT], true)) {
+    if (!monitoring_user_has_role_or_any_module_access(
+        $conn,
+        $sessionUser,
+        [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY, MONITORING_ROLE_CLIENT, MONITORING_ROLE_ACCOUNTANT],
+        ['tasks', 'work-update', 'calendar', 'reports']
+    )) {
         monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
     }
 

@@ -12,8 +12,8 @@ function respond($code, $payload) {
 }
 
 try {
-    monitoring_require_roles([MONITORING_ROLE_ADMIN]);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    monitoring_require_role_or_any_module_access($conn, [MONITORING_ROLE_ADMIN], ['user-management', 'permissions']);
     $includeDisabled = !empty($_GET['include_disabled']);
 
     monitoring_permission_page_require_schema($conn);

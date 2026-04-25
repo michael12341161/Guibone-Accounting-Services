@@ -199,7 +199,12 @@ try {
         if ($clientId <= 0) {
             monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
         }
-    } elseif (!in_array($roleId, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY], true)) {
+    } elseif (!monitoring_user_has_role_or_any_module_access(
+        $conn,
+        $sessionUser,
+        [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY],
+        ['appointments', 'reports', ['module' => 'tasks', 'action' => 'client-appointments']]
+    )) {
         monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
     }
     if (session_status() === PHP_SESSION_ACTIVE) {

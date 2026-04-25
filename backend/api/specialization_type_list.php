@@ -17,8 +17,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 }
 
 try {
-    monitoring_require_roles([MONITORING_ROLE_ADMIN]);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    monitoring_require_role_or_module_access($conn, [MONITORING_ROLE_ADMIN], 'user-management');
     monitoring_require_schema_columns($conn, 'services_type', ['Services_type_Id', 'Name'], 'service');
     $includeDisabled = !empty($_GET['include_disabled']);
 

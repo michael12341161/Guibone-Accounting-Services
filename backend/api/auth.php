@@ -471,6 +471,103 @@ function monitoring_user_has_any_role(array $user, array $allowedRoleIds): bool
     return false;
 }
 
+function monitoring_user_has_module_access(PDO $conn, array $user, string $moduleKey, ?string $actionKey = null): bool
+{
+    $roleId = isset($user['role_id']) ? (int)$user['role_id'] : 0;
+    $normalizedModuleKey = trim($moduleKey);
+    $normalizedActionKey = trim((string)$actionKey);
+
+    if ($roleId <= 0 || $normalizedModuleKey === '') {
+        return false;
+    }
+
+    if ($roleId === MONITORING_ROLE_ADMIN) {
+        return true;
+    }
+
+    try {
+        require_once __DIR__ . '/module_permission_store.php';
+        return monitoring_module_permissions_is_role_allowed(
+            $conn,
+            $normalizedModuleKey,
+            $normalizedActionKey !== '' ? $normalizedActionKey : null,
+            $roleId
+        );
+    } catch (Throwable $__) {
+        return false;
+    }
+}
+
+function monitoring_user_has_any_module_access(PDO $conn, array $user, array $moduleChecks): bool
+{
+    foreach ($moduleChecks as $moduleCheck) {
+        $moduleKey = '';
+        $actionKey = null;
+
+        if (is_array($moduleCheck)) {
+            $moduleKey = trim((string)($moduleCheck['module'] ?? $moduleCheck[0] ?? ''));
+            $actionKey = trim((string)($moduleCheck['action'] ?? $moduleCheck[1] ?? ''));
+            if ($actionKey === '') {
+                $actionKey = null;
+            }
+        } else {
+            $moduleKey = trim((string)$moduleCheck);
+        }
+
+        if ($moduleKey === '') {
+            continue;
+        }
+
+        if (monitoring_user_has_module_access($conn, $user, $moduleKey, $actionKey)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function monitoring_user_has_role_or_any_module_access(
+    PDO $conn,
+    array $user,
+    array $allowedRoleIds,
+    array $moduleChecks
+): bool {
+    return monitoring_user_has_any_role($user, $allowedRoleIds)
+        || monitoring_user_has_any_module_access($conn, $user, $moduleChecks);
+}
+
+function monitoring_require_role_or_module_access(
+    PDO $conn,
+    array $allowedRoleIds,
+    string $moduleKey,
+    ?array $user = null,
+    ?string $actionKey = null
+): array {
+    return monitoring_require_role_or_any_module_access(
+        $conn,
+        $allowedRoleIds,
+        [['module' => $moduleKey, 'action' => $actionKey]],
+        $user
+    );
+}
+
+function monitoring_require_role_or_any_module_access(
+    PDO $conn,
+    array $allowedRoleIds,
+    array $moduleChecks,
+    ?array $user = null
+): array {
+    $user = $user ?? monitoring_require_auth();
+    if (!monitoring_user_has_role_or_any_module_access($conn, $user, $allowedRoleIds, $moduleChecks)) {
+        monitoring_auth_respond(403, [
+            'success' => false,
+            'message' => 'Access denied.',
+        ]);
+    }
+
+    return $user;
+}
+
 function monitoring_require_roles(array $allowedRoleIds, ?array $user = null): array
 {
     $user = $user ?? monitoring_require_auth();

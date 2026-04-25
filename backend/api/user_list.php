@@ -291,6 +291,198 @@ function mapUserRow(array $row): array {
     ];
 }
 
+function normalizeUserListFilterValue($value): string {
+    $normalized = preg_replace('/\s+/', ' ', trim((string)($value ?? '')));
+    return strtolower((string)($normalized ?? ''));
+}
+
+function readUserListPositiveIntQueryParam(string $key, int $default, int $min = 1, int $max = 100): int {
+    $raw = trim((string)($_GET[$key] ?? ''));
+    if ($raw === '' || !ctype_digit($raw)) {
+        return $default;
+    }
+
+    $value = (int)$raw;
+    if ($value < $min) {
+        return $min;
+    }
+    if ($value > $max) {
+        return $max;
+    }
+
+    return $value;
+}
+
+function buildUserListStatusSqlExpression(): string {
+    return "CASE
+        WHEN COALESCE(u.Employment_status_id, c.Status_id, 0) IN (1, 3) THEN 'active'
+        WHEN COALESCE(u.Employment_status_id, c.Status_id, 0) IN (2, 4) THEN 'inactive'
+        WHEN COALESCE(u.Employment_status_id, c.Status_id, 0) = 5 THEN 'resigned'
+        WHEN NULLIF(TRIM(COALESCE(es.Status_name, s.Status_name, '')), '') IS NOT NULL
+            THEN LOWER(TRIM(COALESCE(es.Status_name, s.Status_name, '')))
+        WHEN u.User_id IS NOT NULL THEN 'active'
+        ELSE '-'
+    END";
+}
+
+function buildUserListSpecializationMetadata(PDO $conn): array {
+    $specializationAssignments = employeeSpecializationReadAssignments($conn);
+    $specializationTypes = loadSpecializationTypes($conn);
+    $specializationNameMap = [];
+    foreach ($specializationTypes as $specializationType) {
+        $specializationId = employeeSpecializationNormalizeId($specializationType['id'] ?? null);
+        $specializationName = normalizeOptionalString($specializationType['name'] ?? null);
+        if ($specializationId !== null && $specializationName !== null) {
+            $specializationNameMap[$specializationId] = $specializationName;
+        }
+    }
+
+    $settings = monitoring_get_specialization_management_settings($conn);
+    $configMap = is_array($settings['specializations'] ?? null) ? $settings['specializations'] : [];
+    $serviceIdsBySpecialization = [];
+    $allServiceIds = [];
+    foreach ($configMap as $specializationId => $config) {
+        $normalizedSpecializationId = employeeSpecializationNormalizeId($specializationId);
+        if ($normalizedSpecializationId === null || !is_array($config)) {
+            continue;
+        }
+
+        $serviceIds = [];
+        foreach ((array)($config['service_ids'] ?? []) as $serviceId) {
+            $normalizedServiceId = (int)$serviceId;
+            if ($normalizedServiceId > 0) {
+                $serviceIds[] = $normalizedServiceId;
+            }
+        }
+
+        $serviceIds = array_values(array_unique($serviceIds));
+        sort($serviceIds);
+        $serviceIdsBySpecialization[(string)$normalizedSpecializationId] = $serviceIds;
+        foreach ($serviceIds as $serviceId) {
+            $allServiceIds[] = $serviceId;
+        }
+    }
+
+    $serviceNameMap = [];
+    $allServiceIds = array_values(array_unique($allServiceIds));
+    if (!empty($allServiceIds)) {
+        try {
+            $placeholders = implode(',', array_fill(0, count($allServiceIds), '?'));
+            $stmt = $conn->prepare(
+                "SELECT Services_type_Id AS id, Name AS name
+                 FROM services_type
+                 WHERE Services_type_Id IN ($placeholders)"
+            );
+            $stmt->execute($allServiceIds);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($rows as $row) {
+                $serviceId = (int)($row['id'] ?? 0);
+                $serviceName = trim((string)($row['name'] ?? ''));
+                if ($serviceId > 0 && $serviceName !== '') {
+                    $serviceNameMap[$serviceId] = $serviceName;
+                }
+            }
+        } catch (Throwable $__) {
+            $serviceNameMap = [];
+        }
+    }
+
+    $serviceNamesBySpecialization = [];
+    foreach ($serviceIdsBySpecialization as $specializationId => $serviceIds) {
+        $serviceNames = [];
+        foreach ($serviceIds as $serviceId) {
+            if (isset($serviceNameMap[$serviceId])) {
+                $serviceNames[] = $serviceNameMap[$serviceId];
+            }
+        }
+        $serviceNamesBySpecialization[$specializationId] = array_values(array_unique($serviceNames));
+    }
+
+    return [
+        'assignments' => $specializationAssignments,
+        'specialization_name_map' => $specializationNameMap,
+        'service_ids_by_specialization' => $serviceIdsBySpecialization,
+        'service_names_by_specialization' => $serviceNamesBySpecialization,
+    ];
+}
+
+function buildUserListAssignedSpecializationDetails(array $assignedIds, array $metadata): array {
+    $specializationNameMap = is_array($metadata['specialization_name_map'] ?? null)
+        ? $metadata['specialization_name_map']
+        : [];
+    $serviceIdsBySpecialization = is_array($metadata['service_ids_by_specialization'] ?? null)
+        ? $metadata['service_ids_by_specialization']
+        : [];
+    $serviceNamesBySpecialization = is_array($metadata['service_names_by_specialization'] ?? null)
+        ? $metadata['service_names_by_specialization']
+        : [];
+
+    $assignedNames = [];
+    $assignedServiceIds = [];
+    $assignedServiceNames = [];
+    foreach ($assignedIds as $assignedId) {
+        $normalizedAssignedId = employeeSpecializationNormalizeId($assignedId);
+        if ($normalizedAssignedId === null) {
+            continue;
+        }
+
+        if (isset($specializationNameMap[$normalizedAssignedId])) {
+            $assignedNames[] = $specializationNameMap[$normalizedAssignedId];
+        }
+
+        foreach ((array)($serviceIdsBySpecialization[(string)$normalizedAssignedId] ?? []) as $serviceId) {
+            $normalizedServiceId = (int)$serviceId;
+            if ($normalizedServiceId > 0) {
+                $assignedServiceIds[] = $normalizedServiceId;
+            }
+        }
+
+        foreach ((array)($serviceNamesBySpecialization[(string)$normalizedAssignedId] ?? []) as $serviceName) {
+            $normalizedServiceName = trim((string)$serviceName);
+            if ($normalizedServiceName !== '') {
+                $assignedServiceNames[] = $normalizedServiceName;
+            }
+        }
+    }
+
+    $assignedServiceIds = array_values(array_unique($assignedServiceIds));
+    sort($assignedServiceIds);
+
+    return [
+        'names' => array_values(array_unique($assignedNames)),
+        'service_ids' => $assignedServiceIds,
+        'service_names' => array_values(array_unique($assignedServiceNames)),
+    ];
+}
+
+function buildUserListSpecializationSearchUserIds(string $search, array $metadata): array {
+    $normalizedSearch = normalizeUserListFilterValue($search);
+    if ($normalizedSearch === '') {
+        return [];
+    }
+
+    $assignments = is_array($metadata['assignments'] ?? null) ? $metadata['assignments'] : [];
+    $matchingUserIds = [];
+    foreach ($assignments as $userId => $assignedIds) {
+        if (!is_array($assignedIds) || empty($assignedIds)) {
+            continue;
+        }
+
+        $details = buildUserListAssignedSpecializationDetails($assignedIds, $metadata);
+        $searchableText = normalizeUserListFilterValue(implode(' ', $details['names']));
+        if ($searchableText !== '' && strpos($searchableText, $normalizedSearch) !== false) {
+            $normalizedUserId = (int)$userId;
+            if ($normalizedUserId > 0) {
+                $matchingUserIds[] = $normalizedUserId;
+            }
+        }
+    }
+
+    $matchingUserIds = array_values(array_unique($matchingUserIds));
+    sort($matchingUserIds);
+    return $matchingUserIds;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     respond(405, ['success' => false, 'message' => 'Method not allowed']);
 }
@@ -304,7 +496,7 @@ try {
     if ($scope === 'security_settings') {
         $settings = monitoring_get_security_settings($conn);
         $canViewFullSettings = $sessionUser !== null
-            && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN]);
+            && monitoring_user_has_role_or_any_module_access($conn, $sessionUser, [MONITORING_ROLE_ADMIN], ['settings']);
 
         respond(200, [
             'success' => true,
@@ -315,7 +507,7 @@ try {
     if ($scope === 'system_configuration') {
         $settings = monitoring_get_system_configuration($conn);
         $canViewFullSettings = $sessionUser !== null
-            && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN]);
+            && monitoring_user_has_role_or_any_module_access($conn, $sessionUser, [MONITORING_ROLE_ADMIN], ['settings']);
         respond(200, [
             'success' => true,
             'settings' => $canViewFullSettings ? $settings : publicSystemConfiguration($settings),
@@ -326,16 +518,90 @@ try {
 
     monitoring_ensure_user_employment_status_column($conn);
     $profileImageSelect = buildProfileImageSelect($conn);
-    $canViewAllUsers = monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
-    $whereSql = '';
+    $canViewAllUsers = monitoring_user_has_role_or_any_module_access(
+        $conn,
+        $sessionUser,
+        [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY],
+        ['user-management']
+    );
+    $specializationMetadata = buildUserListSpecializationMetadata($conn);
+    $statusSqlExpression = buildUserListStatusSqlExpression();
+    $search = trim((string)($_GET['search'] ?? ''));
+    $roleFilter = normalizeUserListFilterValue($_GET['role'] ?? '');
+    $statusFilter = normalizeUserListFilterValue($_GET['status'] ?? '');
+    $staffOnly = isset($_GET['staff_only']) && $_GET['staff_only'] !== '' && $_GET['staff_only'] !== '0';
+    $page = readUserListPositiveIntQueryParam('page', 1, 1, 1000000);
+    $pageSize = readUserListPositiveIntQueryParam('page_size', 10, 1, 100);
+    if ($roleFilter === 'all') {
+        $roleFilter = '';
+    }
+    if ($statusFilter === 'all') {
+        $statusFilter = '';
+    }
+
+    $usePaginatedResponse = isset($_GET['page'])
+        || isset($_GET['page_size'])
+        || $search !== ''
+        || $roleFilter !== ''
+        || $statusFilter !== ''
+        || $staffOnly;
+
+    $whereClauses = [];
     $params = [];
     if (!$canViewAllUsers) {
-        $whereSql = 'WHERE u.User_id = :current_user_id';
+        $whereClauses[] = 'u.User_id = :current_user_id';
         $params[':current_user_id'] = (int)$sessionUser['id'];
     }
 
-    $stmt = $conn->prepare(
-        'SELECT u.User_id AS id,
+    if ($staffOnly) {
+        $whereClauses[] = "LOWER(TRIM(COALESCE(r.Role_name, ''))) NOT IN ('admin', 'administrator', 'client')";
+    }
+
+    if ($roleFilter !== '') {
+        $whereClauses[] = "LOWER(TRIM(COALESCE(r.Role_name, ''))) = :role_filter";
+        $params[':role_filter'] = $roleFilter;
+    }
+
+    if ($statusFilter !== '') {
+        $whereClauses[] = $statusSqlExpression . ' = :status_filter';
+        $params[':status_filter'] = $statusFilter;
+    }
+
+    if ($search !== '') {
+        $searchValue = '%' . $search . '%';
+        $searchClauses = [
+            'u.Username LIKE :search_username',
+            'u.Email LIKE :search_email',
+            'COALESCE(r.Role_name, \'\') LIKE :search_role',
+            'CONCAT_WS(\' \', u.first_name, u.middle_name, u.last_name, c.First_name, c.Middle_name, c.Last_name) LIKE :search_name',
+            'COALESCE(st.Name, \'\') LIKE :search_specialization',
+            $statusSqlExpression . ' LIKE :search_status',
+        ];
+        $params[':search_username'] = $searchValue;
+        $params[':search_email'] = $searchValue;
+        $params[':search_role'] = $searchValue;
+        $params[':search_name'] = $searchValue;
+        $params[':search_specialization'] = $searchValue;
+        $params[':search_status'] = '%' . normalizeUserListFilterValue($search) . '%';
+
+        $matchingSpecializationUserIds = buildUserListSpecializationSearchUserIds($search, $specializationMetadata);
+        if (!empty($matchingSpecializationUserIds)) {
+            $searchUserPlaceholders = [];
+            foreach ($matchingSpecializationUserIds as $index => $matchingUserId) {
+                $placeholder = ':search_specialization_user_' . $index;
+                $searchUserPlaceholders[] = $placeholder;
+                $params[$placeholder] = (int)$matchingUserId;
+            }
+            $searchClauses[] = 'u.User_id IN (' . implode(', ', $searchUserPlaceholders) . ')';
+        }
+
+        $whereClauses[] = '(' . implode(' OR ', $searchClauses) . ')';
+    }
+
+    $whereSql = !empty($whereClauses)
+        ? 'WHERE ' . implode(' AND ', $whereClauses)
+        : '';
+    $selectSql = 'SELECT u.User_id AS id,
                 u.Username AS username,
                 u.Email AS email,
                 ' . $profileImageSelect . ',
@@ -366,46 +632,79 @@ try {
          LEFT JOIN status es ON es.Status_id = u.Employment_status_id
          LEFT JOIN client c ON c.User_id = u.User_id
          LEFT JOIN status s ON s.Status_id = c.Status_id
-         LEFT JOIN specialization_type st ON st.specialization_type_ID = u.specialization_type_ID
-         ' . $whereSql . '
-         ORDER BY u.User_id ASC'
-    );
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    $specializationAssignments = employeeSpecializationReadAssignments($conn);
-    $specializationTypes = loadSpecializationTypes($conn);
-    $specializationNameMap = [];
-    foreach ($specializationTypes as $specializationType) {
-        $specializationId = employeeSpecializationNormalizeId($specializationType['id'] ?? null);
-        $specializationName = normalizeOptionalString($specializationType['name'] ?? null);
-        if ($specializationId !== null && $specializationName !== null) {
-            $specializationNameMap[$specializationId] = $specializationName;
+         LEFT JOIN specialization_type st ON st.specialization_type_ID = u.specialization_type_ID';
+
+    $rows = [];
+    $total = 0;
+    $totalPages = 1;
+    if ($usePaginatedResponse) {
+        $countStatement = $conn->prepare('SELECT COUNT(*) ' . substr($selectSql, strpos($selectSql, 'FROM ')) . ' ' . $whereSql);
+        foreach ($params as $key => $value) {
+            $countStatement->bindValue($key, $value);
         }
+        $countStatement->execute();
+        $total = (int)$countStatement->fetchColumn();
+        $totalPages = $total > 0 ? (int)ceil($total / $pageSize) : 1;
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $pageSize;
+
+        $stmt = $conn->prepare(
+            $selectSql
+            . ' '
+            . $whereSql
+            . ' ORDER BY u.User_id ASC LIMIT :limit OFFSET :offset'
+        );
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->bindValue(':limit', $pageSize, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } else {
+        $stmt = $conn->prepare(
+            $selectSql
+            . ' '
+            . $whereSql
+            . ' ORDER BY u.User_id ASC'
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $total = count($rows);
     }
+
+    $specializationAssignments = is_array($specializationMetadata['assignments'] ?? null)
+        ? $specializationMetadata['assignments']
+        : [];
     foreach ($rows as &$row) {
         $userId = isset($row['id']) ? (int)$row['id'] : 0;
         $assignedIds = $userId > 0 && is_array($specializationAssignments[(string)$userId] ?? null)
             ? $specializationAssignments[(string)$userId]
             : [];
-        $assignedNames = [];
-        foreach ($assignedIds as $assignedId) {
-            if (isset($specializationNameMap[$assignedId])) {
-                $assignedNames[] = $specializationNameMap[$assignedId];
-            }
-        }
-        $assignedServiceIds = employeeSpecializationResolveServiceIds($conn, $assignedIds);
-        $assignedServiceNames = employeeSpecializationResolveServiceNames($conn, $assignedIds);
+        $assignedDetails = buildUserListAssignedSpecializationDetails($assignedIds, $specializationMetadata);
         $row['_specialization_assignments'] = $assignedIds;
-        $row['_specialization_names'] = $assignedNames;
-        $row['_specialization_service_ids'] = $assignedServiceIds;
-        $row['_specialization_service_names'] = $assignedServiceNames;
+        $row['_specialization_names'] = $assignedDetails['names'];
+        $row['_specialization_service_ids'] = $assignedDetails['service_ids'];
+        $row['_specialization_service_names'] = $assignedDetails['service_names'];
     }
     unset($row);
+
     $users = array_map(function ($row) {
         return mapUserRow($row);
     }, $rows);
 
-    respond(200, ['success' => true, 'users' => $users]);
+    respond(200, [
+        'success' => true,
+        'users' => $users,
+        'meta' => [
+            'total' => $total,
+            'page' => $usePaginatedResponse ? $page : 1,
+            'page_size' => $usePaginatedResponse ? $pageSize : max(1, count($users)),
+            'total_pages' => $usePaginatedResponse ? $totalPages : 1,
+        ],
+    ]);
 } catch (Throwable $e) {
     error_log('user_list error: ' . $e->getMessage());
     respond(500, ['success' => false, 'message' => 'Server error']);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -28,6 +28,7 @@ import {
 } from "../../utils/person_name";
 
 const PAGE_SIZE = 10;
+const TABLE_SEARCH_DEBOUNCE_MS = 250;
 const ACCOUNT_TYPE_SSS = 1;
 const ACCOUNT_TYPE_PAGIBIG = 2;
 const ACCOUNT_TYPE_PHILHEALTH = 3;
@@ -112,23 +113,6 @@ function resolveUserStatus(user) {
   return user?.id ? "Active" : "-";
 }
 
-function matchesUserStatusFilter(user, statusFilter) {
-  const normalizedFilter = String(statusFilter || "").trim().toLowerCase();
-  if (!normalizedFilter || normalizedFilter === "all") {
-    return true;
-  }
-
-  const status = resolveUserStatus(user).trim().toLowerCase();
-  if (normalizedFilter === "active") {
-    return status === "active";
-  }
-  if (normalizedFilter === "inactive") {
-    return status === "inactive";
-  }
-
-  return status === normalizedFilter;
-}
-
 function getUserStatusPageLabel(statusValue) {
   return String(statusValue || "").trim().toLowerCase() === "inactive"
     ? "Inactive User"
@@ -187,11 +171,6 @@ function normalizeSpecializationSelections(value) {
 
 function isClientRoleName(value) {
   return normalizeRoleName(value) === "client";
-}
-
-function isAdminOrClientRoleName(value) {
-  const normalizedRole = normalizeRoleName(value);
-  return normalizedRole === "admin" || normalizedRole === "administrator" || normalizedRole === "client";
 }
 
 function findRoleChoiceByName(role, roleChoices = []) {
@@ -269,6 +248,25 @@ function isValidGovernmentAccountNumber(value) {
   const normalized = String(value || "").trim();
   if (!normalized) return true;
   return /^[0-9-]{6,20}$/.test(normalized);
+}
+
+function validateEmployeeDetails(employee) {
+  if (!isValidPhoneNumber(employee?.phone_number)) {
+    return "Enter a valid phone number.";
+  }
+  if (!isValidDateOfBirth(employee?.date_of_birth)) {
+    return "Enter a valid date of birth for an employee aged 18 to 100.";
+  }
+  if (!isValidGovernmentAccountNumber(employee?.sss_account_number)) {
+    return "Enter a valid SSS account number.";
+  }
+  if (!isValidGovernmentAccountNumber(employee?.pagibig_account_number)) {
+    return "Enter a valid Pag-IBIG account number.";
+  }
+  if (!isValidGovernmentAccountNumber(employee?.philhealth_account_number)) {
+    return "Enter a valid PhilHealth account number.";
+  }
+  return "";
 }
 
 function isAdminRoleName(value) {
@@ -363,6 +361,400 @@ function mapEmployeeFromUser(user) {
   };
 }
 
+function prepareUserFormState(source, roleChoices = [], specializationTypes = []) {
+  const baseForm = createInitialForm();
+  const sourceEmployee = source?.employee && typeof source.employee === "object" ? source.employee : {};
+  const sourceSpecializationIds = Array.isArray(sourceEmployee.specialization_type_ids)
+    ? sourceEmployee.specialization_type_ids
+    : sourceEmployee.specialization_type_id
+      ? [sourceEmployee.specialization_type_id]
+      : [];
+  const role = String(source?.role || "");
+  const nextEmployee = {
+    ...baseForm.employee,
+    ...sourceEmployee,
+    first_name: String(sourceEmployee.first_name || ""),
+    middle_name: String(sourceEmployee.middle_name || ""),
+    last_name: String(sourceEmployee.last_name || ""),
+    date_of_birth: String(sourceEmployee.date_of_birth || ""),
+    phone_number: String(sourceEmployee.phone_number || ""),
+    sss_account_number: String(sourceEmployee.sss_account_number || ""),
+    pagibig_account_number: String(sourceEmployee.pagibig_account_number || ""),
+    philhealth_account_number: String(sourceEmployee.philhealth_account_number || ""),
+    specialization_type_id: normalizeSelectValue(sourceEmployee.specialization_type_id),
+    specialization_type_ids: normalizeSpecializationSelections(sourceSpecializationIds),
+  };
+
+  return {
+    ...baseForm,
+    ...source,
+    username: String(source?.username || ""),
+    email: String(source?.email || ""),
+    password: String(source?.password || ""),
+    role,
+    employee: syncEmployeeSpecializationForRole(nextEmployee, role, roleChoices, specializationTypes),
+  };
+}
+
+const UserFormModal = React.memo(function UserFormModal({
+  open,
+  onClose,
+  title,
+  description,
+  formId,
+  submitLabel,
+  loadingLabel,
+  loading,
+  initialForm,
+  roleChoices,
+  specializationTypes,
+  maxPasswordLength,
+  onSubmit,
+  mode = "create",
+}) {
+  const [form, setForm] = useState(() => prepareUserFormState(initialForm, roleChoices, specializationTypes));
+  const previousOpenRef = useRef(open);
+  const previousInitialFormRef = useRef(initialForm);
+  const isCreateMode = mode === "create";
+  const fieldClassName = isCreateMode
+    ? "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
+    : "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30";
+  const checkboxClassName = isCreateMode
+    ? "h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+    : "h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500";
+  const normalizedFormRole = normalizeRoleName(form.role);
+  const selectedRoleChoice = useMemo(() => findRoleChoiceByName(form.role, roleChoices), [form.role, roleChoices]);
+  const roleScopedSpecializationTypes = useMemo(
+    () => getRoleScopedSpecializationTypes(form.role, roleChoices, specializationTypes),
+    [form.role, roleChoices, specializationTypes]
+  );
+  const selectedSpecializationIds = useMemo(
+    () => normalizeSpecializationSelections(form.employee?.specialization_type_ids),
+    [form.employee?.specialization_type_ids]
+  );
+  const hasSelectedRole = Boolean(normalizedFormRole);
+
+  useEffect(() => {
+    const isOpening = open && !previousOpenRef.current;
+    const initialFormChanged = open && previousInitialFormRef.current !== initialForm;
+
+    if (isOpening || initialFormChanged) {
+      setForm(prepareUserFormState(initialForm, roleChoices, specializationTypes));
+    }
+
+    previousOpenRef.current = open;
+    previousInitialFormRef.current = initialForm;
+  }, [initialForm, open, roleChoices, specializationTypes]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setForm((prev) => {
+      const nextEmployee = syncEmployeeSpecializationForRole(prev.employee, prev.role, roleChoices, specializationTypes);
+      if (nextEmployee === prev.employee) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        employee: nextEmployee,
+      };
+    });
+  }, [open, roleChoices, specializationTypes]);
+
+  const handleChange = useCallback(
+    (event) => {
+      const { name, value } = event.target;
+      setForm((prev) => {
+        if (name === "role") {
+          return {
+            ...prev,
+            role: value,
+            employee: syncEmployeeSpecializationForRole(prev.employee, value, roleChoices, specializationTypes),
+          };
+        }
+
+        return { ...prev, [name]: value };
+      });
+    },
+    [roleChoices, specializationTypes]
+  );
+
+  const handleEmployeeChange = useCallback((event) => {
+    const { name, value, options, multiple } = event.target;
+    const nextValue =
+      multiple && options
+        ? Array.from(options)
+            .filter((option) => option.selected)
+            .map((option) => option.value)
+        : value;
+
+    setForm((prev) => ({
+      ...prev,
+      employee: {
+        ...(prev.employee || {}),
+        [name]: nextValue,
+      },
+    }));
+  }, []);
+
+  const handleSpecializationCheckboxChange = useCallback((specializationId) => {
+    setForm((prev) => {
+      const currentIds = new Set(normalizeSpecializationSelections(prev.employee?.specialization_type_ids));
+      const normalizedId = normalizeSelectValue(specializationId);
+      if (!normalizedId) {
+        return prev;
+      }
+
+      if (currentIds.has(normalizedId)) {
+        currentIds.delete(normalizedId);
+      } else {
+        currentIds.add(normalizedId);
+      }
+
+      const nextIds = Array.from(currentIds);
+      return {
+        ...prev,
+        employee: {
+          ...(prev.employee || {}),
+          specialization_type_ids: nextIds,
+          specialization_type_id: nextIds[0] || "",
+        },
+      };
+    });
+  }, []);
+
+  const handleSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+      void onSubmit(form);
+    },
+    [form, onSubmit]
+  );
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="success" disabled={loading}>
+            {loading ? loadingLabel : submitLabel}
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">Account Details</h4>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
+              <input
+                type="text"
+                name="username"
+                value={form.username}
+                onChange={handleChange}
+                className={fieldClassName}
+                placeholder="e.g., johndoe"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                className={fieldClassName}
+                placeholder="e.g., john@example.com"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">
+                {isCreateMode ? "Password" : "New Password (optional)"}
+              </label>
+              <input
+                type="password"
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                maxLength={maxPasswordLength}
+                className={fieldClassName}
+                placeholder={isCreateMode ? "Enter password" : "Leave blank to keep current password"}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
+              <select name="role" value={form.role} onChange={handleChange} className={fieldClassName}>
+                <option value="">Select Role</option>
+                {roleChoices.map((role) => (
+                  <option key={role.id} value={role.name}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="sm:col-span-2">
+              <PasswordRequirementsPanel
+                password={form.password}
+                maxPasswordLength={maxPasswordLength}
+                active={Boolean(form.password)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 pt-4" />
+
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">Employee Details</h4>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
+              <input
+                type="text"
+                name="first_name"
+                value={form.employee?.first_name || ""}
+                onChange={handleEmployeeChange}
+                className={fieldClassName}
+                placeholder="e.g., John"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Middle Name</label>
+              <input
+                type="text"
+                name="middle_name"
+                value={form.employee?.middle_name || ""}
+                onChange={handleEmployeeChange}
+                className={fieldClassName}
+                placeholder="e.g., A."
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Last Name</label>
+              <input
+                type="text"
+                name="last_name"
+                value={form.employee?.last_name || ""}
+                onChange={handleEmployeeChange}
+                className={fieldClassName}
+                placeholder="e.g., Doe"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Date of Birth</label>
+              <input
+                type="date"
+                name="date_of_birth"
+                value={form.employee?.date_of_birth || ""}
+                onChange={handleEmployeeChange}
+                className={fieldClassName}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Phone Number</label>
+              <input
+                type="text"
+                name="phone_number"
+                value={form.employee?.phone_number || ""}
+                onChange={handleEmployeeChange}
+                className={fieldClassName}
+                placeholder="e.g., +63 900 000 0000"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Specialization</label>
+              <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-slate-300 px-3 py-2">
+                {!hasSelectedRole ? (
+                  <div className="text-sm text-slate-500">Select a role to view specialization options.</div>
+                ) : roleScopedSpecializationTypes.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    {selectedRoleChoice?.name
+                      ? `No specializations are assigned to ${selectedRoleChoice.name} yet.`
+                      : "No specializations are assigned to this role yet."}
+                  </div>
+                ) : (
+                  roleScopedSpecializationTypes.map((specialization) => {
+                    const specializationId = String(specialization.id);
+                    const checked = selectedSpecializationIds.includes(specializationId);
+                    return (
+                      <label key={specialization.id} className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleSpecializationCheckboxChange(specializationId)}
+                          className={checkboxClassName}
+                        />
+                        <span>{specialization.name}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Financial Details</label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">SSS</label>
+                  <input
+                    type="text"
+                    name="sss_account_number"
+                    value={form.employee?.sss_account_number || ""}
+                    onChange={handleEmployeeChange}
+                    className={fieldClassName}
+                    placeholder="SSS Account Number"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Pag-IBIG</label>
+                  <input
+                    type="text"
+                    name="pagibig_account_number"
+                    value={form.employee?.pagibig_account_number || ""}
+                    onChange={handleEmployeeChange}
+                    className={fieldClassName}
+                    placeholder="Pag-IBIG Account Number"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">PhilHealth</label>
+                  <input
+                    type="text"
+                    name="philhealth_account_number"
+                    value={form.employee?.philhealth_account_number || ""}
+                    onChange={handleEmployeeChange}
+                    className={fieldClassName}
+                    placeholder="PhilHealth Account Number"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+});
+
 export default function UserManagement({
   userStatusFilter = "active",
   pageTitle = "User Management",
@@ -382,11 +774,17 @@ export default function UserManagement({
     : `View ${String(userStatusFilter).trim().toLowerCase() === "inactive" ? "inactive" : "active"} staff accounts in read-only mode.`;
   const userManagementDescription = pageDescription || defaultPageDescription;
   const [users, setUsers] = useState([]);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [tableMeta, setTableMeta] = useState({
+    total: 0,
+    page: 1,
+    pageSize: PAGE_SIZE,
+    totalPages: 1,
+  });
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewUser, setViewUser] = useState(null);
-  const [form, setForm] = useState(createInitialForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -398,14 +796,23 @@ export default function UserManagement({
   const [roleChoices, setRoleChoices] = useState([]);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [statusActionUserId, setStatusActionUserId] = useState(null);
-  const normalizedFormRole = normalizeRoleName(form.role);
-  const selectedRoleChoice = useMemo(() => findRoleChoiceByName(form.role, roleChoices), [form.role, roleChoices]);
-  const roleScopedSpecializationTypes = useMemo(
-    () => getRoleScopedSpecializationTypes(form.role, roleChoices, specializationTypes),
-    [form.role, roleChoices, specializationTypes]
-  );
-  const selectedSpecializationIds = normalizeSpecializationSelections(form.employee?.specialization_type_ids);
-  const hasSelectedRole = Boolean(normalizedFormRole);
+  const deferredSearch = useDeferredValue(search);
+  const [searchQuery, setSearchQuery] = useState("");
+  const addInitialForm = useMemo(() => createInitialForm(), []);
+  const editInitialForm = useMemo(() => {
+    if (!editingUser) {
+      return addInitialForm;
+    }
+
+    return {
+      ...createInitialForm(),
+      username: editingUser?.username || "",
+      email: editingUser?.email || "",
+      password: "",
+      role: editingUser?.role || "Secretary",
+      employee: mapEmployeeFromUser(editingUser),
+    };
+  }, [addInitialForm, editingUser]);
   const viewGovernmentAccounts = useMemo(() => extractGovernmentAccountNumbers(viewUser), [viewUser]);
   const viewSpecializationName = useMemo(() => {
     return resolveSpecializationName(viewUser, specializationTypes) || "-";
@@ -422,13 +829,17 @@ export default function UserManagement({
     }
   }, []);
 
+  const clearFeedback = useCallback(() => {
+    setError("");
+    setSuccess("");
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
     (async () => {
       try {
-        const [usersRes, specializationRes, rolesRes] = await Promise.allSettled([
-          api.get("user_list.php"),
+        const [specializationRes, rolesRes] = await Promise.allSettled([
           fetchSpecializationTypes({
             params: {
               include_disabled: 0,
@@ -440,10 +851,6 @@ export default function UserManagement({
             },
           }),
         ]);
-
-        if (mounted && usersRes.status === "fulfilled" && Array.isArray(usersRes.value.data?.users)) {
-          setUsers(usersRes.value.data.users);
-        }
 
         if (mounted && specializationRes.status === "fulfilled") {
           const nextOptions = Array.isArray(specializationRes.value.data?.specialization_types)
@@ -473,6 +880,16 @@ export default function UserManagement({
   }, []);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(String(deferredSearch || "").trim());
+    }, TABLE_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [deferredSearch]);
+
+  useEffect(() => {
     let active = true;
     const controller = new AbortController();
 
@@ -495,182 +912,152 @@ export default function UserManagement({
     };
   }, []);
 
-  useEffect(() => {
-    setForm((prev) => {
-      const nextEmployee = syncEmployeeSpecializationForRole(prev.employee, prev.role, roleChoices, specializationTypes);
-      if (nextEmployee === prev.employee) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        employee: nextEmployee,
-      };
-    });
-  }, [form.role, roleChoices, specializationTypes]);
-
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setForm((prev) => {
-      if (name === "role") {
-        return {
-          ...prev,
-          role: value,
-          employee: syncEmployeeSpecializationForRole(prev.employee, value, roleChoices, specializationTypes),
-        };
-      }
-
-      return { ...prev, [name]: value };
-    });
-  };
-
-  const handleEmployeeChange = (event) => {
-    const { name, value, options, multiple } = event.target;
-    const nextValue =
-      multiple && options
-        ? Array.from(options)
-            .filter((option) => option.selected)
-            .map((option) => option.value)
-        : value;
-    setForm((prev) => ({ ...prev, employee: { ...(prev.employee || {}), [name]: nextValue } }));
-  };
-
-  const handleSpecializationCheckboxChange = (specializationId) => {
-    setForm((prev) => {
-      const currentIds = new Set(normalizeSpecializationSelections(prev.employee?.specialization_type_ids));
-      const normalizedId = normalizeSelectValue(specializationId);
-      if (!normalizedId) {
-        return prev;
-      }
-
-      if (currentIds.has(normalizedId)) {
-        currentIds.delete(normalizedId);
-      } else {
-        currentIds.add(normalizedId);
-      }
-
-      const nextIds = Array.from(currentIds);
-      return {
-        ...prev,
-        employee: {
-          ...(prev.employee || {}),
-          specialization_type_ids: nextIds,
-          specialization_type_id: nextIds[0] || "",
-        },
-      };
-    });
-  };
-
-  const validateEmployeeDetails = () => {
-    if (!isValidPhoneNumber(form.employee?.phone_number)) {
-      return "Enter a valid phone number.";
-    }
-    if (!isValidDateOfBirth(form.employee?.date_of_birth)) {
-      return "Enter a valid date of birth for an employee aged 18 to 100.";
-    }
-    if (!isValidGovernmentAccountNumber(form.employee?.sss_account_number)) {
-      return "Enter a valid SSS account number.";
-    }
-    if (!isValidGovernmentAccountNumber(form.employee?.pagibig_account_number)) {
-      return "Enter a valid Pag-IBIG account number.";
-    }
-    if (!isValidGovernmentAccountNumber(form.employee?.philhealth_account_number)) {
-      return "Enter a valid PhilHealth account number.";
-    }
-    return "";
-  };
-
-  const resetForm = ({ clearMessages = true } = { clearMessages: true }) => {
-    setForm(createInitialForm());
-    setEditingUser(null);
-    if (clearMessages) {
+  const loadUsers = useCallback(
+    async ({ signal } = {}) => {
+      setTableLoading(true);
       setError("");
-      setSuccess("");
-    }
-  };
 
-  const openAddModal = () => {
+      try {
+        const response = await api.get("user_list.php", {
+          signal,
+          params: {
+            page: currentPage,
+            page_size: PAGE_SIZE,
+            search: searchQuery || undefined,
+            role: roleFilter !== "All" ? roleFilter : undefined,
+            status: userStatusFilter,
+            staff_only: 1,
+          },
+        });
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        const nextUsers = Array.isArray(response?.data?.users) ? response.data.users : [];
+        const responseMeta = response?.data?.meta || {};
+        const nextPage = Math.max(1, Number(responseMeta.page || currentPage || 1));
+        const nextPageSize = Math.max(1, Number(responseMeta.page_size || PAGE_SIZE));
+        const nextTotal = Math.max(0, Number(responseMeta.total || 0));
+        const nextTotalPages = Math.max(1, Number(responseMeta.total_pages || 1));
+
+        setUsers(nextUsers);
+        setTableMeta({
+          total: nextTotal,
+          page: nextPage,
+          pageSize: nextPageSize,
+          totalPages: nextTotalPages,
+        });
+        if (nextPage !== currentPage) {
+          setCurrentPage(nextPage);
+        }
+      } catch (requestError) {
+        if (requestError?.code === "ERR_CANCELED" || signal?.aborted) {
+          return;
+        }
+
+        setUsers([]);
+        setTableMeta({
+          total: 0,
+          page: 1,
+          pageSize: PAGE_SIZE,
+          totalPages: 1,
+        });
+        setError(requestError?.response?.data?.message || requestError?.message || "Failed to load users.");
+      } finally {
+        if (!signal?.aborted) {
+          setTableLoading(false);
+        }
+      }
+    },
+    [currentPage, roleFilter, searchQuery, userStatusFilter]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadUsers({ signal: controller.signal });
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadUsers]);
+
+  const openAddModal = useCallback(() => {
     if (!canAddUsers) {
       return;
     }
 
-    resetForm();
+    clearFeedback();
+    setEditingUser(null);
     setAddOpen(true);
-  };
+  }, [canAddUsers, clearFeedback]);
 
-  const openEditModal = (user) => {
-    if (!canEditUsers) {
-      return;
-    }
+  const openEditModal = useCallback(
+    (selectedUser) => {
+      if (!canEditUsers) {
+        return;
+      }
 
-    setError("");
-    setSuccess("");
-    setEditingUser(user);
-    setForm({
-      ...createInitialForm(),
-      username: user?.username || "",
-      email: user?.email || "",
-      password: "",
-      role: user?.role || "Secretary",
-      employee: syncEmployeeSpecializationForRole(
-        mapEmployeeFromUser(user),
-        user?.role || "Secretary",
-        roleChoices,
-        specializationTypes
-      ),
-    });
-    setEditOpen(true);
-  };
+      clearFeedback();
+      setEditingUser(selectedUser);
+      setEditOpen(true);
+    },
+    [canEditUsers, clearFeedback]
+  );
 
-  const openViewModal = (user) => {
-    if (!canViewUsers) {
-      return;
-    }
+  const openViewModal = useCallback(
+    (selectedUser) => {
+      if (!canViewUsers) {
+        return;
+      }
 
-    setViewUser(user);
-    setViewOpen(true);
-  };
+      setViewUser(selectedUser);
+      setViewOpen(true);
+    },
+    [canViewUsers]
+  );
 
-  const closeAddModal = () => {
+  const closeAddModal = useCallback(() => {
     setAddOpen(false);
-    resetForm();
-  };
+    setEditingUser(null);
+    clearFeedback();
+  }, [clearFeedback]);
 
-  const closeEditModal = () => {
+  const closeEditModal = useCallback(() => {
     setEditOpen(false);
-    resetForm();
-  };
+    setEditingUser(null);
+    clearFeedback();
+  }, [clearFeedback]);
 
-  const closeViewModal = () => {
+  const closeViewModal = useCallback(() => {
     setViewOpen(false);
     setViewUser(null);
-  };
+  }, []);
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
+  const handleCreate = useCallback(async (submittedForm) => {
+    clearFeedback();
 
     if (!canAddUsers) {
       reportError("You do not have permission to create users.");
       return;
     }
 
-    if (!form.username || !form.email || !form.password || !form.role) {
+    if (!submittedForm.username || !submittedForm.email || !submittedForm.password || !submittedForm.role) {
       reportError("All fields are required.");
       return;
     }
-    if (!String(form?.employee?.first_name || "").trim() || !String(form?.employee?.last_name || "").trim()) {
+    if (!String(submittedForm?.employee?.first_name || "").trim() || !String(submittedForm?.employee?.last_name || "").trim()) {
       reportError("Employee first and last name are required.");
       return;
     }
-    const employeeValidationMessage = validateEmployeeDetails();
+    const employeeValidationMessage = validateEmployeeDetails(submittedForm?.employee);
     if (employeeValidationMessage) {
       reportError(employeeValidationMessage);
       return;
     }
 
-    const passwordValidationError = validatePasswordValue(form.password, {
+    const passwordValidationError = validatePasswordValue(submittedForm.password, {
       maxPasswordLength: securitySettings.maxPasswordLength,
     });
     if (passwordValidationError) {
@@ -682,21 +1069,21 @@ export default function UserManagement({
       setLoading(true);
 
       const res = await api.post("user_create.php", {
-        username: form.username,
-        email: form.email,
-        password: form.password,
-        role: form.role,
+        username: submittedForm.username,
+        email: submittedForm.email,
+        password: submittedForm.password,
+        role: submittedForm.role,
         employee_details: {
-          first_name: normalizePersonName(form.employee?.first_name),
-          middle_name: normalizeMiddleNameOrNull(form.employee?.middle_name),
-          last_name: normalizePersonName(form.employee?.last_name),
-          date_of_birth: form.employee?.date_of_birth || null,
-          phone_number: String(form.employee?.phone_number || "").trim() || null,
-          sss_account_number: String(form.employee?.sss_account_number || "").trim() || null,
-          pagibig_account_number: String(form.employee?.pagibig_account_number || "").trim() || null,
-          philhealth_account_number: String(form.employee?.philhealth_account_number || "").trim() || null,
-          specialization_type_id: normalizeSelectValue(form.employee?.specialization_type_id) || null,
-          specialization_type_ids: normalizeSpecializationSelections(form.employee?.specialization_type_ids),
+          first_name: normalizePersonName(submittedForm.employee?.first_name),
+          middle_name: normalizeMiddleNameOrNull(submittedForm.employee?.middle_name),
+          last_name: normalizePersonName(submittedForm.employee?.last_name),
+          date_of_birth: submittedForm.employee?.date_of_birth || null,
+          phone_number: String(submittedForm.employee?.phone_number || "").trim() || null,
+          sss_account_number: String(submittedForm.employee?.sss_account_number || "").trim() || null,
+          pagibig_account_number: String(submittedForm.employee?.pagibig_account_number || "").trim() || null,
+          philhealth_account_number: String(submittedForm.employee?.philhealth_account_number || "").trim() || null,
+          specialization_type_id: normalizeSelectValue(submittedForm.employee?.specialization_type_id) || null,
+          specialization_type_ids: normalizeSpecializationSelections(submittedForm.employee?.specialization_type_ids),
         },
       });
 
@@ -705,60 +1092,45 @@ export default function UserManagement({
         return;
       }
 
-      const newUser = res.data?.user || {
-        id: res.data?.id || Date.now(),
-        username: form.username,
-        email: form.email,
-        role: form.role,
-        employee_id: res.data?.employee_id || null,
-      };
-
-      try {
-        const list = await api.get("user_list.php");
-        if (Array.isArray(list.data?.users)) {
-          setUsers(list.data.users);
-        } else {
-          setUsers((prev) => [...prev, newUser]);
-        }
-      } catch (_) {
-        setUsers((prev) => [...prev, newUser]);
-      }
-
       setAddOpen(false);
-      resetForm({ clearMessages: false });
+      setEditingUser(null);
+      await loadUsers();
       setSuccess("User created successfully.");
     } catch (err) {
       reportError(err?.response?.data?.message || err?.message || "Request failed.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [canAddUsers, clearFeedback, loadUsers, reportError, securitySettings.maxPasswordLength]);
 
-  const handleUpdate = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
+  const handleUpdate = useCallback(async (submittedForm) => {
+    clearFeedback();
 
     if (!canEditUsers) {
       reportError("You do not have permission to edit users.");
       return;
     }
 
-    if (!form.username || !form.email || !form.role) {
+    if (!editingUser?.id) {
+      reportError("No user is selected for editing.");
+      return;
+    }
+
+    if (!submittedForm.username || !submittedForm.email || !submittedForm.role) {
       reportError("All fields are required.");
       return;
     }
-    if (!String(form?.employee?.first_name || "").trim() || !String(form?.employee?.last_name || "").trim()) {
+    if (!String(submittedForm?.employee?.first_name || "").trim() || !String(submittedForm?.employee?.last_name || "").trim()) {
       reportError("Employee first and last name are required.");
       return;
     }
-    const employeeValidationMessage = validateEmployeeDetails();
+    const employeeValidationMessage = validateEmployeeDetails(submittedForm?.employee);
     if (employeeValidationMessage) {
       reportError(employeeValidationMessage);
       return;
     }
 
-    const passwordValidationError = validatePasswordValue(form.password, {
+    const passwordValidationError = validatePasswordValue(submittedForm.password, {
       maxPasswordLength: securitySettings.maxPasswordLength,
       required: false,
     });
@@ -770,54 +1142,49 @@ export default function UserManagement({
     try {
       setLoading(true);
 
-      if (editingUser) {
-        const payload = {
-          id: editingUser.id,
-          username: form.username,
-          email: form.email,
-          role: form.role,
-          employee_details: {
-            first_name: normalizePersonName(form.employee?.first_name),
-            middle_name: normalizeMiddleNameOrNull(form.employee?.middle_name),
-            last_name: normalizePersonName(form.employee?.last_name),
-            date_of_birth: form.employee?.date_of_birth || null,
-            phone_number: String(form.employee?.phone_number || "").trim() || null,
-            sss_account_number: String(form.employee?.sss_account_number || "").trim() || null,
-            pagibig_account_number: String(form.employee?.pagibig_account_number || "").trim() || null,
-            philhealth_account_number: String(form.employee?.philhealth_account_number || "").trim() || null,
-            specialization_type_id: normalizeSelectValue(form.employee?.specialization_type_id) || null,
-            specialization_type_ids: normalizeSpecializationSelections(form.employee?.specialization_type_ids),
-          },
-        };
-        if (form.password) payload.password = form.password;
+      const payload = {
+        id: editingUser.id,
+        username: submittedForm.username,
+        email: submittedForm.email,
+        role: submittedForm.role,
+        employee_details: {
+          first_name: normalizePersonName(submittedForm.employee?.first_name),
+          middle_name: normalizeMiddleNameOrNull(submittedForm.employee?.middle_name),
+          last_name: normalizePersonName(submittedForm.employee?.last_name),
+          date_of_birth: submittedForm.employee?.date_of_birth || null,
+          phone_number: String(submittedForm.employee?.phone_number || "").trim() || null,
+          sss_account_number: String(submittedForm.employee?.sss_account_number || "").trim() || null,
+          pagibig_account_number: String(submittedForm.employee?.pagibig_account_number || "").trim() || null,
+          philhealth_account_number: String(submittedForm.employee?.philhealth_account_number || "").trim() || null,
+          specialization_type_id: normalizeSelectValue(submittedForm.employee?.specialization_type_id) || null,
+          specialization_type_ids: normalizeSpecializationSelections(submittedForm.employee?.specialization_type_ids),
+        },
+      };
+      if (submittedForm.password) {
+        payload.password = submittedForm.password;
+      }
 
-        const res = await api.post("user_update.php", payload);
-        if (!res?.data?.success) {
-          reportError(res?.data?.message || "Failed to update user.");
-          return;
-        }
-
-        try {
-          const list = await api.get("user_list.php");
-          if (Array.isArray(list.data?.users)) {
-            setUsers(list.data.users);
-          }
-        } catch (_) {
-          // Keep current local state on refresh failure.
-        }
+      const res = await api.post("user_update.php", payload);
+      if (!res?.data?.success) {
+        reportError(res?.data?.message || "Failed to update user.");
+        return;
       }
 
       setEditOpen(false);
-      resetForm({ clearMessages: false });
+      setEditingUser(null);
+      await loadUsers();
       setSuccess("User updated successfully.");
     } catch (err) {
       reportError(err?.response?.data?.message || err?.message || "Request failed.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [canEditUsers, clearFeedback, editingUser, loadUsers, reportError, securitySettings.maxPasswordLength]);
 
-  const roleOptions = ["All", ...roleChoices.map((role) => String(role?.name || "").trim()).filter(Boolean)];
+  const roleOptions = useMemo(
+    () => ["All", ...roleChoices.map((role) => String(role?.name || "").trim()).filter(Boolean)],
+    [roleChoices]
+  );
 
   const toggleUserStatus = useCallback(async (targetUser) => {
     if (!targetUser?.id) return;
@@ -864,19 +1231,7 @@ export default function UserManagement({
         throw new Error(response?.data?.message || "Failed to update user status.");
       }
 
-      const updatedUser = response?.data?.user || {};
-      setUsers((prev) =>
-        prev.map((entry) =>
-          entry.id === targetUser.id
-            ? {
-                ...entry,
-                employee_status_id: updatedUser.employee_status_id ?? entry.employee_status_id,
-                employee_status: updatedUser.employee_status ?? nextStatus,
-                status: updatedUser.employee_status ?? nextStatus,
-              }
-            : entry
-        )
-      );
+      await loadUsers();
       showSuccessToast({
         title: nextStatus === "Active" ? "User account activated." : "User account set to inactive.",
         description:
@@ -889,60 +1244,25 @@ export default function UserManagement({
     } finally {
       setStatusActionUserId(null);
     }
-  }, [canSetUserAccountStatus, reportError]);
-
-  const statusFilteredUsers = useMemo(() => {
-    return users.filter((entry) => matchesUserStatusFilter(entry, userStatusFilter));
-  }, [userStatusFilter, users]);
-
-  const filteredUsers = useMemo(() => {
-    return statusFilteredUsers.filter((user) => {
-      const roleText = String(user?.role || "").toLowerCase();
-      if (isAdminOrClientRoleName(roleText)) return false;
-
-      const selectedRole = String(roleFilter || "All").toLowerCase();
-      if (selectedRole !== "all" && roleText !== selectedRole) return false;
-
-      const q = search.trim().toLowerCase();
-      if (!q) return true;
-
-      const username = String(user?.username || "").toLowerCase();
-      const email = String(user?.email || "").toLowerCase();
-      const business = String(user?.business_type || "").toLowerCase();
-      const specialization = resolveSpecializationName(user, specializationTypes).toLowerCase();
-      const status = resolveUserStatus(user).toLowerCase();
-      return (
-        username.includes(q) ||
-        email.includes(q) ||
-        roleText.includes(q) ||
-        business.includes(q) ||
-        specialization.includes(q) ||
-        status.includes(q)
-      );
-    });
-  }, [roleFilter, search, specializationTypes, statusFilteredUsers]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  }, [canSetUserAccountStatus, loadUsers, reportError]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, roleFilter]);
+  }, [roleFilter, search, userStatusFilter]);
 
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(Math.max(1, page), totalPages));
-  }, [totalPages]);
-
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pagedUsers = filteredUsers.slice(startIndex, startIndex + PAGE_SIZE);
-  const canPrev = currentPage > 1;
-  const canNext = currentPage < totalPages;
+  const totalPages = Math.max(1, Number(tableMeta.totalPages || 1));
+  const activePage = Math.max(1, Number(tableMeta.page || currentPage || 1));
+  const pageSize = Math.max(1, Number(tableMeta.pageSize || PAGE_SIZE));
+  const startIndex = tableMeta.total > 0 ? (activePage - 1) * pageSize : 0;
+  const canPrev = activePage > 1;
+  const canNext = activePage < totalPages;
   const visibleRowActionCount = [canViewUsers, canEditUsers].filter(Boolean).length;
   const hasRowActions = visibleRowActionCount > 0;
   const actionColumnWidth = visibleRowActionCount >= 2 ? "12%" : visibleRowActionCount === 1 ? "8%" : "0%";
 
   const tableRows = useMemo(
     () =>
-      pagedUsers.map((user, idx) => ({
+      users.map((user, idx) => ({
         key: user.id ?? `${user.username}-${startIndex + idx}`,
         index: startIndex + idx + 1,
         specialization: resolveSpecializationName(user, specializationTypes) || "-",
@@ -952,90 +1272,103 @@ export default function UserManagement({
         status: resolveUserStatus(user),
         raw: user,
       })),
-    [pagedUsers, specializationTypes, startIndex]
+    [specializationTypes, startIndex, users]
   );
 
-  const columns = [
-    { key: "index", header: "#", width: "8%" },
-    { key: "username", header: "Username", width: "18%" },
-    { key: "email", header: "Email", width: "24%" },
-    { key: "specialization", header: "Specialization", width: "18%" },
-    {
-      key: "role",
-      header: "Role",
-      width: "10%",
-      render: (value) => (
-        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 capitalize">
-          {value || "-"}
-        </span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      width: "10%",
-      render: (value, row) =>
-        canSetUserAccountStatus ? (
-          <button
-            type="button"
-            onClick={() => {
-              void toggleUserStatus(row.raw);
-            }}
-            disabled={statusActionUserId === row.raw?.id}
-            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-              getStatusPillClass(value)
-            } ${statusActionUserId === row.raw?.id ? "cursor-wait opacity-70" : ""}`}
-            title="Click to change status"
-          >
-            {value || "-"}
-          </button>
-        ) : (
-          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(value)}`}>
+  const columns = useMemo(
+    () => [
+      { key: "index", header: "#", width: "8%" },
+      { key: "username", header: "Username", width: "18%" },
+      { key: "email", header: "Email", width: "24%" },
+      { key: "specialization", header: "Specialization", width: "18%" },
+      {
+        key: "role",
+        header: "Role",
+        width: "10%",
+        render: (value) => (
+          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 capitalize">
             {value || "-"}
           </span>
         ),
-    },
-    ...(hasRowActions
-      ? [
-          {
-            key: "actions",
-            header: "Actions",
-            align: "right",
-            width: actionColumnWidth,
-            render: (_, row) => (
-              <div className="flex items-center justify-end gap-1">
-                {canViewUsers ? (
-                  <IconButton
-                    size="sm"
-                    variant="secondary"
-                    aria-label={`View ${row.username}`}
-                    onClick={() => openViewModal(row.raw)}
-                    title="View employee details"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z" />
-                    </svg>
-                  </IconButton>
-                ) : null}
-                {canEditUsers ? (
-                  <IconButton
-                    size="sm"
-                    variant="secondary"
-                    aria-label={`Edit ${row.username}`}
-                    onClick={() => openEditModal(row.raw)}
-                    title="Edit user"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm14.71-10.21a1 1 0 0 0 0-1.42l-2.33-2.33a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                    </svg>
-                  </IconButton>
-                ) : null}
-              </div>
-            ),
-          },
-        ]
-      : []),
-  ];
+      },
+      {
+        key: "status",
+        header: "Status",
+        width: "10%",
+        render: (value, row) =>
+          canSetUserAccountStatus ? (
+            <button
+              type="button"
+              onClick={() => {
+                void toggleUserStatus(row.raw);
+              }}
+              disabled={statusActionUserId === row.raw?.id}
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                getStatusPillClass(value)
+              } ${statusActionUserId === row.raw?.id ? "cursor-wait opacity-70" : ""}`}
+              title="Click to change status"
+            >
+              {value || "-"}
+            </button>
+          ) : (
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusPillClass(value)}`}>
+              {value || "-"}
+            </span>
+          ),
+      },
+      ...(hasRowActions
+        ? [
+            {
+              key: "actions",
+              header: "Actions",
+              align: "right",
+              width: actionColumnWidth,
+              render: (_, row) => (
+                <div className="flex items-center justify-end gap-1">
+                  {canViewUsers ? (
+                    <IconButton
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`View ${row.username}`}
+                      onClick={() => openViewModal(row.raw)}
+                      title="View employee details"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z" />
+                      </svg>
+                    </IconButton>
+                  ) : null}
+                  {canEditUsers ? (
+                    <IconButton
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`Edit ${row.username}`}
+                      onClick={() => openEditModal(row.raw)}
+                      title="Edit user"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm14.71-10.21a1 1 0 0 0 0-1.42l-2.33-2.33a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                      </svg>
+                    </IconButton>
+                  ) : null}
+                </div>
+              ),
+            },
+          ]
+        : []),
+    ],
+    [
+      actionColumnWidth,
+      canEditUsers,
+      canSetUserAccountStatus,
+      canViewUsers,
+      hasRowActions,
+      openEditModal,
+      openViewModal,
+      statusActionUserId,
+      toggleUserStatus,
+    ]
+  );
 
   return (
     <div className="space-y-4">
@@ -1112,6 +1445,7 @@ export default function UserManagement({
             columns={columns}
             rows={tableRows}
             keyField="key"
+            loading={tableLoading}
             compact
             striped={false}
             emptyMessage={emptyMessage}
@@ -1120,9 +1454,9 @@ export default function UserManagement({
 
           <div className="flex flex-col items-center justify-between gap-2 sm:flex-row">
             <div className="text-xs text-slate-600">
-              Showing <span className="font-medium">{filteredUsers.length === 0 ? 0 : startIndex + 1}</span>-
-              <span className="font-medium">{Math.min(startIndex + PAGE_SIZE, filteredUsers.length)}</span> of{" "}
-              <span className="font-medium">{filteredUsers.length}</span>
+              Showing <span className="font-medium">{tableMeta.total === 0 ? 0 : startIndex + 1}</span>-
+              <span className="font-medium">{Math.min(startIndex + pageSize, tableMeta.total)}</span> of{" "}
+              <span className="font-medium">{tableMeta.total}</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1132,13 +1466,13 @@ export default function UserManagement({
                 onClick={() => {
                   if (canPrev) setCurrentPage((prev) => prev - 1);
                 }}
-                disabled={!canPrev}
+                disabled={!canPrev || tableLoading}
               >
                 Previous
               </Button>
 
               <div className="text-xs text-slate-600">
-                Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
+                Page <span className="font-medium">{activePage}</span> of <span className="font-medium">{totalPages}</span>
               </div>
 
               <Button
@@ -1147,7 +1481,7 @@ export default function UserManagement({
                 onClick={() => {
                   if (canNext) setCurrentPage((prev) => prev + 1);
                 }}
-                disabled={!canNext}
+                disabled={!canNext || tableLoading}
               >
                 Next
               </Button>
@@ -1156,452 +1490,39 @@ export default function UserManagement({
         </CardContent>
       </Card>
 
-      <Modal
+      <UserFormModal
         open={addOpen}
         onClose={closeAddModal}
         title="Add New User"
         description="Create a new Secretary or Accountant account."
-        size="lg"
-        footer={
-          <>
-            <Button variant="secondary" onClick={closeAddModal}>
-              Cancel
-            </Button>
-            <Button type="submit" form="admin-add-user-form" variant="success" disabled={loading}>
-              {loading ? "Creating..." : "Create User"}
-            </Button>
-          </>
-        }
-      >
-        <form id="admin-add-user-form" onSubmit={handleCreate} className="space-y-5">
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-slate-800">Account Details</h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
-                <input
-                  type="text"
-                  name="username"
-                  value={form.username}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="e.g., johndoe"
-                />
-              </div>
+        formId="admin-add-user-form"
+        submitLabel="Create User"
+        loadingLabel="Creating..."
+        loading={loading}
+        initialForm={addInitialForm}
+        roleChoices={roleChoices}
+        specializationTypes={specializationTypes}
+        maxPasswordLength={securitySettings.maxPasswordLength}
+        onSubmit={handleCreate}
+        mode="create"
+      />
 
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="e.g., john@example.com"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Password</label>
-                <input
-                  type="password"
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  maxLength={securitySettings.maxPasswordLength}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="Enter password"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
-                <select
-                  name="role"
-                  value={form.role}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                >
-                  <option value="">Select Role</option>
-                  {roleChoices.map((role) => (
-                    <option key={role.id} value={role.name}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <PasswordRequirementsPanel
-                  password={form.password}
-                  maxPasswordLength={securitySettings.maxPasswordLength}
-                  active={Boolean(form.password)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-4" />
-
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-slate-800">Employee Details</h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
-                <input
-                  type="text"
-                  name="first_name"
-                  value={form.employee?.first_name || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="e.g., John"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Middle Name</label>
-                <input
-                  type="text"
-                  name="middle_name"
-                  value={form.employee?.middle_name || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="e.g., A."
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Last Name</label>
-                <input
-                  type="text"
-                  name="last_name"
-                  value={form.employee?.last_name || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="e.g., Doe"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Date of Birth</label>
-                <input
-                  type="date"
-                  name="date_of_birth"
-                  value={form.employee?.date_of_birth || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Phone Number</label>
-                <input
-                  type="text"
-                  name="phone_number"
-                  value={form.employee?.phone_number || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                  placeholder="e.g., +63 900 000 0000"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Specialization</label>
-                <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-slate-300 px-3 py-2">
-                  {!hasSelectedRole ? (
-                    <div className="text-sm text-slate-500">Select a role to view specialization options.</div>
-                  ) : roleScopedSpecializationTypes.length === 0 ? (
-                    <div className="text-sm text-slate-500">
-                      {selectedRoleChoice?.name
-                        ? `No specializations are assigned to ${selectedRoleChoice.name} yet.`
-                        : "No specializations are assigned to this role yet."}
-                    </div>
-                  ) : (
-                    roleScopedSpecializationTypes.map((specialization) => {
-                      const specializationId = String(specialization.id);
-                      const checked = selectedSpecializationIds.includes(specializationId);
-                      return (
-                        <label key={specialization.id} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleSpecializationCheckboxChange(specializationId)}
-                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                          />
-                          <span>{specialization.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Financial Details</label>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">SSS</label>
-                    <input
-                      type="text"
-                      name="sss_account_number"
-                      value={form.employee?.sss_account_number || ""}
-                      onChange={handleEmployeeChange}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                      placeholder="SSS Account Number"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Pag-IBIG</label>
-                    <input
-                      type="text"
-                      name="pagibig_account_number"
-                      value={form.employee?.pagibig_account_number || ""}
-                      onChange={handleEmployeeChange}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                      placeholder="Pag-IBIG Account Number"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">PhilHealth</label>
-                    <input
-                      type="text"
-                      name="philhealth_account_number"
-                      value={form.employee?.philhealth_account_number || ""}
-                      onChange={handleEmployeeChange}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30"
-                      placeholder="PhilHealth Account Number"
-                    />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal
+      <UserFormModal
         open={editOpen}
         onClose={closeEditModal}
         title="Edit User"
         description="Update account and employee details."
-        size="lg"
-        footer={
-          <>
-            <Button variant="secondary" onClick={closeEditModal}>
-              Cancel
-            </Button>
-            <Button type="submit" form="admin-edit-user-form" variant="success" disabled={loading}>
-              {loading ? "Saving..." : "Save Changes"}
-            </Button>
-          </>
-        }
-      >
-        <form id="admin-edit-user-form" onSubmit={handleUpdate} className="space-y-5">
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-slate-800">Account Details</h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
-                <input
-                  type="text"
-                  name="username"
-                  value={form.username}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="e.g., johndoe"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="e.g., john@example.com"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">New Password (optional)</label>
-                <input
-                  type="password"
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  maxLength={securitySettings.maxPasswordLength}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="Leave blank to keep current password"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
-                <select
-                  name="role"
-                  value={form.role}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                >
-                  <option value="">Select Role</option>
-                  {roleChoices.map((role) => (
-                    <option key={role.id} value={role.name}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <PasswordRequirementsPanel
-                  password={form.password}
-                  maxPasswordLength={securitySettings.maxPasswordLength}
-                  active={Boolean(form.password)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-4" />
-
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-slate-800">Employee Details</h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
-                <input
-                  type="text"
-                  name="first_name"
-                  value={form.employee?.first_name || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="e.g., John"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Middle Name</label>
-                <input
-                  type="text"
-                  name="middle_name"
-                  value={form.employee?.middle_name || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="e.g., A."
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Last Name</label>
-                <input
-                  type="text"
-                  name="last_name"
-                  value={form.employee?.last_name || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="e.g., Doe"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Date of Birth</label>
-                <input
-                  type="date"
-                  name="date_of_birth"
-                  value={form.employee?.date_of_birth || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Phone Number</label>
-                <input
-                  type="text"
-                  name="phone_number"
-                  value={form.employee?.phone_number || ""}
-                  onChange={handleEmployeeChange}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                  placeholder="e.g., +63 900 000 0000"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Specialization</label>
-                <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-slate-300 px-3 py-2">
-                  {!hasSelectedRole ? (
-                    <div className="text-sm text-slate-500">Select a role to view specialization options.</div>
-                  ) : roleScopedSpecializationTypes.length === 0 ? (
-                    <div className="text-sm text-slate-500">
-                      {selectedRoleChoice?.name
-                        ? `No specializations are assigned to ${selectedRoleChoice.name} yet.`
-                        : "No specializations are assigned to this role yet."}
-                    </div>
-                  ) : (
-                    roleScopedSpecializationTypes.map((specialization) => {
-                      const specializationId = String(specialization.id);
-                      const checked = selectedSpecializationIds.includes(specializationId);
-                      return (
-                        <label key={specialization.id} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleSpecializationCheckboxChange(specializationId)}
-                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span>{specialization.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Financial Details</label>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">SSS</label>
-                    <input
-                      type="text"
-                      name="sss_account_number"
-                      value={form.employee?.sss_account_number || ""}
-                      onChange={handleEmployeeChange}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                      placeholder="SSS Account Number"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">Pag-IBIG</label>
-                    <input
-                      type="text"
-                      name="pagibig_account_number"
-                      value={form.employee?.pagibig_account_number || ""}
-                      onChange={handleEmployeeChange}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                      placeholder="Pag-IBIG Account Number"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-600">PhilHealth</label>
-                    <input
-                      type="text"
-                      name="philhealth_account_number"
-                      value={form.employee?.philhealth_account_number || ""}
-                      onChange={handleEmployeeChange}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/30"
-                      placeholder="PhilHealth Account Number"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </Modal>
+        formId="admin-edit-user-form"
+        submitLabel="Save Changes"
+        loadingLabel="Saving..."
+        loading={loading}
+        initialForm={editInitialForm}
+        roleChoices={roleChoices}
+        specializationTypes={specializationTypes}
+        maxPasswordLength={securitySettings.maxPasswordLength}
+        onSubmit={handleUpdate}
+        mode="edit"
+      />
 
       <Modal
         open={viewOpen}
