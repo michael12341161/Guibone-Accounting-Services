@@ -89,7 +89,7 @@ function monitoring_document_business_permit_type_ids(?PDO $conn = null): array
 
     if ($conn !== null) {
         try {
-            $stmt = $conn->query('SELECT Document_type_ID AS id, Document_name AS name FROM Document_type');
+            $stmt = $conn->query('SELECT Document_type_ID AS id, Document_name AS name FROM document_type');
             $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
             foreach ($rows as $row) {
                 if (!monitoring_document_is_business_permit_name($row['name'] ?? null)) {
@@ -103,10 +103,6 @@ function monitoring_document_business_permit_type_ids(?PDO $conn = null): array
             }
         } catch (Throwable $__) {
         }
-    }
-
-    if (empty($ids)) {
-        $ids[4] = true;
     }
 
     return array_map('intval', array_keys($ids));
@@ -250,7 +246,7 @@ function monitoring_document_find_type(PDO $conn, int $documentTypeId): ?array
     }
 
     try {
-        $select = $conn->prepare('SELECT Document_type_ID AS id, Document_name AS name FROM Document_type WHERE Document_type_ID = :id LIMIT 1');
+        $select = $conn->prepare('SELECT Document_type_ID AS id, Document_name AS name FROM document_type WHERE Document_type_ID = :id LIMIT 1');
         $select->execute([':id' => $documentTypeId]);
         $existing = $select->fetch(PDO::FETCH_ASSOC);
         if ($existing) {

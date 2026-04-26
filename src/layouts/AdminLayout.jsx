@@ -15,13 +15,13 @@ import {
   LayoutDashboard,
   LogOut,
   MessageCircleMore,
+  ReceiptText,
   Settings,
   ShieldCheck,
   UserCog,
   UserPlus,
   UserRound,
   Users,
-  UserX,
 } from "lucide-react";
 import { appLogo } from "../assets/branding";
 import { DashboardShell } from "../components/layout/dashboard_shell";
@@ -131,6 +131,14 @@ export const adminNavItems = [
     to: "/admin/scheduling",
     icon: <CalendarClock {...sidebarIconProps} />,
     accessKey: "scheduling",
+  },
+  {
+    key: "payment",
+    label: "Payment",
+    to: "/admin/payment",
+    icon: <ReceiptText {...sidebarIconProps} />,
+    sectionLabel: "Billing",
+    badgeLabel: "Receipts",
   },
   {
     key: "task-management",

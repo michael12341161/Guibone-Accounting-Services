@@ -71,9 +71,9 @@ try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     $documentTypes = [];
-    if (monitoring_document_table_exists($conn, 'Document_type')) {
+    if (monitoring_document_table_exists($conn, 'document_type')) {
         try {
-            $stmt = $conn->query('SELECT Document_type_ID AS id, Document_name AS name FROM Document_type');
+            $stmt = $conn->query('SELECT Document_type_ID AS id, Document_name AS name FROM document_type');
             $documentTypes = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
         } catch (Throwable $__) {
             $documentTypes = [];
@@ -109,7 +109,7 @@ try {
         ]);
     }
 
-    $hasDocumentTypeTable = monitoring_document_table_exists($conn, 'Document_type');
+    $hasDocumentTypeTable = monitoring_document_table_exists($conn, 'document_type');
     $hasStatusColumn = monitoring_document_column_exists($conn, 'documents', 'Status_id');
     $hasDurationDaysColumn = monitoring_document_column_exists($conn, 'documents', 'duration_days');
     $hasExpirationDateColumn = monitoring_document_column_exists($conn, 'documents', 'expiration_date');
@@ -128,7 +128,7 @@ try {
         ? 'dt.Document_name AS document_type_name,'
         : 'NULL AS document_type_name,';
     $joinClause = $hasDocumentTypeTable
-        ? 'LEFT JOIN Document_type dt ON dt.Document_type_ID = d.Document_type_ID'
+        ? 'LEFT JOIN document_type dt ON dt.Document_type_ID = d.Document_type_ID'
         : '';
     $selectStatus = $hasStatusColumn ? 'd.Status_id AS document_status_id,' : 'NULL AS document_status_id,';
     $selectStatusName = $hasStatusColumn && $hasStatusTable

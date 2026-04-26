@@ -86,6 +86,180 @@ function resolveAppointmentActionColumn(PDO $conn): ?string {
     return null;
 }
 
+function resolveOptionalServiceAmountColumn(PDO $conn): ?string {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached !== '' ? $cached : null;
+    }
+
+    $preferredColumns = [
+        'price',
+        'amount',
+        'fee',
+        'cost',
+        'service_price',
+        'service_amount',
+    ];
+
+    try {
+        $stmt = $conn->query('SHOW COLUMNS FROM `services_type`');
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        $available = [];
+
+        foreach ($rows as $row) {
+            $field = trim((string)($row['Field'] ?? ''));
+            if ($field === '') {
+                continue;
+            }
+
+            $available[strtolower($field)] = $field;
+        }
+
+        foreach ($preferredColumns as $candidate) {
+            if (isset($available[$candidate])) {
+                $cached = $available[$candidate];
+                return $cached;
+            }
+        }
+    } catch (Throwable $__) {
+        // Pricing columns are optional, so fall through silently.
+    }
+
+    $cached = '';
+    return null;
+}
+
+function normalizeMoneyValue($value): ?float {
+    if ($value === null) {
+        return null;
+    }
+
+    if (is_int($value) || is_float($value)) {
+        $numericValue = (float)$value;
+        return is_finite($numericValue) ? round($numericValue, 2) : null;
+    }
+
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return null;
+    }
+
+    $normalized = str_replace([',', ' '], '', $raw);
+    if (!preg_match('/^-?\d+(?:\.\d+)?$/', $normalized)) {
+        return null;
+    }
+
+    $numericValue = (float)$normalized;
+    return is_finite($numericValue) ? round($numericValue, 2) : null;
+}
+
+function resolveDefaultPaymentStatus(PDO $conn): array {
+    static $cached = null;
+    if (is_array($cached)) {
+        return $cached;
+    }
+
+    $cached = [
+        'id' => null,
+        'name' => '',
+    ];
+
+    try {
+        $stmt = $conn->query(
+            "SELECT Status_id, Status_name
+             FROM status
+             WHERE Status_group = 'PAYMENT'
+               AND LOWER(Status_name) = 'pending'
+             ORDER BY Status_id ASC
+             LIMIT 1"
+        );
+        $row = $stmt ? ($stmt->fetch(PDO::FETCH_ASSOC) ?: null) : null;
+
+        if ($row === null) {
+            $fallbackStmt = $conn->query(
+                "SELECT Status_id, Status_name
+                 FROM status
+                 WHERE Status_group = 'PAYMENT'
+                 ORDER BY Status_id ASC
+                 LIMIT 1"
+            );
+            $row = $fallbackStmt ? ($fallbackStmt->fetch(PDO::FETCH_ASSOC) ?: null) : null;
+        }
+
+        if (is_array($row)) {
+            $cached = [
+                'id' => isset($row['Status_id']) ? (int)$row['Status_id'] : null,
+                'name' => trim((string)($row['Status_name'] ?? '')),
+            ];
+        }
+    } catch (Throwable $__) {
+        // Payment status metadata is optional here; empty fallback is fine.
+    }
+
+    return $cached;
+}
+
+function fetchLatestPaymentsByAppointment(PDO $conn, array $appointmentIds): array {
+    $ids = array_values(array_unique(array_filter(array_map(static function ($value) {
+        $id = (int)$value;
+        return $id > 0 ? $id : null;
+    }, $appointmentIds))));
+
+    if (empty($ids)) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $sql = "
+        SELECT p.payment_ID,
+               p.appointment_ID,
+               p.payment_type_ID,
+               p.screenshot,
+               p.Status_ID,
+               p.Date,
+               pt.type_name AS payment_method_name,
+               st.Status_name AS payment_status_name
+        FROM payment p
+        INNER JOIN (
+            SELECT appointment_ID, MAX(payment_ID) AS latest_payment_id
+            FROM payment
+            WHERE appointment_ID IN ({$placeholders})
+            GROUP BY appointment_ID
+        ) latest ON latest.latest_payment_id = p.payment_ID
+        LEFT JOIN payment_type pt ON pt.payment_type_ID = p.payment_type_ID
+        LEFT JOIN status st ON st.Status_id = p.Status_ID
+    ";
+
+    try {
+        $stmt = $conn->prepare($sql);
+        $stmt->execute($ids);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $__) {
+        return [];
+    }
+
+    $paymentsByAppointment = [];
+    foreach ($rows as $row) {
+        $appointmentId = isset($row['appointment_ID']) ? (int)$row['appointment_ID'] : 0;
+        if ($appointmentId <= 0) {
+            continue;
+        }
+
+        $paymentsByAppointment[$appointmentId] = [
+            'id' => isset($row['payment_ID']) ? (int)$row['payment_ID'] : null,
+            'appointment_id' => $appointmentId,
+            'payment_type_id' => isset($row['payment_type_ID']) ? (int)$row['payment_type_ID'] : null,
+            'payment_method_name' => trim((string)($row['payment_method_name'] ?? '')) ?: null,
+            'screenshot' => trim((string)($row['screenshot'] ?? '')) ?: null,
+            'status_id' => isset($row['Status_ID']) ? (int)$row['Status_ID'] : null,
+            'status_name' => trim((string)($row['payment_status_name'] ?? '')) ?: null,
+            'date' => trim((string)($row['Date'] ?? '')) ?: null,
+        ];
+    }
+
+    return $paymentsByAppointment;
+}
+
 function processingDocumentCatalog(): array {
     return [
         'business_permit' => 'Business Permit',
@@ -191,8 +365,14 @@ try {
                au.Username AS action_by_username,";
         $actionJoin = "LEFT JOIN user au ON au.User_id = {$actionColumnExpr}";
     }
+    $serviceAmountColumn = resolveOptionalServiceAmountColumn($conn);
+    $serviceAmountSelect = $serviceAmountColumn !== null
+        ? 's.' . quoteIdentifier($serviceAmountColumn) . ' AS Service_amount,'
+        : 'NULL AS Service_amount,';
+    $defaultPaymentStatus = resolveDefaultPaymentStatus($conn);
 
     $clientId = isset($_GET['client_id']) ? (int)$_GET['client_id'] : 0;
+    $appointmentId = isset($_GET['appointment_id']) ? (int)$_GET['appointment_id'] : 0;
     $roleId = (int)($sessionUser['role_id'] ?? 0);
     if ($roleId === MONITORING_ROLE_CLIENT) {
         $clientId = (int)($sessionUser['client_id'] ?? 0);
@@ -229,12 +409,17 @@ try {
         }
     }
 
-    $where = '';
     $params = [];
+    $conditions = [];
     if ($clientId > 0) {
-        $where = 'WHERE a.Client_ID = :cid';
+        $conditions[] = 'a.Client_ID = :cid';
         $params[':cid'] = $clientId;
     }
+    if ($appointmentId > 0) {
+        $conditions[] = 'a.Appointment_ID = :appointment_id';
+        $params[':appointment_id'] = $appointmentId;
+    }
+    $where = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
     $sql = "
         SELECT a.Appointment_ID,
@@ -246,6 +431,7 @@ try {
                {$descriptionSelect}
                {$documentSelect}
                s.Name AS Service_name,
+               {$serviceAmountSelect}
                st.Status_name,
                CONCAT_WS(' ', c.First_name, c.Middle_name, c.Last_name) AS Client_name,
                u.Username AS client_username,
@@ -265,59 +451,58 @@ try {
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+    $appointmentIds = array_values(array_unique(array_filter(array_map(function ($row) {
+        return isset($row['Appointment_ID']) ? (int)$row['Appointment_ID'] : 0;
+    }, $rows))));
+    $latestPaymentsByAppointment = fetchLatestPaymentsByAppointment($conn, $appointmentIds);
     $attachmentsByAppointment = [];
-    if ($hasDocuments && !empty($rows)) {
-        $appointmentIds = array_values(array_unique(array_filter(array_map(function ($row) {
-            return isset($row['Appointment_ID']) ? (int)$row['Appointment_ID'] : 0;
-        }, $rows))));
+    if ($hasDocuments && !empty($appointmentIds)) {
+        $docPlaceholders = implode(',', array_fill(0, count($appointmentIds), '?'));
+        $docSql = "
+            SELECT Documents_ID, appointment_id, filename, filepath
+            FROM documents
+            WHERE appointment_id IN ({$docPlaceholders})
+            ORDER BY appointment_id ASC, Documents_ID ASC
+        ";
+        $docStmt = $conn->prepare($docSql);
+        $docStmt->execute($appointmentIds);
+        $docRows = $docStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        if (!empty($appointmentIds)) {
-            $docPlaceholders = implode(',', array_fill(0, count($appointmentIds), '?'));
-            $docSql = "
-                SELECT Documents_ID, appointment_id, filename, filepath
-                FROM documents
-                WHERE appointment_id IN ({$docPlaceholders})
-                ORDER BY appointment_id ASC, Documents_ID ASC
-            ";
-            $docStmt = $conn->prepare($docSql);
-            $docStmt->execute($appointmentIds);
-            $docRows = $docStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            foreach ($docRows as $docRow) {
-                $aid = isset($docRow['appointment_id']) ? (int)$docRow['appointment_id'] : 0;
-                if ($aid <= 0) {
-                    continue;
-                }
-
-                if (!isset($attachmentsByAppointment[$aid])) {
-                    $attachmentsByAppointment[$aid] = [];
-                }
-
-                $docPath = isset($docRow['filepath']) ? trim((string)$docRow['filepath']) : '';
-                if ($docPath === '') {
-                    continue;
-                }
-
-                $docFilename = isset($docRow['filename']) ? trim((string)$docRow['filename']) : '';
-                if ($docFilename === '') {
-                    $docFilename = basename($docPath);
-                }
-
-                $attachmentsByAppointment[$aid][] = [
-                    'document_id' => isset($docRow['Documents_ID']) ? (int)$docRow['Documents_ID'] : null,
-                    'filename' => $docFilename,
-                    'filepath' => $docPath,
-                    'path' => $docPath,
-                ];
+        foreach ($docRows as $docRow) {
+            $aid = isset($docRow['appointment_id']) ? (int)$docRow['appointment_id'] : 0;
+            if ($aid <= 0) {
+                continue;
             }
+
+            if (!isset($attachmentsByAppointment[$aid])) {
+                $attachmentsByAppointment[$aid] = [];
+            }
+
+            $docPath = isset($docRow['filepath']) ? trim((string)$docRow['filepath']) : '';
+            if ($docPath === '') {
+                continue;
+            }
+
+            $docFilename = isset($docRow['filename']) ? trim((string)$docRow['filename']) : '';
+            if ($docFilename === '') {
+                $docFilename = basename($docPath);
+            }
+
+            $attachmentsByAppointment[$aid][] = [
+                'document_id' => isset($docRow['Documents_ID']) ? (int)$docRow['Documents_ID'] : null,
+                'filename' => $docFilename,
+                'filepath' => $docPath,
+                'path' => $docPath,
+            ];
         }
     }
 
-    $appointments = array_map(function ($row) use ($attachmentsByAppointment) {
+    $appointments = array_map(function ($row) use ($attachmentsByAppointment, $defaultPaymentStatus, $latestPaymentsByAppointment) {
         $appointmentId = isset($row['Appointment_ID']) ? (int)$row['Appointment_ID'] : null;
         $statusName = isset($row['Status_name']) ? (string)$row['Status_name'] : '';
         $normalized = statusLabel($statusName);
         $serviceName = isset($row['Service_name']) ? (string)$row['Service_name'] : 'Appointment';
+        $serviceAmount = normalizeMoneyValue($row['Service_amount'] ?? null);
         $date = isset($row['Date']) ? (string)$row['Date'] : null;
         $description = isset($row['Appointment_description']) ? trim((string)$row['Appointment_description']) : '';
         $documentId = isset($row['Document_ID']) && $row['Document_ID'] !== null ? (int)$row['Document_ID'] : null;
@@ -326,6 +511,22 @@ try {
         $attachmentList = ($appointmentId !== null && isset($attachmentsByAppointment[$appointmentId]))
             ? $attachmentsByAppointment[$appointmentId]
             : [];
+        $paymentRecord = ($appointmentId !== null && isset($latestPaymentsByAppointment[$appointmentId]))
+            ? $latestPaymentsByAppointment[$appointmentId]
+            : null;
+        $paymentExists = is_array($paymentRecord);
+        $paymentStatusId = $paymentExists
+            ? ($paymentRecord['status_id'] ?? null)
+            : ($defaultPaymentStatus['id'] ?? null);
+        $paymentStatusName = trim((string)($paymentRecord['status_name'] ?? ($defaultPaymentStatus['name'] ?? '')));
+        if ($paymentStatusName === '') {
+            $paymentStatusName = null;
+        }
+        $selectedServices = [[
+            'id' => isset($row['service_id']) ? (int)$row['service_id'] : null,
+            'name' => $serviceName,
+            'price' => $serviceAmount,
+        ]];
 
         if (empty($attachmentList) && $attachmentPath !== '') {
             $attachmentList[] = [
@@ -366,6 +567,10 @@ try {
             'service' => $serviceName,
             'service_name' => $serviceName,
             'Service_name' => $serviceName,
+            'service_price' => $serviceAmount,
+            'service_amount' => $serviceAmount,
+            'selected_services' => $selectedServices,
+            'total_amount' => $serviceAmount,
             'processing_documents' => array_keys($processingDocuments),
             'processing_document_labels' => array_values($processingDocuments),
 
@@ -379,6 +584,26 @@ try {
             'status' => $normalized,
             'Status' => $normalized,
             'appointment_status' => $normalized,
+            'payment_status_id' => $paymentStatusId,
+            'payment_status_name' => $paymentStatusName,
+            'payment_status' => $paymentStatusName,
+            'payment_exists' => $paymentExists,
+            'payment_method_name' => $paymentRecord['payment_method_name'] ?? null,
+            'payment_type_id' => $paymentRecord['payment_type_id'] ?? null,
+            'payment_date' => $paymentRecord['date'] ?? null,
+            'payment_screenshot' => $paymentRecord['screenshot'] ?? null,
+            'payment' => [
+                'exists' => $paymentExists,
+                'id' => $paymentRecord['id'] ?? null,
+                'appointment_id' => $appointmentId,
+                'payment_type_id' => $paymentRecord['payment_type_id'] ?? null,
+                'payment_method_name' => $paymentRecord['payment_method_name'] ?? null,
+                'screenshot' => $paymentRecord['screenshot'] ?? null,
+                'status_id' => $paymentStatusId,
+                'status_name' => $paymentStatusName,
+                'date' => $paymentRecord['date'] ?? null,
+                'status_source' => $paymentExists ? 'record' : 'default',
+            ],
             'document_id' => $documentId,
             'document_filename' => $documentFilename !== '' ? $documentFilename : null,
             'attachment_path' => $attachmentPath !== '' ? $attachmentPath : null,

@@ -11,65 +11,45 @@ function respond($code, $payload) {
     exit;
 }
 
-function fetchOptionsOrFallback(PDO $conn, string $sql, array $fallback): array {
-    try {
-        $stmt = $conn->query($sql);
-        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
-        return count($rows) > 0 ? $rows : $fallback;
-    } catch (Throwable $__) {
-        return $fallback;
-    }
+function fetchSchemaOptions(PDO $conn, string $tableName, array $columns, string $sql): array {
+    monitoring_require_schema_columns($conn, $tableName, $columns, 'client form options');
+
+    $stmt = $conn->query($sql);
+    return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 }
 
 try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    $businessTypes = fetchOptionsOrFallback(
+    $businessTypes = fetchSchemaOptions(
         $conn,
+        'business_type',
+        ['Business_type_ID', 'Business_name'],
         'SELECT Business_type_ID AS id, Business_name AS name
          FROM business_type
          WHERE Business_name IS NOT NULL AND TRIM(Business_name) <> \'\'
-         ORDER BY Business_type_ID ASC',
-        [
-            ['id' => 1, 'name' => 'Sole Proprietor'],
-            ['id' => 2, 'name' => 'Partnership'],
-            ['id' => 3, 'name' => 'Corporation'],
-        ]
+         ORDER BY Business_type_ID ASC'
     );
 
-    $civilStatusTypes = fetchOptionsOrFallback(
+    $civilStatusTypes = fetchSchemaOptions(
         $conn,
+        'civil_status_type',
+        ['civil_status_type_ID', 'civil_status_type_name'],
         'SELECT civil_status_type_ID AS id, civil_status_type_name AS name
          FROM civil_status_type
          WHERE civil_status_type_name IS NOT NULL AND TRIM(civil_status_type_name) <> \'\'
-         ORDER BY civil_status_type_ID ASC',
-        [
-            ['id' => 1, 'name' => 'Single'],
-            ['id' => 2, 'name' => 'Married'],
-            ['id' => 3, 'name' => 'Widowed'],
-            ['id' => 4, 'name' => 'Separated'],
-            ['id' => 5, 'name' => 'Divorced'],
-            ['id' => 6, 'name' => 'Annulled'],
-        ]
+         ORDER BY civil_status_type_ID ASC'
     );
 
-    $documentTypes = fetchOptionsOrFallback(
+    $documentTypes = fetchSchemaOptions(
         $conn,
+        'document_type',
+        ['Document_type_ID', 'Document_name'],
         'SELECT Document_type_ID AS id, Document_name AS name
-         FROM Document_type
+         FROM document_type
          WHERE Document_name IS NOT NULL AND TRIM(Document_name) <> \'\'
-         ORDER BY Document_type_ID ASC',
-        [
-            ['id' => 1, 'name' => 'valid_id'],
-            ['id' => 2, 'name' => 'birth_certificate'],
-            ['id' => 3, 'name' => 'marriage_contract'],
-            ['id' => 4, 'name' => 'business_permit'],
-            ['id' => 5, 'name' => 'dti'],
-            ['id' => 6, 'name' => 'sec'],
-            ['id' => 7, 'name' => 'lgu'],
-        ]
+         ORDER BY Document_type_ID ASC'
     );
-    $documentTypes = monitoring_document_merge_known_types($documentTypes);
 
     respond(200, [
         'success' => true,

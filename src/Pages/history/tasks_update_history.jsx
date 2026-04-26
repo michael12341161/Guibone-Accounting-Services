@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
-import { Link, useLocation } from "react-router-dom";
-import { Card, CardContent, CardHeader } from "../../components/UI/card";
+import { useLocation } from "react-router-dom";
+import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
@@ -13,9 +13,9 @@ import ArchiveTasksCompleted from "../admin_page/archive_tasks_completed";
 import ArchiveTasksCompletedSecretary from "../secretary_page/archive_tasks_completed_secretary";
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
-const PROGRESS_RE = /^\s*\[Progress\]\s*(\d{1,3})\s*$/i;
 const ARCHIVED_TAG_RE = /^\s*\[Archived\]\s*(?:1|true|yes)?\s*$/i;
 const SECRETARY_ARCHIVED_TAG_RE = /^\s*\[SecretaryArchived\]\s*(?:1|true|yes)?\s*$/i;
+const HISTORY_PAGE_SIZE = 10;
 
 const normalizeTaskIds = (ids) =>
   Array.from(
@@ -82,18 +82,6 @@ const getDeadline = (task) => (
   extractMetaFromDescription(task?.description)?.deadline ||
   ""
 );
-
-const getProgress = (task) => {
-  const lines = String(task?.description || "").split(/\r?\n/);
-  for (const line of lines) {
-    const match = String(line || "").match(PROGRESS_RE);
-    if (!match) continue;
-    const value = parseInt(match[1], 10);
-    if (!Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(100, value));
-  }
-  return 0;
-};
 
 const isHistoryTask = (task) => {
   const status = String(task?.status || "").trim().toLowerCase();
@@ -244,6 +232,7 @@ export default function TasksUpdateHistory() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [restoreLoadingId, setRestoreLoadingId] = useState("");
   const [viewTaskId, setViewTaskId] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   useErrorToast(error);
 
@@ -380,6 +369,10 @@ export default function TasksUpdateHistory() {
       );
     });
   }, [historyTasks, priorityFilter, search]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [priorityFilter, search]);
 
   const archivedTaskRows = useMemo(() => {
     return scopedTasks
@@ -539,52 +532,159 @@ export default function TasksUpdateHistory() {
     }
   };
 
-  const backMeta = useMemo(() => {
-    if (routeRole === "secretary") {
-      return { path: "/secretary/work-update", label: "Back to My Tasks" };
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / HISTORY_PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
     }
-    if (routeRole === "accountant") {
-      return { path: "/accountant/work-update", label: "Back to My Tasks" };
-    }
-    return { path: "/admin/work-update", label: "Back to My Tasks" };
-  }, [routeRole]);
+  }, [currentPage, totalPages]);
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * HISTORY_PAGE_SIZE;
+  const endIndex = Math.min(startIndex + HISTORY_PAGE_SIZE, filteredTasks.length);
+  const pagedTasks = useMemo(
+    () => filteredTasks.slice(startIndex, startIndex + HISTORY_PAGE_SIZE),
+    [filteredTasks, startIndex]
+  );
+  const canPrev = safeCurrentPage > 1;
+  const canNext = safeCurrentPage < totalPages;
+  const pagedHistoryRows = useMemo(
+    () =>
+      pagedTasks.map((task) => {
+        const meta = extractMetaFromDescription(task.description);
+        const priority = priorityMeta(task.priority || task.task_priority || task.level || meta.priority || "Low");
+
+        return {
+          ...task,
+          taskKey: getTaskKey(task),
+          titleLabel: task.title || task.name || "Untitled task",
+          clientLabel: task.client_name || task.client_id || "Client",
+          serviceLabel: task.service || task.service_name || "Service",
+          assigneeLabel: task.accountant_name || "Unassigned",
+          createdLabel: formatDate(task.created_at || task.createdAt),
+          deadlineLabel: formatDate(getDeadline(task)),
+          completedLabel: getTaskCompletedOnLabel(task) || "-",
+          stepCount: parseTaskSteps(task.description).length,
+          priority,
+        };
+      }),
+    [pagedTasks]
+  );
+
+  const historyColumns = [
+    ...(canArchiveTaskHistory
+      ? [
+          {
+            key: "select",
+            header: "",
+            width: "56px",
+            align: "center",
+            render: (_, row) => (
+              <input
+                type="checkbox"
+                checked={selectedTaskIdSet.has(row.taskKey)}
+                onChange={() =>
+                  setSelectedTaskIds((current) => {
+                    const ids = normalizeTaskIds(current);
+                    if (!row.taskKey) return ids;
+                    if (ids.includes(row.taskKey)) {
+                      return ids.filter((id) => id !== row.taskKey);
+                    }
+                    return [...ids, row.taskKey];
+                  })
+                }
+                onClick={(event) => event.stopPropagation()}
+                disabled={archiveLoading || !row.taskKey}
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+                aria-label={`Select ${row.titleLabel}`}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      key: "titleLabel",
+      header: "Task",
+      width: "24%",
+      render: (_, row) => (
+        <div className="min-w-0">
+          <div className="font-medium text-slate-900">{row.titleLabel}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+              Completed
+            </span>
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${row.priority.cls}`}>
+              {row.priority.label} Priority
+            </span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "clientLabel",
+      header: "Client",
+      width: "14%",
+      render: (value) => <span className="text-sm text-slate-700">{value}</span>,
+    },
+    {
+      key: "serviceLabel",
+      header: "Service",
+      width: "14%",
+      render: (value) => <span className="text-sm text-slate-700">{value}</span>,
+    },
+    {
+      key: "assigneeLabel",
+      header: "Assignee",
+      width: "14%",
+      render: (value) => <span className="text-sm text-slate-700">{value}</span>,
+    },
+    {
+      key: "createdLabel",
+      header: "Created",
+      width: "10%",
+    },
+    {
+      key: "deadlineLabel",
+      header: "Deadline",
+      width: "10%",
+    },
+    {
+      key: "completedLabel",
+      header: "Completed",
+      width: "13%",
+    },
+    {
+      key: "stepCount",
+      header: "Steps",
+      width: "7%",
+      align: "center",
+      render: (value) => <span className="font-medium text-slate-700">{value}</span>,
+    },
+    {
+      key: "action",
+      header: "Action",
+      width: "94px",
+      align: "center",
+      render: (_, row) => (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (row.taskKey) setViewTaskId(row.taskKey);
+          }}
+          disabled={!row.taskKey}
+          className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          View
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <Card compact className="border-emerald-200 bg-emerald-50/70">
-        <CardHeader
-          title="Task Update History"
-          description="Tasks marked Done in Task Updates are moved here automatically."
-          action={(
-            <Link
-              to={backMeta.path}
-              className="inline-flex items-center rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
-            >
-              {backMeta.label}
-            </Link>
-          )}
-        />
-        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">History Items</div>
-            <div className="mt-1 text-2xl font-bold text-emerald-700">{historyTasks.length}</div>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">Showing</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{filteredTasks.length}</div>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">Archived</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{archivedTaskRows.length}</div>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">Live Refresh</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">Updates every 3 seconds</div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1 min-w-[220px]">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -660,140 +760,70 @@ export default function TasksUpdateHistory() {
             ) : null}
           </div>
         </div>
-      </div>
 
-      {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading task history...</div>
-      ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
+        {error ? (
           <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
-        </div>
-      ) : filteredTasks.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center text-sm text-slate-500">
-          No completed tasks found in history yet.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {filteredTasks.map((task) => {
-            const meta = extractMetaFromDescription(task.description);
-            const priority = priorityMeta(task.priority || task.task_priority || task.level || meta.priority || "Low");
-            const steps = parseTaskSteps(task.description);
-            const descriptionPreview = cleanDescription(task.description);
-            const taskKey = getTaskKey(task);
-            const isSelected = taskKey ? selectedTaskIdSet.has(taskKey) : false;
+        ) : null}
 
-            return (
-              <Card key={String(task.id || task.task_id)} compact variant="success" className="h-full shadow-none">
-                <CardContent className="space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start gap-3 min-w-0">
-                      {canArchiveTaskHistory ? (
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() =>
-                            setSelectedTaskIds((current) => {
-                              const ids = normalizeTaskIds(current);
-                              if (!taskKey) return ids;
-                              if (ids.includes(taskKey)) {
-                                return ids.filter((id) => id !== taskKey);
-                              }
-                              return [...ids, taskKey];
-                            })
-                          }
-                          disabled={archiveLoading || !taskKey}
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                          aria-label={`Select ${task.title || task.name || "task"}`}
-                        />
-                      ) : null}
+        <DataTable
+          columns={historyColumns}
+          rows={error ? [] : pagedHistoryRows}
+          keyField="taskKey"
+          loading={loading}
+          compact
+          striped={false}
+          emptyMessage={error ? "Unable to load task update history." : "No completed tasks found in history yet."}
+          className="shadow-none"
+          tableClassName="min-w-full"
+        />
 
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                            Completed
-                          </span>
-                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${priority.cls}`}>
-                            {priority.label} Priority
-                          </span>
-                        </div>
-                        <h2 className="mt-2 text-base font-semibold text-slate-900">{task.title || task.name || "Untitled task"}</h2>
-                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                          <span>{task.client_name || task.client_id || "Client"}</span>
-                          <span>{task.service || task.service_name || "Service"}</span>
-                          <span>{task.accountant_name || "Unassigned"}</span>
-                        </div>
-                      </div>
-                    </div>
+        {!loading && !error ? (
+          <div className="flex flex-col items-center justify-between gap-2 sm:flex-row">
+            <div className="text-xs text-slate-600">
+              Showing <span className="font-medium">{filteredTasks.length === 0 ? 0 : startIndex + 1}</span>-
+              <span className="font-medium">{filteredTasks.length === 0 ? 0 : endIndex}</span> of{" "}
+              <span className="font-medium">{filteredTasks.length}</span>
+            </div>
 
-                    <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3 text-center">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Progress</div>
-                      <div className="mt-1 text-xl font-bold text-emerald-700">{Math.max(100, getProgress(task))}%</div>
-                    </div>
-                  </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (canPrev) setCurrentPage((page) => page - 1);
+                }}
+                disabled={!canPrev}
+                className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  canPrev
+                    ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                Previous
+              </button>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Created</div>
-                      <div className="mt-1 text-sm font-medium text-slate-800">
-                        {formatDate(task.created_at || task.createdAt)}
-                      </div>
-                    </div>
+              <div className="text-xs text-slate-600">
+                Page <span className="font-medium">{safeCurrentPage}</span> of{" "}
+                <span className="font-medium">{totalPages}</span>
+              </div>
 
-                    <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Deadline</div>
-                      <div className="mt-1 text-sm font-medium text-slate-800">{formatDate(getDeadline(task))}</div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Steps</div>
-                      <div className="mt-1 text-sm font-medium text-slate-800">
-                        {steps.length} {steps.length === 1 ? "step" : "steps"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Created By</div>
-                      <div className="mt-1 text-sm font-medium text-slate-800">
-                        {task.created_by_name || task.created_by_username || "System"}
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Status</div>
-                      <div className="mt-1 text-sm font-medium text-emerald-700">{task.status || "Completed"}</div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-3">
-                    <div className="flex flex-col gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Task Details</div>
-                        {!steps.length && descriptionPreview ? (
-                          <div className="mt-1 text-sm leading-relaxed text-slate-700">{descriptionPreview}</div>
-                        ) : null}
-                      </div>
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (taskKey) setViewTaskId(taskKey);
-                          }}
-                          disabled={!taskKey}
-                          className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (canNext) setCurrentPage((page) => page + 1);
+                }}
+                disabled={!canNext}
+                className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  canNext
+                    ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <Modal
         open={Boolean(viewTask)}

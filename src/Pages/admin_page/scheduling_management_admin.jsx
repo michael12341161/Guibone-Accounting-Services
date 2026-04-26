@@ -34,6 +34,13 @@ const normalizeStatus = (status) => {
   return value;
 };
 
+const getConsultationStatusSortRank = (status) => {
+  const value = normalizeStatus(status).toLowerCase();
+  if (value === "pending") return 0;
+  if (value === "approved") return 2;
+  return 1;
+};
+
 const statusPillClass = (status) => {
   const value = normalizeStatus(status).toLowerCase();
   if (value === "approved") return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -390,10 +397,20 @@ export default function SchedulingManagementAdmin() {
 
   const normalized = useMemo(
     () =>
-      (rows || []).map((row) => ({
-        ...row,
-        status: normalizeStatus(row.status),
-      })),
+      (rows || [])
+        .map((row) => ({
+          ...row,
+          status: normalizeStatus(row.status),
+        }))
+        .map((row, index) => ({ row, index }))
+        .sort((left, right) => {
+          const rankDiff =
+            getConsultationStatusSortRank(left.row.status) -
+            getConsultationStatusSortRank(right.row.status);
+          if (rankDiff !== 0) return rankDiff;
+          return left.index - right.index;
+        })
+        .map(({ row }) => row),
     [rows]
   );
 

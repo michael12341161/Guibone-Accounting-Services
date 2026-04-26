@@ -56,7 +56,9 @@ function formatBadgeCount(value) {
 function getSidebarItemLabel(item) {
   const label = String(item?.label || "").trim();
   const helperText = String(item?.helperText || "").trim();
-  return helperText ? `${label}. ${helperText}` : label;
+  const badgeLabel = String(item?.badgeLabel || "").trim();
+  const detailParts = [helperText, badgeLabel].filter(Boolean);
+  return detailParts.length > 0 ? `${label}. ${detailParts.join(". ")}` : label;
 }
 
 function SidebarBadge({ count, compact = false }) {
@@ -82,6 +84,19 @@ function SidebarBadge({ count, compact = false }) {
       >
         {badgeText}
       </span>
+    </span>
+  );
+}
+
+function SidebarTextBadge({ label }) {
+  const text = String(label || "").trim();
+  if (!text) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+      {text}
     </span>
   );
 }
@@ -412,6 +427,7 @@ export function Sidebar({
                       <span className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="truncate">{item.label}</span>
+                          <SidebarTextBadge label={item?.badgeLabel} />
                           {normalizeBadgeCount(item?.badgeCount) > 0 ? <SidebarBadge count={item.badgeCount} /> : null}
                         </span>
                         {item?.helperText ? (
@@ -503,6 +519,7 @@ export function Sidebar({
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate">{item.label}</span>
+                        <SidebarTextBadge label={item?.badgeLabel} />
                         {normalizeBadgeCount(item?.badgeCount) > 0 ? <SidebarBadge count={item.badgeCount} /> : null}
                       </span>
                       {item?.helperText ? (

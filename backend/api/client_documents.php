@@ -100,7 +100,7 @@ try {
         respond(200, ['success' => true, 'documents' => []]);
     }
 
-    $hasDocumentTypeTable = tableExists($conn, 'Document_type');
+    $hasDocumentTypeTable = tableExists($conn, 'document_type');
     $hasDocumentTypeColumn = columnExists($conn, 'documents', 'Document_type_ID');
     $hasStatusColumn = columnExists($conn, 'documents', 'Status_id');
     $hasDurationDaysColumn = columnExists($conn, 'documents', 'duration_days');
@@ -111,7 +111,7 @@ try {
         ? 'dt.Document_name AS document_type_name,'
         : 'NULL AS document_type_name,';
     $joinClause = $hasDocumentTypeTable && $hasDocumentTypeColumn
-        ? 'LEFT JOIN Document_type dt ON dt.Document_type_ID = d.Document_type_ID'
+        ? 'LEFT JOIN document_type dt ON dt.Document_type_ID = d.Document_type_ID'
         : '';
     $selectStatus = $hasStatusColumn ? 'd.Status_id AS document_status_id,' : 'NULL AS document_status_id,';
     $selectStatusName = $hasStatusColumn && $hasStatusTable

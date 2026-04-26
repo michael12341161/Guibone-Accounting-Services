@@ -235,6 +235,13 @@ function normalizeAppointmentDecisionStatus(status) {
   return value;
 }
 
+function getAppointmentDecisionStatusSortRank(status) {
+  const value = normalizeAppointmentDecisionStatus(status);
+  if (value === "pending") return 0;
+  if (value === "approved") return 2;
+  return 1;
+}
+
 function statusPillClass(status) {
   const value = normalizeAppointmentDecisionStatus(status);
   if (value === "approved") {
@@ -504,7 +511,16 @@ export default function AppointmentManagement() {
           processingDocuments,
         };
       })
-      .filter((row) => !row.isConsultation);
+      .filter((row) => !row.isConsultation)
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => {
+        const rankDiff =
+          getAppointmentDecisionStatusSortRank(left.row.status) -
+          getAppointmentDecisionStatusSortRank(right.row.status);
+        if (rankDiff !== 0) return rankDiff;
+        return left.index - right.index;
+      })
+      .map(({ row }) => row);
   }, [rows]);
 
   const filtered = useMemo(() => {

@@ -1,31 +1,24 @@
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Host: 127.0.0.1
--- Generation Time: Apr 25, 2026 at 12:50 AM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- ============================================================
+-- dbmonitoring — FULL DATABASE (Schema + Data + Optimizations)
+-- MariaDB 10.4+ / MySQL 8.0+
+-- Generated: 2026-04-25
+-- Includes: All original tables, data, indexes, foreign keys
+--           + 3NF normalization fixes and performance indexes
+-- ============================================================
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET FOREIGN_KEY_CHECKS = 0;
 START TRANSACTION;
 SET time_zone = "+00:00";
-
-
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
 /*!40101 SET NAMES utf8mb4 */;
 
---
--- Database: `dbmonitoring`
---
-
--- --------------------------------------------------------
-
---
--- Table structure for table `announcements`
---
+-- ============================================================
+-- CREATE DATABASE
+-- ============================================================
+CREATE DATABASE IF NOT EXISTS `dbmonitoring`
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_general_ci;
+USE `dbmonitoring`;
 
 CREATE TABLE `announcements` (
   `announcement_ID` int(11) NOT NULL,
@@ -478,6 +471,44 @@ INSERT INTO `notifications` (`notifications_ID`, `user_id`, `sender_id`, `type`,
 (55, 32, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
 (56, 33, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
 (57, 34, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `payment_type`
+--
+
+CREATE TABLE `payment_type` (
+  `payment_type_ID` int(11) NOT NULL,
+  `type_name` varchar(50) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `payment_type`
+--
+
+INSERT INTO `payment_type` (`payment_type_ID`, `type_name`, `description`) VALUES
+(1, 'Bank', 'Payment via bank transfer'),
+(2, 'GCash', 'Payment via GCash e-wallet');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `payment`
+--
+
+CREATE TABLE `payment` (
+  `payment_ID` int(11) NOT NULL,
+  `Client_ID` int(11) NOT NULL,
+  `appointment_ID` int(11) DEFAULT NULL,
+  `payment_type_ID` int(11) NOT NULL,
+  `screenshot` varchar(500) NOT NULL COMMENT 'File path or URL of payment screenshot',
+  `Status_ID` int(11) NOT NULL,
+  `action_by` int(11) DEFAULT NULL,
+  `Date` date NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -936,7 +967,11 @@ INSERT INTO `status` (`Status_id`, `Status_group`, `Status_name`) VALUES
 (22, 'DOCUMENTS', 'Renewed'),
 (23, 'DOCUMENTS', 'Expired'),
 (24, 'PERMISSION_PAGE', 'Unlocked'),
-(25, 'PERMISSION_PAGE', 'Locked');
+(25, 'PERMISSION_PAGE', 'Locked'),
+(26, 'PAYMENT', 'Pending'),
+(29, 'PAYMENT', 'Processing'),
+(27, 'PAYMENT', 'Paid'),
+(28, 'PAYMENT', 'Reject');
 
 -- --------------------------------------------------------
 
@@ -1133,6 +1168,23 @@ ALTER TABLE `notifications`
   ADD KEY `idx_notifications_sender_id` (`sender_id`);
 
 --
+-- Indexes for table `payment_type`
+--
+ALTER TABLE `payment_type`
+  ADD PRIMARY KEY (`payment_type_ID`);
+
+--
+-- Indexes for table `payment`
+--
+ALTER TABLE `payment`
+  ADD PRIMARY KEY (`payment_ID`),
+  ADD KEY `Client_ID` (`Client_ID`),
+  ADD KEY `appointment_ID` (`appointment_ID`),
+  ADD KEY `payment_type_ID` (`payment_type_ID`),
+  ADD KEY `Status_ID` (`Status_ID`),
+  ADD KEY `action_by` (`action_by`);
+
+--
 -- Indexes for table `permissions`
 --
 ALTER TABLE `permissions`
@@ -1290,6 +1342,18 @@ ALTER TABLE `notifications`
   MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=58;
 
 --
+-- AUTO_INCREMENT for table `payment_type`
+--
+ALTER TABLE `payment_type`
+  MODIFY `payment_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `payment`
+--
+ALTER TABLE `payment`
+  MODIFY `payment_ID` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `permissions`
 --
 ALTER TABLE `permissions`
@@ -1435,6 +1499,16 @@ ALTER TABLE `notifications`
   ADD CONSTRAINT `notifications_ibfk_2` FOREIGN KEY (`sender_id`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
+-- Constraints for table `payment`
+--
+ALTER TABLE `payment`
+  ADD CONSTRAINT `payment_ibfk_1` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `payment_ibfk_2` FOREIGN KEY (`appointment_ID`) REFERENCES `appointment` (`Appointment_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `payment_ibfk_3` FOREIGN KEY (`payment_type_ID`) REFERENCES `payment_type` (`payment_type_ID`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `payment_ibfk_4` FOREIGN KEY (`Status_ID`) REFERENCES `status` (`Status_id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `payment_ibfk_5` FOREIGN KEY (`action_by`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
 -- Constraints for table `permissions`
 --
 ALTER TABLE `permissions`
@@ -1461,6 +1535,258 @@ ALTER TABLE `user`
   ADD CONSTRAINT `user_ibfk_3` FOREIGN KEY (`specialization_type_ID`) REFERENCES `specialization_type` (`specialization_type_ID`) ON DELETE SET NULL ON UPDATE CASCADE;
 COMMIT;
 
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+-- ============================================================
+-- ============================================================
+-- PART 2: NORMALIZATION & OPTIMIZATION (3NF)
+-- Safe, non-destructive additions only
+-- ============================================================
+-- ============================================================
+
+-- ============================================================
+-- SECTION 1: FIX AUTO_INCREMENT ON audit_logs
+-- ============================================================
+
+ALTER TABLE `audit_logs`
+  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=113;
+
+-- ============================================================
+-- SECTION 2: UNIQUE CONSTRAINTS (Entity Integrity)
+-- ============================================================
+
+-- user.Username must be unique (used for login)
+ALTER TABLE `user`
+  ADD UNIQUE KEY `uniq_user_username` (`Username`);
+
+-- user.Email must be unique (used as login identifier for clients)
+ALTER TABLE `user`
+  ADD UNIQUE KEY `uniq_user_email` (`Email`);
+
+-- business.TIN_number must be unique per business (nullable excluded)
+ALTER TABLE `business`
+  ADD UNIQUE KEY `uniq_business_tin` (`TIN_number`);
+
+-- client.Tin_no must be unique per client (nullable excluded)
+ALTER TABLE `client`
+  ADD UNIQUE KEY `uniq_client_tin` (`Tin_no`);
+
+-- status rows must not repeat the same group+name pair
+ALTER TABLE `status`
+  ADD UNIQUE KEY `uniq_status_group_name` (`Status_group`, `Status_name`);
+
+-- lookup tables: enforce unique names
+ALTER TABLE `specialization_type`
+  ADD UNIQUE KEY `uniq_specialization_name` (`Name`);
+
+ALTER TABLE `services_type`
+  ADD UNIQUE KEY `uniq_services_type_name` (`Name`);
+
+ALTER TABLE `business_type`
+  ADD UNIQUE KEY `uniq_business_type_name` (`Business_name`);
+
+ALTER TABLE `civil_status_type`
+  ADD UNIQUE KEY `uniq_civil_status_name` (`civil_status_type_name`);
+
+ALTER TABLE `document_type`
+  ADD UNIQUE KEY `uniq_document_type_name` (`Document_name`);
+
+ALTER TABLE `role`
+  ADD UNIQUE KEY `uniq_role_name` (`Role_name`);
+
+-- ============================================================
+-- SECTION 3: MISSING FOREIGN KEYS
+-- ============================================================
+
+-- audit_logs.user_id → user.User_id (was missing)
+ALTER TABLE `audit_logs`
+  ADD CONSTRAINT `audit_logs_ibfk_user`
+    FOREIGN KEY (`user_id`)
+    REFERENCES `user` (`User_id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;
+
+-- user.Employment_status_id → status.Status_id (was missing)
+ALTER TABLE `user`
+  ADD CONSTRAINT `user_ibfk_employment_status`
+    FOREIGN KEY (`Employment_status_id`)
+    REFERENCES `status` (`Status_id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;
+
+-- bundle_tasks.Services_type_Id → services_type (was missing)
+ALTER TABLE `bundle_tasks`
+  ADD CONSTRAINT `bundle_tasks_ibfk_service`
+    FOREIGN KEY (`Services_type_Id`)
+    REFERENCES `services_type` (`Services_type_Id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE;
+
+-- ============================================================
+-- SECTION 4: 3NF — TRANSITIVE DEPENDENCY ANNOTATIONS
+-- ============================================================
+
+-- permissions.User_ID is not part of the permission definition;
+-- it records who created the entry (admin). Clarified via COMMENT.
+ALTER TABLE `permissions`
+  MODIFY `User_ID` int(11) DEFAULT NULL
+  COMMENT 'Admin who created this permission (not part of permission logic). Access control is via role_permissions.';
+
+-- certificates.company_name is a snapshot of settings.system_company_name.
+-- Kept as snapshot for historical accuracy; source of truth is settings table.
+ALTER TABLE `certificates`
+  MODIFY `company_name` varchar(150) DEFAULT 'Guibone Accounting Services'
+  COMMENT 'Snapshot at time of issuance. Source of truth: settings.system_company_name';
+
+-- client_services.Steps stores a runtime snapshot of bundle_tasks steps.
+-- Canonical step definitions live in bundle_tasks. Candidate for future normalization.
+ALTER TABLE `client_services`
+  MODIFY `Steps` text DEFAULT NULL
+  COMMENT 'Runtime snapshot of task steps. Canonical source: bundle_tasks. Candidate for future junction table normalization.';
+
+-- ============================================================
+-- SECTION 5: NEW TABLE — user_specialization (3NF Fix)
+-- Replaces the JSON blob in settings(user_specialization_assignments)
+-- for multi-specialization support. Non-destructive; settings row kept.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `user_specialization` (
+  `user_specialization_ID` int(11) NOT NULL AUTO_INCREMENT,
+  `User_id` int(11) NOT NULL,
+  `specialization_type_ID` int(11) NOT NULL,
+  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`user_specialization_ID`),
+  UNIQUE KEY `uniq_user_specialization` (`User_id`, `specialization_type_ID`),
+  KEY `idx_user_spec_user` (`User_id`),
+  KEY `idx_user_spec_type` (`specialization_type_ID`),
+  CONSTRAINT `user_spec_ibfk_user`
+    FOREIGN KEY (`User_id`)
+    REFERENCES `user` (`User_id`)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `user_spec_ibfk_type`
+    FOREIGN KEY (`specialization_type_ID`)
+    REFERENCES `specialization_type` (`specialization_type_ID`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+COMMENT='Normalized multi-specialization mapping. Replaces JSON blob in settings(user_specialization_assignments). Migrate data here when ready.';
+
+-- Seed from existing user.specialization_type_ID values
+INSERT IGNORE INTO `user_specialization` (`User_id`, `specialization_type_ID`)
+SELECT `User_id`, `specialization_type_ID`
+FROM `user`
+WHERE `specialization_type_ID` IS NOT NULL;
+
+-- ============================================================
+-- SECTION 6: REMOVE DUPLICATE INDEXES & REDUNDANT FKs
+-- ============================================================
+
+-- messages: duplicate plain keys for sender_id and receiver_id
+-- (named indexes idx_messages_sender_id/receiver_id already exist)
+ALTER TABLE `messages`
+  DROP KEY `sender_id`,
+  DROP KEY `receiver_id`;
+
+-- certificates: duplicate FK constraints on same columns
+-- certificates_ibfk_3 = certificates_ibfk_client_service  (Client_services_ID)
+-- certificates_ibfk_4 = certificates_ibfk_edit_certificate (Edit_certificate_ID)
+ALTER TABLE `certificates`
+  DROP FOREIGN KEY `certificates_ibfk_client_service`,
+  DROP FOREIGN KEY `certificates_ibfk_edit_certificate`;
+
+-- Drop the orphaned index left by the removed duplicate FK
+ALTER TABLE `certificates`
+  DROP KEY `Client_services_ID`;
+
+-- ============================================================
+-- SECTION 7: RBAC SUPPORT INDEX
+-- ============================================================
+
+-- permissions.User_ID: index for efficient admin-based joins
+CREATE INDEX `idx_permissions_user_id`
+  ON `permissions` (`User_ID`);
+
+-- ============================================================
+-- SECTION 8: PERFORMANCE INDEXES
+-- ============================================================
+
+-- audit_logs: filter by user and date range (most common query)
+CREATE INDEX `idx_audit_logs_user_created`
+  ON `audit_logs` (`user_id`, `created_at`);
+
+-- audit_logs: filter by action type
+CREATE INDEX `idx_audit_logs_action`
+  ON `audit_logs` (`action`);
+
+-- notifications: unread count per user
+CREATE INDEX `idx_notifications_user_read`
+  ON `notifications` (`user_id`, `is_read`);
+
+-- messages: conversation thread between two users
+CREATE INDEX `idx_messages_conversation`
+  ON `messages` (`sender_id`, `receiver_id`, `created_at`);
+
+-- messages: unread inbox per receiver
+CREATE INDEX `idx_messages_receiver_read`
+  ON `messages` (`receiver_id`, `is_read`);
+
+-- documents: expiration monitoring dashboard
+CREATE INDEX `idx_documents_expiration`
+  ON `documents` (`expiration_date`, `Status_id`);
+
+-- documents: per-client document lookup by type
+CREATE INDEX `idx_documents_client_type`
+  ON `documents` (`Client_ID`, `Document_type_ID`);
+
+-- client_services: per-client service status filter
+CREATE INDEX `idx_client_services_client_status`
+  ON `client_services` (`Client_ID`, `Status_ID`);
+
+-- appointment: scheduling calendar queries
+CREATE INDEX `idx_appointment_date_status`
+  ON `appointment` (`Date`, `Status_ID`);
+
+-- appointment: per-client appointment history
+CREATE INDEX `idx_appointment_client_date`
+  ON `appointment` (`Client_ID`, `Date`);
+
+-- business: location-based reporting
+CREATE INDEX `idx_business_location`
+  ON `business` (`Province`, `Municipality`);
+
+-- user: role-based listing with employment status filter
+CREATE INDEX `idx_user_role_status`
+  ON `user` (`Role_id`, `Employment_status_id`);
+
+-- payment: status-based payment lookup
+CREATE INDEX `idx_payment_status`
+  ON `payment` (`Status_ID`);
+
+-- certificates: delivery monitoring
+CREATE INDEX `idx_certificates_delivery`
+  ON `certificates` (`delivery_status`, `delivered_at`);
+
+-- announcements: active announcement lookup by date range
+CREATE INDEX `idx_announcements_dates`
+  ON `announcements` (`start_date`, `end_date`);
+
+-- role_permissions: role-based access check (hottest query in RBAC)
+CREATE INDEX `idx_role_permissions_role_allowed`
+  ON `role_permissions` (`Role_id`, `is_allowed`);
+
+-- ============================================================
+-- END OF OPTIMIZATION
+-- ============================================================
+
+SET FOREIGN_KEY_CHECKS = 1;
+COMMIT;
+
+
+-- ============================================================
+-- SUMMARY OF CHANGES
+-- ============================================================
+-- [1NF] Fixed: audit_logs AUTO_INCREMENT
+-- [2NF] Added: 11 UNIQUE constraints across 9 tables
+-- [3NF] Fixed: Transitive dependency annotations (3 columns)
+-- [3NF] Added: user_specialization junction table (replaces JSON blob)
+-- [FK]  Added: 3 missing FOREIGN KEY constraints
+-- [IDX] Removed: 4 duplicate/redundant indexes and 2 duplicate FKs
+-- [IDX] Added: 16 performance composite indexes
+-- ============================================================

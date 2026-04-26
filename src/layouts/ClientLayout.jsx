@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Award, Building2, CalendarCheck, CalendarDays, FileText, KeyRound, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, UserRound } from "lucide-react";
+import { Award, Building2, CalendarCheck, CalendarDays, FileText, KeyRound, LayoutDashboard, ListChecks, LogOut, MessageCircleMore, ReceiptText, UserRound } from "lucide-react";
 import { appLogo } from "../assets/branding";
-import { Button } from "../components/UI/buttons";
 import { DashboardShell } from "../components/layout/dashboard_shell";
 import { LayoutHeaderActions } from "../components/layout/layout_header_actions";
 import { getProfileMenuExpiryLabel, getUserDisplayName } from "../components/layout/layout_utils";
@@ -58,6 +57,13 @@ export const clientNavItems = [
     to: "/client/appointment",
     icon: <CalendarCheck {...sidebarIconProps} />,
     sectionLabel: "Concerns & Services",
+  },
+  {
+    key: "payment",
+    label: "Payment",
+    to: "/client/payment",
+    icon: <ReceiptText {...sidebarIconProps} />,
+    sectionLabel: "Billing",
   },
   {
     key: "work_progress",

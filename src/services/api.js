@@ -229,6 +229,66 @@ export async function fetchAvailableServices(clientId, config = {}) {
   };
 }
 
+function normalizePaymentMethodOptions(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return rows
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const id = entry?.payment_type_ID ?? entry?.id ?? "";
+      const name = String(entry?.type_name ?? entry?.name ?? "").trim();
+      const description = String(entry?.description ?? "").trim();
+
+      if (id === "" || !name) {
+        return null;
+      }
+
+      return {
+        ...entry,
+        id,
+        name,
+        description,
+      };
+    })
+    .filter(Boolean)
+    .filter((method) => {
+      const key = String(method?.id ?? "").trim() || String(method?.name ?? "").trim().toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+export async function fetchPaymentMethods(config = {}) {
+  const response = await api.get("payment_methods.php", config);
+
+  return {
+    ...response,
+    data: {
+      ...response?.data,
+      payment_methods: normalizePaymentMethodOptions(response?.data?.payment_methods || response?.data),
+    },
+  };
+}
+
+export async function submitPaymentReceipt(formData, config = {}) {
+  return api.post("payment_create.php", formData, config);
+}
+
+export async function updatePaymentStatus(payload, config = {}) {
+  return api.post("payment_update_status.php", payload, config);
+}
+
 export async function createServiceType(payload, config = {}) {
   return api.post(
     "services_create.php",

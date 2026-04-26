@@ -1092,11 +1092,57 @@ function employeeSpecializationRequireSettingsTable(PDO $conn): void {
         $conn,
         'settings',
         ['Settings_ID', 'setting_key', 'setting_value'],
-        'user specialization settings'
+        'legacy user specialization settings'
     );
 }
 
-function employeeSpecializationReadAssignments(PDO $conn): array {
+function employeeSpecializationRequireAssignmentTable(PDO $conn): void {
+    monitoring_require_schema_columns(
+        $conn,
+        'user_specialization',
+        ['user_specialization_ID', 'User_id', 'specialization_type_ID'],
+        'user specialization assignments'
+    );
+}
+
+function employeeSpecializationNormalizeAssignmentIds(array $values): array {
+    $ids = [];
+    foreach ($values as $value) {
+        $id = employeeSpecializationNormalizeId($value);
+        if ($id !== null) {
+            $ids[] = $id;
+        }
+    }
+
+    $ids = array_values(array_unique($ids));
+    sort($ids);
+    return $ids;
+}
+
+function employeeSpecializationNormalizeAssignmentsMap(array $assignments): array {
+    $normalized = [];
+    foreach ($assignments as $userId => $specializationIds) {
+        $normalizedUserId = (int)$userId;
+        if ($normalizedUserId <= 0 || !is_array($specializationIds)) {
+            continue;
+        }
+
+        $ids = employeeSpecializationNormalizeAssignmentIds($specializationIds);
+        if (empty($ids)) {
+            continue;
+        }
+
+        $normalized[(string)$normalizedUserId] = $ids;
+    }
+
+    return $normalized;
+}
+
+function employeeSpecializationReadLegacyAssignments(PDO $conn): array {
+    if (!monitoring_table_exists($conn, 'settings')) {
+        return [];
+    }
+
     employeeSpecializationRequireSettingsTable($conn);
 
     $stmt = $conn->prepare(
@@ -1114,49 +1160,18 @@ function employeeSpecializationReadAssignments(PDO $conn): array {
 
     $decoded = json_decode((string)$rawValue, true);
     $users = is_array($decoded['users'] ?? null) ? $decoded['users'] : [];
-    $normalized = [];
-    foreach ($users as $userId => $specializationIds) {
-        $normalizedUserId = (int)$userId;
-        if ($normalizedUserId <= 0 || !is_array($specializationIds)) {
-            continue;
-        }
-
-        $ids = [];
-        foreach ($specializationIds as $specializationId) {
-            $id = employeeSpecializationNormalizeId($specializationId);
-            if ($id !== null) {
-                $ids[] = $id;
-            }
-        }
-        $ids = array_values(array_unique($ids));
-        sort($ids);
-        $normalized[(string)$normalizedUserId] = $ids;
-    }
-
-    return $normalized;
+    return employeeSpecializationNormalizeAssignmentsMap($users);
 }
 
-function employeeSpecializationWriteAssignments(PDO $conn, array $assignments): array {
+function employeeSpecializationWriteLegacyAssignments(PDO $conn, array $assignments): array {
+    if (!monitoring_table_exists($conn, 'settings')) {
+        return employeeSpecializationNormalizeAssignmentsMap($assignments);
+    }
+
     employeeSpecializationRequireSettingsTable($conn);
 
-    $normalized = ['users' => []];
-    foreach ($assignments as $userId => $specializationIds) {
-        $normalizedUserId = (int)$userId;
-        if ($normalizedUserId <= 0 || !is_array($specializationIds)) {
-            continue;
-        }
-
-        $ids = [];
-        foreach ($specializationIds as $specializationId) {
-            $id = employeeSpecializationNormalizeId($specializationId);
-            if ($id !== null) {
-                $ids[] = $id;
-            }
-        }
-        $ids = array_values(array_unique($ids));
-        sort($ids);
-        $normalized['users'][(string)$normalizedUserId] = $ids;
-    }
+    $normalizedUsers = employeeSpecializationNormalizeAssignmentsMap($assignments);
+    $normalized = ['users' => $normalizedUsers];
 
     $jsonValue = json_encode($normalized, JSON_UNESCAPED_SLASHES);
     $existingStmt = $conn->prepare(
@@ -1190,27 +1205,222 @@ function employeeSpecializationWriteAssignments(PDO $conn, array $assignments): 
         ]);
     }
 
-    return $normalized['users'];
+    return $normalizedUsers;
 }
 
-function employeeSpecializationSetUserAssignments(PDO $conn, int $userId, array $specializationIds): array {
+function employeeSpecializationReadTableAssignments(PDO $conn): array {
+    employeeSpecializationRequireAssignmentTable($conn);
+
+    $stmt = $conn->query(
+        'SELECT User_id, specialization_type_ID
+         FROM user_specialization
+         ORDER BY User_id ASC, specialization_type_ID ASC'
+    );
+    $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    $assignments = [];
+    foreach ($rows as $row) {
+        $userId = (int)($row['User_id'] ?? 0);
+        $specializationId = employeeSpecializationNormalizeId($row['specialization_type_ID'] ?? null);
+        if ($userId <= 0 || $specializationId === null) {
+            continue;
+        }
+
+        $key = (string)$userId;
+        if (!isset($assignments[$key])) {
+            $assignments[$key] = [];
+        }
+        $assignments[$key][] = $specializationId;
+    }
+
+    return employeeSpecializationNormalizeAssignmentsMap($assignments);
+}
+
+function employeeSpecializationReadPrimaryAssignments(PDO $conn): array {
+    monitoring_require_schema_columns(
+        $conn,
+        'user',
+        ['User_id', 'specialization_type_ID'],
+        'employee specialization'
+    );
+
+    $stmt = $conn->query(
+        'SELECT User_id, specialization_type_ID
+         FROM user
+         WHERE specialization_type_ID IS NOT NULL
+         ORDER BY User_id ASC'
+    );
+    $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    $assignments = [];
+    foreach ($rows as $row) {
+        $userId = (int)($row['User_id'] ?? 0);
+        $specializationId = employeeSpecializationNormalizeId($row['specialization_type_ID'] ?? null);
+        if ($userId <= 0 || $specializationId === null) {
+            continue;
+        }
+
+        $assignments[(string)$userId] = [$specializationId];
+    }
+
+    return $assignments;
+}
+
+function employeeSpecializationMergeAssignments(array ...$maps): array {
+    $merged = [];
+    foreach ($maps as $map) {
+        foreach ($map as $userId => $specializationIds) {
+            $normalizedUserId = (int)$userId;
+            if ($normalizedUserId <= 0 || !is_array($specializationIds)) {
+                continue;
+            }
+
+            $key = (string)$normalizedUserId;
+            if (!isset($merged[$key])) {
+                $merged[$key] = [];
+            }
+
+            $merged[$key] = array_merge($merged[$key], $specializationIds);
+        }
+    }
+
+    return employeeSpecializationNormalizeAssignmentsMap($merged);
+}
+
+function employeeSpecializationReadAssignments(PDO $conn): array {
+    $tableAssignments = employeeSpecializationReadTableAssignments($conn);
+    $legacyAssignments = employeeSpecializationReadLegacyAssignments($conn);
+    $primaryAssignments = employeeSpecializationReadPrimaryAssignments($conn);
+
+    return employeeSpecializationMergeAssignments(
+        $tableAssignments,
+        $legacyAssignments,
+        $primaryAssignments
+    );
+}
+
+function employeeSpecializationPersistUserAssignments(PDO $conn, int $userId, array $specializationIds): array {
     if ($userId <= 0) {
         return [];
     }
 
-    $assignments = employeeSpecializationReadAssignments($conn);
-    $ids = [];
-    foreach ($specializationIds as $specializationId) {
-        $id = employeeSpecializationNormalizeId($specializationId);
-        if ($id !== null) {
-            $ids[] = $id;
+    employeeSpecializationRequireAssignmentTable($conn);
+    monitoring_require_schema_columns(
+        $conn,
+        'user',
+        ['User_id', 'specialization_type_ID'],
+        'employee specialization'
+    );
+
+    $normalizedIds = employeeSpecializationNormalizeAssignmentIds($specializationIds);
+
+    $deleteStmt = $conn->prepare(
+        'DELETE FROM user_specialization
+         WHERE User_id = :user_id'
+    );
+    $deleteStmt->execute([':user_id' => $userId]);
+
+    if (!empty($normalizedIds)) {
+        $insertStmt = $conn->prepare(
+            'INSERT INTO user_specialization (User_id, specialization_type_ID)
+             VALUES (:user_id, :specialization_type_id)'
+        );
+        foreach ($normalizedIds as $specializationId) {
+            $insertStmt->execute([
+                ':user_id' => $userId,
+                ':specialization_type_id' => $specializationId,
+            ]);
         }
     }
-    $ids = array_values(array_unique($ids));
-    sort($ids);
 
-    $assignments[(string)$userId] = $ids;
-    return employeeSpecializationWriteAssignments($conn, $assignments);
+    $primarySpecializationId = !empty($normalizedIds) ? $normalizedIds[0] : null;
+    $syncUserStmt = $conn->prepare(
+        'UPDATE user
+         SET specialization_type_ID = :specialization_type_id
+         WHERE User_id = :user_id'
+    );
+    $syncUserStmt->execute([
+        ':specialization_type_id' => $primarySpecializationId,
+        ':user_id' => $userId,
+    ]);
+
+    return $normalizedIds;
+}
+
+function employeeSpecializationWriteAssignments(PDO $conn, array $assignments): array {
+    $normalizedAssignments = employeeSpecializationNormalizeAssignmentsMap($assignments);
+    $currentAssignments = employeeSpecializationReadAssignments($conn);
+    $userIds = array_values(array_unique(array_merge(
+        array_map('intval', array_keys($currentAssignments)),
+        array_map('intval', array_keys($normalizedAssignments))
+    )));
+
+    $startedTransaction = false;
+    if (!$conn->inTransaction()) {
+        $conn->beginTransaction();
+        $startedTransaction = true;
+    }
+
+    try {
+        foreach ($userIds as $userId) {
+            if ($userId <= 0) {
+                continue;
+            }
+
+            employeeSpecializationPersistUserAssignments(
+                $conn,
+                $userId,
+                $normalizedAssignments[(string)$userId] ?? []
+            );
+        }
+
+        employeeSpecializationWriteLegacyAssignments($conn, $normalizedAssignments);
+
+        if ($startedTransaction) {
+            $conn->commit();
+        }
+    } catch (Throwable $e) {
+        if ($startedTransaction && $conn->inTransaction()) {
+            $conn->rollBack();
+        }
+        throw $e;
+    }
+
+    return $normalizedAssignments;
+}
+
+function employeeSpecializationSetUserAssignments(PDO $conn, int $userId, array $specializationIds): array {
+    if ($userId <= 0) {
+        return employeeSpecializationReadAssignments($conn);
+    }
+
+    $startedTransaction = false;
+    if (!$conn->inTransaction()) {
+        $conn->beginTransaction();
+        $startedTransaction = true;
+    }
+
+    try {
+        $normalizedIds = employeeSpecializationPersistUserAssignments($conn, $userId, $specializationIds);
+        $assignments = employeeSpecializationReadAssignments($conn);
+        $key = (string)$userId;
+        if (empty($normalizedIds)) {
+            unset($assignments[$key]);
+        } else {
+            $assignments[$key] = $normalizedIds;
+        }
+
+        $assignments = employeeSpecializationWriteLegacyAssignments($conn, $assignments);
+
+        if ($startedTransaction) {
+            $conn->commit();
+        }
+
+        return $assignments;
+    } catch (Throwable $e) {
+        if ($startedTransaction && $conn->inTransaction()) {
+            $conn->rollBack();
+        }
+        throw $e;
+    }
 }
 
 function employeeSpecializationGetUserAssignments(PDO $conn, int $userId): array {
@@ -1232,7 +1442,13 @@ function ensureEmployeeSpecializationSchema(PDO $conn): void {
     monitoring_require_schema_columns(
         $conn,
         'user',
-        ['specialization_type_ID'],
+        ['User_id', 'specialization_type_ID'],
+        'employee specialization'
+    );
+    monitoring_require_schema_columns(
+        $conn,
+        'user_specialization',
+        ['user_specialization_ID', 'User_id', 'specialization_type_ID'],
         'employee specialization'
     );
 }

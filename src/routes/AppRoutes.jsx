@@ -21,6 +21,9 @@ import BusinessPage from "../Pages/client_page/business";
 import WorkProgress from "../Pages/client_page/work_progress";
 import ClientAppointment from "../Pages/client_page/client_appointment";
 import ClientDocumentsPage from "../Pages/client_page/document";
+import PaymentPage from "../Pages/client_page/payment";
+import PaymentHistoryPage from "../Pages/client_page/payment_history";
+import AdminClientPaymentPage from "../Pages/admin_page/client_payment";
 import ClientCertificatePage from "../Pages/client_page/client_certificate";
 import ClientManagementSecretary from "../Pages/secretary_page/client_management_secretary";
 import SecretaryTaskManagement from "../Pages/secretary_page/task_management_secretary";
@@ -135,6 +138,7 @@ const privateRouteGroups = [
       { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
       { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
       { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
+      { path: "payment", element: <AdminClientPaymentPage /> },
       { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
       { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
       { path: "new-services", element: withModuleAccess("tasks", <NewServices />) },
@@ -203,6 +207,8 @@ const privateRouteGroups = [
     children: [
       { path: "businesses", element: <BusinessPage /> },
       { path: "appointment", element: <ClientAppointment /> },
+      { path: "payment", element: <PaymentPage /> },
+      { path: "payment/history", element: <PaymentHistoryPage /> },
       { path: "work-progress", element: <WorkProgress /> },
       { path: "work-progress/history", element: <ClientHistory /> },
       { path: "certificate", element: <ClientCertificatePage /> },

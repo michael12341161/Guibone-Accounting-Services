@@ -165,7 +165,7 @@ try {
     }
 
     $ensuredType = null;
-    if (tableExists($conn, 'Document_type')) {
+    if (tableExists($conn, 'document_type')) {
         $ensuredType = monitoring_document_find_type($conn, $documentTypeId);
         if ($ensuredType === null) {
             respond(404, ['success' => false, 'message' => 'Document type not found']);

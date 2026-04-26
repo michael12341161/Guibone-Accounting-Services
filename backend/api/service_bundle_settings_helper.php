@@ -19,7 +19,7 @@ if (!function_exists('monitoring_service_bundle_require_table')) {
     {
         monitoring_require_schema_columns(
             $conn,
-            'Bundle_Tasks',
+            'bundle_tasks',
             ['Bundle_Tasks_ID', 'Services_type_Id', 'Step_Number', 'Assignee', 'Step_Text'],
             'service bundle tasks'
         );
@@ -172,7 +172,7 @@ if (!function_exists('monitoring_get_service_bundle_settings')) {
 
         $stmt = $conn->query(
             'SELECT Bundle_Tasks_ID, Services_type_Id, Step_Number, Assignee, Step_Text
-             FROM Bundle_Tasks
+             FROM bundle_tasks
              ORDER BY Services_type_Id ASC, Step_Number ASC, Bundle_Tasks_ID ASC'
         );
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -219,12 +219,12 @@ if (!function_exists('monitoring_set_single_service_bundle_config')) {
         $disabledMap[$serviceKey] = !empty($config['disabled']);
         monitoring_upsert_service_bundle_disabled_map($conn, $disabledMap);
 
-        $deleteStmt = $conn->prepare('DELETE FROM Bundle_Tasks WHERE Services_type_Id = :service_id');
+        $deleteStmt = $conn->prepare('DELETE FROM bundle_tasks WHERE Services_type_Id = :service_id');
         $deleteStmt->execute([':service_id' => $serviceId]);
 
         if (!empty($bundleSteps)) {
             $insertStmt = $conn->prepare(
-                'INSERT INTO Bundle_Tasks (Services_type_Id, Step_Number, Assignee, Step_Text)
+                'INSERT INTO bundle_tasks (Services_type_Id, Step_Number, Assignee, Step_Text)
                  VALUES (:service_id, :step_number, :assignee, :step_text)'
             );
 

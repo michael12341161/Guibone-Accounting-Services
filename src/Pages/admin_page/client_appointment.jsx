@@ -235,6 +235,13 @@ function normalizeAppointmentDecisionStatus(status) {
   return value;
 }
 
+function getAppointmentDecisionStatusSortRank(status) {
+  const value = normalizeAppointmentDecisionStatus(status);
+  if (value === "pending") return 0;
+  if (value === "approved") return 2;
+  return 1;
+}
+
 function statusPillClass(status) {
   const value = normalizeAppointmentDecisionStatus(status);
   if (value === "approved") {
@@ -245,6 +252,28 @@ function statusPillClass(status) {
   }
   if (value === "completed") {
     return "bg-indigo-50 text-indigo-700 border-indigo-200";
+  }
+  return "bg-amber-50 text-amber-700 border-amber-200";
+}
+
+function normalizePaymentStatusLabel(status, hasPayment = false) {
+  const raw = String(status || "").trim();
+  if (!raw) {
+    return hasPayment ? "Pending" : "Pending";
+  }
+  return raw;
+}
+
+function paymentStatusPillClass(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "paid") {
+    return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  }
+  if (value === "processing") {
+    return "bg-sky-50 text-sky-700 border-sky-200";
+  }
+  if (value === "reject" || value === "rejected" || value === "declined") {
+    return "bg-rose-50 text-rose-700 border-rose-200";
   }
   return "bg-amber-50 text-amber-700 border-amber-200";
 }
@@ -447,57 +476,76 @@ export default function AdminAppointmentManagement() {
   };
 
   const normalized = useMemo(() => {
-    return (rows || []).map((row) => {
-      const id = row.id || row.appointment_id || row.Appointment_ID;
-      const clientId = row.Client_ID ?? row.client_id ?? row.clientId;
-      const client = row.client_name || row.client || row.Client_name || row.Client_Name || "(Unknown client)";
-      const date = row.date || row.appointment_date || row.Date || "";
+    return (rows || [])
+      .map((row) => {
+        const id = row.id || row.appointment_id || row.Appointment_ID;
+        const clientId = row.Client_ID ?? row.client_id ?? row.clientId;
+        const client = row.client_name || row.client || row.Client_name || row.Client_Name || "(Unknown client)";
+        const date = row.date || row.appointment_date || row.Date || "";
 
-      const desc = String(row.Description ?? row.description ?? "");
+        const desc = String(row.Description ?? row.description ?? "");
 
-      const serviceMatch = desc.match(/^\s*\[Service\]\s*([^\r\n]*)\s*$/im);
-      const service =
-        row.service ||
-        row.service_name ||
-        row.Services ||
-        row.Name ||
-        (serviceMatch ? String(serviceMatch[1]).trim() : "(N/A)");
+        const serviceMatch = desc.match(/^\s*\[Service\]\s*([^\r\n]*)\s*$/im);
+        const service =
+          row.service ||
+          row.service_name ||
+          row.Services ||
+          row.Name ||
+          (serviceMatch ? String(serviceMatch[1]).trim() : "(N/A)");
 
-      const timeMatch = desc.match(/^\s*\[Time\]\s*([0-9]{1,2}:[0-9]{2})\s*$/im);
-      const time = row.time || row.appointment_time || row.Time || (timeMatch ? timeMatch[1] : "");
+        const timeMatch = desc.match(/^\s*\[Time\]\s*([0-9]{1,2}:[0-9]{2})\s*$/im);
+        const time = row.time || row.appointment_time || row.Time || (timeMatch ? timeMatch[1] : "");
 
-      const notesMatch = desc.match(/^\s*\[Notes\]\s*([^\r\n]*)\s*$/im);
-      const notes = row.notes || row.purpose || row.Notes || (notesMatch ? String(notesMatch[1]).trim() : "");
+        const notesMatch = desc.match(/^\s*\[Notes\]\s*([^\r\n]*)\s*$/im);
+        const notes = row.notes || row.purpose || row.Notes || (notesMatch ? String(notesMatch[1]).trim() : "");
 
-      const meetingMatch = desc.match(/^\s*\[Appointment_Type\]\s*(Online|Onsite)\s*$/im);
-      const meetingType = row.meeting_type || row.meetingType || row.Appointment_Type || (meetingMatch ? meetingMatch[1] : "");
-      const attachments = collectAttachmentEntries(row, desc);
-      const processingDocuments = extractProcessingDocuments(row, desc);
-      const latestAttachment = attachments.length
-        ? attachments[attachments.length - 1]
-        : { path: "", filename: "" };
+        const meetingMatch = desc.match(/^\s*\[Appointment_Type\]\s*(Online|Onsite)\s*$/im);
+        const meetingType = row.meeting_type || row.meetingType || row.Appointment_Type || (meetingMatch ? meetingMatch[1] : "");
+        const attachments = collectAttachmentEntries(row, desc);
+        const processingDocuments = extractProcessingDocuments(row, desc);
+        const latestAttachment = attachments.length
+          ? attachments[attachments.length - 1]
+          : { path: "", filename: "" };
 
-      const status = row.status || row.Status_name || row.Status || "Pending";
-      return {
-        id,
-        clientId,
-        client,
-        service,
-        meetingType,
-        date,
-        time,
-        notes,
-        status,
-        actionBy:
-          row.action_by_name ||
-          row.action_by_username ||
-          (Number(row.action_by ?? row.Action_by ?? 0) > 0 ? `User #${row.action_by ?? row.Action_by}` : ""),
-        attachmentPath: String(latestAttachment.path || "").trim(),
-        attachmentFilename: String(latestAttachment.filename || "").trim(),
-        attachments,
-        processingDocuments,
-      };
-    });
+        const status = row.status || row.Status_name || row.Status || "Pending";
+        const paymentExists = Boolean(
+          row.payment_exists ?? row.payment?.exists ?? row.payment_status_name ?? row.payment_status
+        );
+        const paymentStatus = normalizePaymentStatusLabel(
+          row.payment_status_name || row.payment_status || row.payment?.status_name,
+          paymentExists
+        );
+        return {
+          id,
+          clientId,
+          client,
+          service,
+          meetingType,
+          date,
+          time,
+          notes,
+          status,
+          paymentStatus,
+          paymentExists,
+          actionBy:
+            row.action_by_name ||
+            row.action_by_username ||
+            (Number(row.action_by ?? row.Action_by ?? 0) > 0 ? `User #${row.action_by ?? row.Action_by}` : ""),
+          attachmentPath: String(latestAttachment.path || "").trim(),
+          attachmentFilename: String(latestAttachment.filename || "").trim(),
+          attachments,
+          processingDocuments,
+        };
+      })
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => {
+        const rankDiff =
+          getAppointmentDecisionStatusSortRank(left.row.status) -
+          getAppointmentDecisionStatusSortRank(right.row.status);
+        if (rankDiff !== 0) return rankDiff;
+        return left.index - right.index;
+      })
+      .map(({ row }) => row);
   }, [rows]);
 
   const filtered = useMemo(() => {
@@ -544,6 +592,8 @@ export default function AdminAppointmentManagement() {
         notes: row.notes || "-",
         status: normalizeStatusLabel(row.status),
         statusRaw: row.status,
+        paymentStatus: row.paymentStatus,
+        paymentExists: row.paymentExists,
         actionBy: row.actionBy || "",
         attachmentPath: row.attachmentPath || "",
         attachmentFilename: row.attachmentFilename || "",
@@ -612,7 +662,7 @@ export default function AdminAppointmentManagement() {
     {
       key: "status",
       header: "Status",
-      width: "10%",
+      width: "9%",
       render: (value) => (
         <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${statusPillClass(value)}`}>
           {value}
@@ -620,16 +670,31 @@ export default function AdminAppointmentManagement() {
       ),
     },
     {
+      key: "paymentStatus",
+      header: "Payment Status",
+      width: "11%",
+      render: (value, row) => (
+        <span
+          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${paymentStatusPillClass(
+            value
+          )}`}
+          title={row.paymentExists ? "Client payment submission status" : "No submitted receipt yet"}
+        >
+          {value || "Pending"}
+        </span>
+      ),
+    },
+    {
       key: "actionBy",
       header: "Action By",
-      width: "11%",
+      width: "10%",
       render: (_, row) => <span className="break-words text-xs text-slate-700">{formatActionBy(row)}</span>,
     },
     {
       key: "actions",
       header: "Actions",
       align: "right",
-      width: "14%",
+      width: "15%",
       render: (_, row) => {
         const statusLower = normalizeAppointmentDecisionStatus(row.statusRaw || row.status);
         const disabled = updatingId === row.id;

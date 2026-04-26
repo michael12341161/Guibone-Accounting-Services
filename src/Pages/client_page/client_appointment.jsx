@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "../../components/UI/buttons";
 import { Modal } from "../../components/UI/modal";
 import {
   api,
@@ -44,6 +46,7 @@ const EXCEL_EXT = new Set(["xls", "xlsx", "csv"]);
 const PDF_EXT = new Set(["pdf"]);
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
 const CONSULTATION_SERVICE_LABEL = "Consultation";
+const APPOINTMENTS_PAGE_SIZE = 10;
 const PROCESSING_DOCUMENT_OPTIONS = [
   { value: "business_permit", label: "Business Permit" },
   { value: "dti", label: "DTI" },
@@ -111,6 +114,19 @@ function normalizeAppointmentStatus(value) {
   return status;
 }
 
+function getAppointmentRowStatus(row) {
+  return normalizeAppointmentStatus(
+    row?.status || row?.Status || row?.Status_name || row?.status_name || "Pending"
+  );
+}
+
+function getAppointmentRowSortRank(row) {
+  const status = getAppointmentRowStatus(row).toLowerCase();
+  if (status === "pending") return 0;
+  if (status === "approved") return 2;
+  return 1;
+}
+
 function canRescheduleConsultation(status) {
   const value = normalizeAppointmentStatus(status).toLowerCase();
   return value !== "declined" && value !== "completed";
@@ -120,6 +136,31 @@ function getActionAvailabilityLabel(status) {
   const value = normalizeAppointmentStatus(status).toLowerCase();
   if (value === "completed") return "Completed";
   return "Unavailable";
+}
+
+function normalizePaymentStatus(value) {
+  const status = String(value || "").trim();
+  return status || "Pending";
+}
+
+function getPaymentStatusBadgeClass(status, hasPaymentRecord = false) {
+  const value = normalizePaymentStatus(status).toLowerCase();
+
+  if (value === "paid") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "processing") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  if (value === "reject" || value === "rejected" || value === "declined") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+
+  return hasPaymentRecord
+    ? "border-amber-200 bg-amber-50 text-amber-700"
+    : "border-slate-200 bg-slate-50 text-slate-600";
 }
 
 function getAvailableConsultationSlots(
@@ -381,6 +422,7 @@ function toOpenFileUrl(path, filename) {
 }
 
 export default function ClientAppointment() {
+  const navigate = useNavigate();
   const isMountedRef = useRef(true);
   const [services, setServices] = useState([]);
   const [portalConfig, setPortalConfig] = useState(DEFAULT_SYSTEM_CONFIGURATION);
@@ -397,6 +439,7 @@ export default function ClientAppointment() {
 
   const [appointments, setAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(true);
+  const [appointmentPage, setAppointmentPage] = useState(1);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
@@ -449,6 +492,14 @@ export default function ClientAppointment() {
         : getEstimatedServiceDuration(form.service),
     [form.service, isConsultationSelected]
   );
+  const appointmentTotalPages = Math.max(1, Math.ceil(appointments.length / APPOINTMENTS_PAGE_SIZE));
+  const appointmentStartIndex = (appointmentPage - 1) * APPOINTMENTS_PAGE_SIZE;
+  const pagedAppointments = useMemo(
+    () => appointments.slice(appointmentStartIndex, appointmentStartIndex + APPOINTMENTS_PAGE_SIZE),
+    [appointmentStartIndex, appointments]
+  );
+  const canGoToPreviousAppointmentPage = appointmentPage > 1;
+  const canGoToNextAppointmentPage = appointmentPage < appointmentTotalPages;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -480,6 +531,10 @@ export default function ClientAppointment() {
       controller.abort();
     };
   }, []);
+
+  useEffect(() => {
+    setAppointmentPage((page) => Math.min(Math.max(1, page), appointmentTotalPages));
+  }, [appointmentTotalPages]);
 
   const applyServiceOptions = (names, nextAccess = DEFAULT_SERVICE_ACCESS) => {
     if (!isMountedRef.current) return;
@@ -1057,6 +1112,12 @@ export default function ClientAppointment() {
           right.Time ||
           readMetaLine(right.description || right.Description, "Time");
 
+        const leftRank = getAppointmentRowSortRank(left);
+        const rightRank = getAppointmentRowSortRank(right);
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
+
         return (
           toDateTimeSortValue(right.date || right.Date, rightTime) -
           toDateTimeSortValue(left.date || left.Date, leftTime)
@@ -1275,6 +1336,9 @@ export default function ClientAppointment() {
           await refreshAppointments({ silent: true });
         }
         setIsCreateOpen(false);
+        if (!isConsultationSelected && newAppointmentId) {
+          navigate(`/client/payment?appointment_id=${encodeURIComponent(String(newAppointmentId))}`);
+        }
       } else {
         showErrorToast({
           title: isConsultationSelected ? "Consultation request failed" : "Appointment request failed",
@@ -1875,38 +1939,42 @@ export default function ClientAppointment() {
             No appointments or consultations found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm table-fixed">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Services
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Type
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Date
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Time
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Status
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Notes
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Attachments
-                  </th>
-                  <th className="text-left font-semibold px-4 py-3 align-middle">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {appointments.map((a, idx) => {
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm table-fixed">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Services
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Type
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Date
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Time
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Status
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Payment Status
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Notes
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Attachments
+                    </th>
+                    <th className="text-left font-semibold px-4 py-3 align-middle">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {pagedAppointments.map((a, idx) => {
                   const recordKind = a.record_kind || "appointment";
                   const id =
                     recordKind === "consultation"
@@ -1984,6 +2052,21 @@ export default function ClientAppointment() {
                       : isConsultationRow && !consultationsEnabled
                       ? "Consultations paused"
                       : getActionAvailabilityLabel(status);
+                  const paymentStatus = isConsultationRow
+                    ? "Not applicable"
+                    : normalizePaymentStatus(
+                        a.payment_status_name || a.payment_status || a.payment?.status_name
+                      );
+                  const hasPaymentRecord = Boolean(
+                    a.payment_exists ?? a.payment?.exists ?? a.payment_status_name
+                  );
+                  const paymentMethodName =
+                    a.payment_method_name || a.payment?.payment_method_name || "";
+                  const paymentActionLabel = String(paymentStatus).toLowerCase() === "paid"
+                    ? "View payment"
+                    : hasPaymentRecord
+                      ? "Update payment"
+                      : "Pay now";
                   const meetingType =
                     a.meeting_type ||
                     a.meetingType ||
@@ -2095,6 +2178,27 @@ export default function ClientAppointment() {
                           {status}
                         </span>
                       </td>
+                      <td className="px-4 py-3 align-middle">
+                        {isConsultationRow ? (
+                          <span className="text-xs text-slate-400">Not applicable</span>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-xs font-medium ${getPaymentStatusBadgeClass(
+                                paymentStatus,
+                                hasPaymentRecord
+                              )}`}
+                            >
+                              {paymentStatus}
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {paymentMethodName
+                                ? `${paymentMethodName} receipt uploaded`
+                                : "No receipt uploaded yet"}
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-700 max-w-[420px] align-middle">
                         <div className="line-clamp-2">{notes || "-"}</div>
                       </td>
@@ -2177,17 +2281,75 @@ export default function ClientAppointment() {
                             {actionAvailabilityLabel}
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-400">
-                            {actionAvailabilityLabel}
-                          </span>
+                          <div className="flex flex-col items-start gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(
+                                  `/client/payment?appointment_id=${encodeURIComponent(String(appointmentId))}`
+                                )
+                              }
+                              className="inline-flex items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
+                            >
+                              {paymentActionLabel}
+                            </button>
+                            <span className="text-xs text-slate-400">
+                              {actionAvailabilityLabel}
+                            </span>
+                          </div>
                         )}
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col items-center justify-between gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row">
+              <div className="text-xs text-slate-600">
+                Showing <span className="font-medium">{appointments.length === 0 ? 0 : appointmentStartIndex + 1}</span>-
+                <span className="font-medium">
+                  {Math.min(appointmentStartIndex + APPOINTMENTS_PAGE_SIZE, appointments.length)}
+                </span> of <span className="font-medium">{appointments.length}</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    if (canGoToPreviousAppointmentPage) {
+                      setAppointmentPage((page) => page - 1);
+                    }
+                  }}
+                  disabled={!canGoToPreviousAppointmentPage}
+                >
+                  Previous
+                </Button>
+
+                <div className="text-xs text-slate-600">
+                  Page <span className="font-medium">{appointmentPage}</span> of{" "}
+                  <span className="font-medium">{appointmentTotalPages}</span>
+                </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    if (canGoToNextAppointmentPage) {
+                      setAppointmentPage((page) => page + 1);
+                    }
+                  }}
+                  disabled={!canGoToNextAppointmentPage}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

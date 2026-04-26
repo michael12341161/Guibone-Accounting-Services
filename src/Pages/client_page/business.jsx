@@ -206,12 +206,12 @@ export default function BusinessPage() {
     <div className="space-y-4">
       <Card className="overflow-hidden border-slate-200/80 bg-white/95 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:border-slate-700/70 dark:bg-slate-900/95 dark:shadow-[0_28px_70px_-50px_rgba(0,0,0,0.85)]">
         <div className="relative overflow-hidden px-5 py-5 sm:px-7 sm:py-6">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.14),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.14),_transparent_36%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.24),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_35%),linear-gradient(135deg,rgba(2,6,23,0.96),rgba(15,23,42,0.94))]" />
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300/60 to-transparent dark:via-emerald-500/30" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.12),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(226,232,240,0.75),_transparent_36%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(71,85,105,0.16),_transparent_35%),linear-gradient(135deg,rgba(2,6,23,0.96),rgba(15,23,42,0.94))]" />
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/70 to-transparent dark:via-slate-500/30" />
 
           <div className="relative z-10 space-y-5">
             <div className="space-y-2">
-              <div className="inline-flex items-center rounded-full border border-emerald-200/70 bg-white/75 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 backdrop-blur-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <div className="inline-flex items-center rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 backdrop-blur-sm dark:border-slate-600/60 dark:bg-slate-800/70 dark:text-slate-200">
                 Client Business Profile
               </div>
               <div className="space-y-1">
@@ -222,15 +222,15 @@ export default function BusinessPage() {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-emerald-100/80 bg-white/80 p-5 shadow-[0_18px_40px_-28px_rgba(16,185,129,0.35)] backdrop-blur-md dark:border-emerald-500/15 dark:bg-slate-950/70 dark:shadow-[0_22px_44px_-32px_rgba(0,0,0,0.8)]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.18)] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/70 dark:shadow-[0_22px_44px_-32px_rgba(0,0,0,0.8)]">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-start gap-4">
-                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-slate-100 text-slate-700 shadow-sm dark:bg-slate-800 dark:text-slate-200 dark:shadow-none">
                     <Building2 className="h-7 w-7" strokeWidth={1.75} />
                   </div>
                   <div className="min-w-0 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700 dark:text-emerald-300">
+                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
                         Business Status
                       </div>
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${businessStatusBadgeClass}`}>

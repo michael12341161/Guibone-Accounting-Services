@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MessageCircleMore,
+  ReceiptText,
 } from "lucide-react";
 
 export const clientBreadcrumbConfig = {
@@ -19,6 +20,18 @@ export const clientBreadcrumbConfig = {
     "/client/appointment": { label: "Appointment", icon: CalendarCheck },
     "/client/businesses": { label: "Business", icon: Building2 },
     "/client/documents": { label: "Documents", icon: FileText },
+    "/client/payment": {
+      label: "Payment",
+      icon: ReceiptText,
+      trailingItems: [
+        {
+          label: "Payment History",
+          path: "/client/payment/history",
+          icon: Clock3,
+        },
+      ],
+    },
+    "/client/payment/history": { label: "Payment History", icon: Clock3 },
     "/client/certificate": { label: "My Certificate", icon: Award },
     "/client/calendar": { label: "Calendar", icon: CalendarDays },
     "/client/messaging": { label: "Messaging", icon: MessageCircleMore },
