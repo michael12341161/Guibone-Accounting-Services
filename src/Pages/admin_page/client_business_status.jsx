@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Building2, CheckCircle2, Clock3, FileText, Search } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader } from "../../components/UI/card";
 import { DataTable } from "../../components/UI/table";
+import { getHomePathForRole } from "../../context/AuthContext";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
@@ -43,7 +44,6 @@ export default function ClientBusinessStatusPage() {
   const { user } = useAuth();
   const { permissions } = useModulePermissions();
   const navigate = useNavigate();
-  const location = useLocation();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,16 +51,7 @@ export default function ClientBusinessStatusPage() {
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const documentsBasePath = useMemo(() => {
-    const workspaceKey = String(location.pathname || "").split("/").filter(Boolean)[0];
-    if (workspaceKey === "secretary") {
-      return "/secretary";
-    }
-    if (workspaceKey === "workspace") {
-      return "/workspace";
-    }
-    return "/admin";
-  }, [location.pathname]);
+  const documentsBasePath = useMemo(() => getHomePathForRole(user), [user]);
   const canOpenDocuments = hasModuleAccess(user, "documents", permissions);
   const canUploadDocuments = hasFeatureActionAccess(user, "documents", "upload", permissions);
   const documentButtonLabel = canUploadDocuments ? "Manage Permit" : "View Documents";

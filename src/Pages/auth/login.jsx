@@ -94,9 +94,9 @@ export default function LoginPage() {
     }
 
     if (isAuthenticated) {
-      navigate(getHomePathForRole(role), { replace: true });
+      navigate(getHomePathForRole(user || role), { replace: true });
     }
-  }, [isAuthReady, isAuthenticated, navigate, role]);
+  }, [isAuthReady, isAuthenticated, navigate, role, user]);
 
   useEffect(() => {
     return () => {
@@ -231,7 +231,7 @@ export default function LoginPage() {
         });
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
         login(nextUser);
-        navigate(getHomePathForRole(nextUser?.role_id), { replace: true });
+        navigate(getHomePathForRole(nextUser), { replace: true });
       } else {
         const responseData = res.data || {};
         setLoginError(responseData?.message || "Incorrect email or password");

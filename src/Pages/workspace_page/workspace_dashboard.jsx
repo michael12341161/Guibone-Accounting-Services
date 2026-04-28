@@ -2,18 +2,19 @@ import React, { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader } from "../../components/UI/card";
-import { resolveNavKey } from "../../components/layout/layout_utils";
+import { normalizePath, resolveNavKey } from "../../components/layout/layout_utils";
 import DashboardHero from "../../components/layout/dashboard_hero";
+import { getHomePathForRole } from "../../context/AuthContext";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
-import WorkspaceLayout, { workspaceNavItems } from "../../layouts/WorkspaceLayout";
+import WorkspaceLayout, { buildWorkspaceNavItems } from "../../layouts/WorkspaceLayout";
 import { filterNavItemsByAccess } from "../../utils/module_permissions";
 
-function buildQuickLinks(navItems) {
+function buildQuickLinks(navItems, homePath) {
   return (navItems || [])
     .filter((item) => item?.key && item.key !== "dashboard")
     .map((item) => {
       const children = Array.isArray(item.children) ? item.children.filter((child) => child?.to) : [];
-      const primaryRoute = item.to || children[0]?.to || "/workspace";
+      const primaryRoute = item.to || children[0]?.to || homePath;
       const toolLabels = children.map((child) => child.label).filter(Boolean);
       const description =
         toolLabels.length > 0
@@ -34,15 +35,18 @@ function buildQuickLinks(navItems) {
 export default function WorkspaceDashboard({ user, onLogout }) {
   const { permissions } = useModulePermissions();
   const location = useLocation();
+  const homePath = useMemo(() => getHomePathForRole(user), [user]);
+  const workspaceNavItems = useMemo(() => buildWorkspaceNavItems(homePath), [homePath]);
   const currentKey = useMemo(
-    () => resolveNavKey(location.pathname, workspaceNavItems, "/workspace"),
-    [location.pathname]
+    () => resolveNavKey(location.pathname, workspaceNavItems, homePath),
+    [homePath, location.pathname, workspaceNavItems]
   );
   const visibleNavItems = useMemo(
     () => filterNavItemsByAccess(user, workspaceNavItems, permissions),
-    [permissions, user]
+    [permissions, user, workspaceNavItems]
   );
-  const quickLinks = useMemo(() => buildQuickLinks(visibleNavItems), [visibleNavItems]);
+  const quickLinks = useMemo(() => buildQuickLinks(visibleNavItems, homePath), [homePath, visibleNavItems]);
+  const isHomePage = normalizePath(location.pathname) === normalizePath(homePath);
 
   return (
     <WorkspaceLayout user={user} onLogout={onLogout}>
@@ -50,7 +54,7 @@ export default function WorkspaceDashboard({ user, onLogout }) {
 
       <Outlet />
 
-      {(location.pathname === "/workspace" || location.pathname === "/workspace/") && (
+      {isHomePage && (
         <>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <Card compact>

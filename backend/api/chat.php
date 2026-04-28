@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/module_permission_store.php';
 
 monitoring_bootstrap_api(['GET', 'POST', 'OPTIONS']);
 
@@ -19,11 +20,19 @@ function quoteIdentifier(string $name): string
 
 function columnExists(PDO $conn, string $tableName, string $columnName): bool
 {
+    static $cache = [];
+    $cacheKey = strtolower($tableName . '.' . $columnName);
+    if (array_key_exists($cacheKey, $cache)) {
+        return $cache[$cacheKey];
+    }
+
     try {
         $stmt = $conn->prepare('SHOW COLUMNS FROM ' . quoteIdentifier($tableName) . ' LIKE :column_name');
         $stmt->execute([':column_name' => $columnName]);
-        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+        $cache[$cacheKey] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+        return $cache[$cacheKey];
     } catch (Throwable $__) {
+        $cache[$cacheKey] = false;
         return false;
     }
 }
@@ -43,6 +52,28 @@ function indexExists(PDO $conn, string $tableName, string $indexName): bool
         ':index_name' => $indexName,
     ]);
     return $stmt->fetchColumn() !== false;
+}
+
+function ensureIndex(PDO $conn, string $tableName, string $indexName, string $columnListSql): void
+{
+    if (indexExists($conn, $tableName, $indexName)) {
+        return;
+    }
+
+    try {
+        $conn->exec(
+            'CREATE INDEX '
+            . quoteIdentifier($indexName)
+            . ' ON '
+            . quoteIdentifier($tableName)
+            . ' '
+            . $columnListSql
+        );
+    } catch (Throwable $error) {
+        if (!indexExists($conn, $tableName, $indexName)) {
+            throw $error;
+        }
+    }
 }
 
 function constraintExists(PDO $conn, string $tableName, string $constraintName): bool
@@ -172,6 +203,32 @@ function ensureMessagesSchema(PDO $conn): void
         ['Message_ID', 'sender_id', 'receiver_id', 'message_text', 'is_read', 'created_at'],
         'chat'
     );
+
+    ensureIndex($conn, 'messages', 'idx_messages_receiver_read', '(`receiver_id`, `is_read`)');
+    ensureIndex($conn, 'messages', 'idx_messages_receiver_sender_read', '(`receiver_id`, `sender_id`, `is_read`)');
+    ensureIndex($conn, 'messages', 'idx_messages_sender_receiver_message', '(`sender_id`, `receiver_id`, `Message_ID`)');
+    ensureIndex($conn, 'messages', 'idx_messages_receiver_sender_message', '(`receiver_id`, `sender_id`, `Message_ID`)');
+}
+
+function readPositiveIntValue($value): int
+{
+    $raw = trim((string)($value ?? ''));
+    if ($raw === '' || !ctype_digit($raw)) {
+        return 0;
+    }
+
+    $normalized = (int)$raw;
+    return $normalized > 0 ? $normalized : 0;
+}
+
+function normalizeConversationLimit($value, int $default = 80, int $max = 200): int
+{
+    $normalized = readPositiveIntValue($value);
+    if ($normalized <= 0) {
+        return $default;
+    }
+
+    return min($max, max(1, $normalized));
 }
 
 function userExists(PDO $conn, int $userId): bool
@@ -203,19 +260,95 @@ function inferSenderType(PDO $conn, int $userId): string
     return senderTypeFromRoleId(fetchUserRoleId($conn, $userId));
 }
 
-function chatAllowedPartnerRoleIds(array $sessionUser): array
+function chatMessagingTargetActionKeyForRoleId(int $roleId): string
+{
+    $roleKey = monitoring_module_permission_role_key_for_id($roleId);
+    return $roleKey !== null && $roleKey !== '' ? 'contact-' . $roleKey : '';
+}
+
+function chatMessagingDefaultAccessByRoleKeys(string $senderRoleKey, string $targetRoleKey): bool
+{
+    $normalizedSenderRoleKey = trim(strtolower($senderRoleKey));
+    $normalizedTargetRoleKey = trim(strtolower($targetRoleKey));
+
+    if ($normalizedSenderRoleKey === 'admin') {
+        return $normalizedTargetRoleKey !== '';
+    }
+
+    if ($normalizedSenderRoleKey === 'secretary' || $normalizedSenderRoleKey === 'accountant') {
+        return in_array($normalizedTargetRoleKey, ['admin', 'secretary', 'accountant', 'client'], true);
+    }
+
+    if ($normalizedSenderRoleKey === 'client') {
+        return in_array($normalizedTargetRoleKey, ['admin', 'secretary', 'accountant'], true);
+    }
+
+    return false;
+}
+
+function chatMessagingPermissions(PDO $conn): array
+{
+    static $permissions = null;
+    if (is_array($permissions)) {
+        return $permissions;
+    }
+
+    try {
+        $permissions = monitoring_module_permissions_load($conn);
+    } catch (Throwable $__) {
+        $permissions = [];
+    }
+
+    return $permissions;
+}
+
+function chatIsRoleAllowedToMessageRole(PDO $conn, int $senderRoleId, int $targetRoleId): bool
+{
+    if ($senderRoleId <= 0 || $targetRoleId <= 0) {
+        return false;
+    }
+
+    if ($senderRoleId === MONITORING_ROLE_ADMIN) {
+        return true;
+    }
+
+    $senderRoleKey = monitoring_module_permission_role_key_for_id($senderRoleId);
+    $targetRoleKey = monitoring_module_permission_role_key_for_id($targetRoleId);
+    $actionKey = chatMessagingTargetActionKeyForRoleId($targetRoleId);
+
+    if ($senderRoleKey === null || $targetRoleKey === null || $actionKey === '') {
+        return false;
+    }
+
+    $permissions = chatMessagingPermissions($conn);
+    $actionPermissions = $permissions['messaging']['actions'][$actionKey] ?? null;
+    if (is_array($actionPermissions) && array_key_exists($senderRoleKey, $actionPermissions)) {
+        return !empty($actionPermissions[$senderRoleKey]);
+    }
+
+    return chatMessagingDefaultAccessByRoleKeys($senderRoleKey, $targetRoleKey);
+}
+
+function chatAllowedPartnerRoleIds(PDO $conn, array $sessionUser): array
 {
     $roleId = (int)($sessionUser['role_id'] ?? 0);
-
-    if ($roleId === MONITORING_ROLE_CLIENT) {
-        return [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY, MONITORING_ROLE_ACCOUNTANT];
+    if ($roleId <= 0) {
+        return [];
     }
 
-    if (in_array($roleId, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY, MONITORING_ROLE_ACCOUNTANT], true)) {
-        return [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY, MONITORING_ROLE_ACCOUNTANT, MONITORING_ROLE_CLIENT];
+    $allowedRoleIds = [];
+    foreach (monitoring_module_permission_select_role_ids($conn) as $candidateRoleId) {
+        $normalizedCandidateRoleId = (int)$candidateRoleId;
+        if ($normalizedCandidateRoleId <= 0) {
+            continue;
+        }
+
+        if (chatIsRoleAllowedToMessageRole($conn, $roleId, $normalizedCandidateRoleId)) {
+            $allowedRoleIds[$normalizedCandidateRoleId] = true;
+        }
     }
 
-    return [];
+    return array_values(array_map('intval', array_keys($allowedRoleIds)));
 }
 
 function chatRequirePartnerAccess(PDO $conn, array $sessionUser, int $partnerId): array
@@ -242,7 +375,7 @@ function chatRequirePartnerAccess(PDO $conn, array $sessionUser, int $partnerId)
         respond(404, ['success' => false, 'message' => 'Chat partner not found']);
     }
 
-    $allowedRoleIds = chatAllowedPartnerRoleIds($sessionUser);
+    $allowedRoleIds = chatAllowedPartnerRoleIds($conn, $sessionUser);
     $partnerRoleId = (int)($partner['role_id'] ?? 0);
     if (!in_array($partnerRoleId, $allowedRoleIds, true)) {
         respond(403, ['success' => false, 'message' => 'Access denied.']);
@@ -337,7 +470,7 @@ function compareChatUsers(array $left, array $right): int
 
 function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []): array
 {
-    $allowedRoleIds = chatAllowedPartnerRoleIds($sessionUser);
+    $allowedRoleIds = chatAllowedPartnerRoleIds($conn, $sessionUser);
     if (empty($allowedRoleIds)) {
         return [];
     }
@@ -359,54 +492,38 @@ function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []):
                 COALESCE(u.middle_name, c.Middle_name) AS middle_name,
                 COALESCE(u.last_name, c.Last_name) AS last_name,
                 COALESCE({$userExpr}, {$clientExpr}) AS profile_image,
-                (
-                    SELECT m.message_text
-                    FROM `messages` m
-                    WHERE (
-                        (m.sender_id = {$currentUserId} AND m.receiver_id = u.User_id)
-                        OR (m.sender_id = u.User_id AND m.receiver_id = {$currentUserId})
-                    )
-                    ORDER BY m.created_at DESC, m.Message_ID DESC
-                    LIMIT 1
-                ) AS last_message,
-                (
-                    SELECT m.created_at
-                    FROM `messages` m
-                    WHERE (
-                        (m.sender_id = {$currentUserId} AND m.receiver_id = u.User_id)
-                        OR (m.sender_id = u.User_id AND m.receiver_id = {$currentUserId})
-                    )
-                    ORDER BY m.created_at DESC, m.Message_ID DESC
-                    LIMIT 1
-                ) AS last_message_at,
-                (
-                    SELECT m.sender_id
-                    FROM `messages` m
-                    WHERE (
-                        (m.sender_id = {$currentUserId} AND m.receiver_id = u.User_id)
-                        OR (m.sender_id = u.User_id AND m.receiver_id = {$currentUserId})
-                    )
-                    ORDER BY m.created_at DESC, m.Message_ID DESC
-                    LIMIT 1
-                ) AS last_message_sender_id,
-                (
-                    SELECT m.message_text
-                    FROM `messages` m
-                    WHERE m.sender_id = u.User_id
-                      AND m.receiver_id = {$currentUserId}
-                    ORDER BY m.created_at DESC, m.Message_ID DESC
-                    LIMIT 1
-                ) AS last_incoming_message,
-                (
-                    SELECT COUNT(*)
-                    FROM `messages` incoming
-                    WHERE incoming.sender_id = u.User_id
-                      AND incoming.receiver_id = {$currentUserId}
-                      AND incoming.is_read = 0
-                ) AS unread_count
+                lm.message_text AS last_message,
+                lm.created_at AS last_message_at,
+                lm.sender_id AS last_message_sender_id,
+                lim.message_text AS last_incoming_message,
+                COALESCE(unread.unread_count, 0) AS unread_count
             FROM `user` u
             LEFT JOIN `role` r ON r.Role_id = u.Role_id
             LEFT JOIN `client` c ON c.User_id = u.User_id
+            LEFT JOIN `messages` lm ON lm.Message_ID = (
+                SELECT m.Message_ID
+                FROM `messages` m
+                WHERE (m.sender_id = :latest_current_user_id_outgoing AND m.receiver_id = u.User_id)
+                   OR (m.sender_id = u.User_id AND m.receiver_id = :latest_current_user_id_incoming)
+                ORDER BY m.Message_ID DESC
+                LIMIT 1
+            )
+            LEFT JOIN `messages` lim ON lim.Message_ID = (
+                SELECT m.Message_ID
+                FROM `messages` m
+                WHERE m.sender_id = u.User_id
+                  AND m.receiver_id = :last_incoming_current_user_id
+                  AND TRIM(COALESCE(m.message_text, '')) <> ''
+                ORDER BY m.Message_ID DESC
+                LIMIT 1
+            )
+            LEFT JOIN (
+                SELECT sender_id AS partner_id, COUNT(*) AS unread_count
+                FROM `messages`
+                WHERE receiver_id = :unread_current_user_id
+                  AND is_read = 0
+                GROUP BY sender_id
+            ) unread ON unread.partner_id = u.User_id
             WHERE u.User_id <> :current_user_id
               AND u.Role_id IN ({$roleList})
             ORDER BY
@@ -421,18 +538,23 @@ function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []):
                 COALESCE(u.last_name, c.Last_name, u.Username) ASC";
 
     $stmt = $conn->prepare($sql);
-    $stmt->execute([':current_user_id' => (int)$sessionUser['id']]);
+    $stmt->execute([
+        ':latest_current_user_id_outgoing' => $currentUserId,
+        ':latest_current_user_id_incoming' => $currentUserId,
+        ':last_incoming_current_user_id' => $currentUserId,
+        ':unread_current_user_id' => $currentUserId,
+        ':current_user_id' => $currentUserId,
+    ]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    $users = array_map(function (array $row) use ($presenceMap, $currentUserId): array {
+    $users = [];
+    foreach ($rows as $row) {
         $userId = (int)$row['id'];
         $lastSeenTimestamp = isset($presenceMap[(string)$userId]) ? (int)$presenceMap[(string)$userId] : 0;
         $isOnline = $lastSeenTimestamp > 0;
         $lastMessage = trim((string)($row['last_message'] ?? ''));
         $lastIncomingMessage = trim((string)($row['last_incoming_message'] ?? ''));
-        $lastMessageSenderId = isset($row['last_message_sender_id']) ? (int)$row['last_message_sender_id'] : null;
-
-        return [
+        $users[] = [
             'id' => $userId,
             'full_name' => fullNameFromRow($row),
             'role' => trim((string)($row['role_name'] ?? 'User')) ?: 'User',
@@ -444,40 +566,20 @@ function fetchChatUsers(PDO $conn, array $sessionUser, array $presenceMap = []):
             'last_message' => $lastMessage !== '' ? $lastMessage : null,
             'last_incoming_message' => $lastIncomingMessage !== '' ? $lastIncomingMessage : null,
             'last_message_at' => $row['last_message_at'] ?? null,
-            'last_message_is_own' => $lastMessage !== '' && $lastMessageSenderId === $currentUserId,
+            'last_message_is_own' => isset($row['last_message_sender_id'])
+                ? (int)$row['last_message_sender_id'] === $currentUserId
+                : false,
             'unread_count' => max(0, (int)($row['unread_count'] ?? 0)),
         ];
-    }, $rows);
+    }
 
     usort($users, 'compareChatUsers');
 
     return $users;
 }
 
-function fetchConversation(PDO $conn, int $currentUserId, int $partnerId): array
+function mapConversationRows(array $rows, int $currentUserId): array
 {
-    $stmt = $conn->prepare(
-        'SELECT
-            m.Message_ID AS id,
-            m.sender_id,
-            m.receiver_id,
-            m.message_text,
-            m.is_read,
-            m.created_at,
-            sender_user.Role_id AS sender_role_id
-         FROM `messages` m
-         LEFT JOIN `user` sender_user ON sender_user.User_id = m.sender_id
-         WHERE (m.sender_id = :current_user_id AND m.receiver_id = :partner_id)
-            OR (m.sender_id = :partner_id AND m.receiver_id = :current_user_id)
-         ORDER BY m.created_at ASC, m.Message_ID ASC'
-    );
-    $stmt->execute([
-        ':current_user_id' => $currentUserId,
-        ':partner_id' => $partnerId,
-    ]);
-
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
     return array_map(function (array $row) use ($currentUserId): array {
         $senderId = (int)$row['sender_id'];
         $senderRoleId = isset($row['sender_role_id']) ? (int)$row['sender_role_id'] : null;
@@ -493,6 +595,86 @@ function fetchConversation(PDO $conn, int $currentUserId, int $partnerId): array
             'is_own' => $senderId === $currentUserId,
         ];
     }, $rows);
+}
+
+function fetchConversationPage(
+    PDO $conn,
+    int $currentUserId,
+    int $partnerId,
+    int $limit = 80,
+    int $beforeMessageId = 0,
+    int $afterMessageId = 0
+): array {
+    $normalizedLimit = normalizeConversationLimit($limit);
+    $params = [
+        ':current_user_id' => $currentUserId,
+        ':partner_id' => $partnerId,
+    ];
+    $extraWhereSql = '';
+    $orderSql = 'm.Message_ID DESC';
+    $queryLimit = $normalizedLimit + 1;
+    $usesOlderPageWindow = false;
+
+    if ($afterMessageId > 0) {
+        $extraWhereSql = ' AND m.Message_ID > :after_message_id';
+        $params[':after_message_id'] = $afterMessageId;
+        $orderSql = 'm.Message_ID ASC';
+        $queryLimit = $normalizedLimit;
+    } elseif ($beforeMessageId > 0) {
+        $extraWhereSql = ' AND m.Message_ID < :before_message_id';
+        $params[':before_message_id'] = $beforeMessageId;
+        $usesOlderPageWindow = true;
+    } else {
+        $usesOlderPageWindow = true;
+    }
+
+    $stmt = $conn->prepare(
+        'SELECT
+            m.Message_ID AS id,
+            m.sender_id,
+            m.receiver_id,
+            m.message_text,
+            m.is_read,
+            m.created_at,
+            sender_user.Role_id AS sender_role_id
+         FROM `messages` m
+         LEFT JOIN `user` sender_user ON sender_user.User_id = m.sender_id
+         WHERE (
+                (m.sender_id = :current_user_id AND m.receiver_id = :partner_id)
+             OR (m.sender_id = :partner_id AND m.receiver_id = :current_user_id)
+         )'
+         . $extraWhereSql .
+        ' ORDER BY ' . $orderSql . '
+          LIMIT :limit'
+    );
+
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, $value, PDO::PARAM_INT);
+    }
+    $stmt->bindValue(':limit', $queryLimit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $hasMoreBefore = false;
+    if ($usesOlderPageWindow && count($rows) > $normalizedLimit) {
+        $hasMoreBefore = true;
+        array_pop($rows);
+    }
+
+    if ($orderSql === 'm.Message_ID DESC') {
+        $rows = array_reverse($rows);
+    }
+
+    $messages = mapConversationRows($rows, $currentUserId);
+    $oldestMessageId = !empty($messages) ? (int)($messages[0]['id'] ?? 0) : null;
+    $latestMessageId = !empty($messages) ? (int)($messages[count($messages) - 1]['id'] ?? 0) : null;
+
+    return [
+        'messages' => $messages,
+        'has_more_before' => $hasMoreBefore,
+        'oldest_message_id' => $oldestMessageId > 0 ? $oldestMessageId : null,
+        'latest_message_id' => $latestMessageId > 0 ? $latestMessageId : null,
+    ];
 }
 
 function markConversationAsRead(PDO $conn, int $currentUserId, int $partnerId): void
@@ -534,6 +716,14 @@ try {
         respond(401, ['success' => false, 'message' => 'Authentication is required.']);
     }
 
+    if (!monitoring_user_has_module_access($conn, $sessionUser, 'messaging')) {
+        respond(403, ['success' => false, 'message' => 'Access denied.']);
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
     $presenceMap = touchChatPresence($currentUserId);
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -549,13 +739,27 @@ try {
 
         if ($action === 'messages') {
             $partnerId = isset($_GET['partner_id']) ? (int)$_GET['partner_id'] : 0;
+            $beforeMessageId = readPositiveIntValue($_GET['before_message_id'] ?? null);
+            $afterMessageId = readPositiveIntValue($_GET['after_message_id'] ?? null);
+            $limit = normalizeConversationLimit($_GET['limit'] ?? null);
             $partner = chatRequirePartnerAccess($conn, $sessionUser, $partnerId);
 
             markConversationAsRead($conn, $currentUserId, (int)$partner['id']);
+            $conversation = fetchConversationPage(
+                $conn,
+                $currentUserId,
+                (int)$partner['id'],
+                $limit,
+                $beforeMessageId,
+                $afterMessageId
+            );
 
             respond(200, [
                 'success' => true,
-                'messages' => fetchConversation($conn, $currentUserId, (int)$partner['id']),
+                'messages' => $conversation['messages'],
+                'has_more_before' => !empty($conversation['has_more_before']),
+                'oldest_message_id' => $conversation['oldest_message_id'],
+                'latest_message_id' => $conversation['latest_message_id'],
             ]);
         }
 

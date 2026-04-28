@@ -204,6 +204,7 @@ try {
             $filters[] = 'c.Status_id IS NOT NULL';
         }
     }
+    $profileOnly = isTruthyQueryParam('profile_only');
 
     $whereSql = empty($filters) ? '' : 'WHERE ' . implode(' AND ', $filters);
 
@@ -277,6 +278,19 @@ try {
     $stmt = $conn->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    if ($profileOnly) {
+        foreach ($rows as &$row) {
+            $row['approval_status'] = resolveApprovalStatus(
+                $row['status_id'] ?? null,
+                isset($row['status']) ? (string)$row['status'] : null,
+                'Pending'
+            );
+        }
+        unset($row);
+
+        respond(200, ['success' => true, 'clients' => $rows]);
+    }
 
     $documentMetaByClientId = [];
     $clientIds = [];

@@ -89,7 +89,7 @@ export function ModuleAccessGate({ moduleKey, actionKey = null, children }) {
     );
   }
 
-  const homePath = getHomePathForRole(user?.role_id ?? role);
+  const homePath = getHomePathForRole(user || role);
   const currentPath = normalizePath(location.pathname);
   const backPath = homePath && normalizePath(homePath) !== currentPath ? homePath : "/";
 

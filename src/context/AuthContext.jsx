@@ -40,6 +40,15 @@ const ROLE_HOME_PATHS = {
   3: "/accountant",
   4: "/client",
 };
+const RESERVED_CUSTOM_ROLE_PATH_SEGMENTS = new Set([
+  "admin",
+  "accountant",
+  "client",
+  "login",
+  "secretary",
+  "sign-up",
+  "workspace",
+]);
 
 export const AuthContext = createContext(null);
 
@@ -104,6 +113,7 @@ function buildComparableSessionUser(user) {
     id: normalizedUser.id ?? null,
     username: normalizedUser.username ?? "",
     role_id: normalizedUser.role_id ?? null,
+    role: normalizedUser.role ?? normalizedUser.role_name ?? null,
     client_id: normalizedUser.client_id ?? null,
     email: normalizedUser.email ?? null,
     first_name: normalizedUser.first_name ?? null,
@@ -371,12 +381,39 @@ function clearStoredAuth() {
 }
 
 export function getHomePathForRole(roleId) {
-  const normalizedRoleId = Number(roleId);
+  const normalizedInput =
+    roleId && typeof roleId === "object"
+      ? {
+          roleId: Number(roleId?.role_id ?? roleId?.Role_id ?? roleId?.roleId ?? roleId?.role ?? 0),
+          roleName: String(roleId?.role || roleId?.role_name || roleId?.Role_name || "").trim(),
+        }
+      : {
+          roleId: Number(roleId),
+          roleName: "",
+        };
+  const normalizedRoleId = normalizedInput.roleId;
   if (ROLE_HOME_PATHS[normalizedRoleId]) {
     return ROLE_HOME_PATHS[normalizedRoleId];
   }
 
-  return Number.isInteger(normalizedRoleId) && normalizedRoleId > 0 ? "/workspace" : "/";
+  if (!Number.isInteger(normalizedRoleId) || normalizedRoleId <= 0) {
+    return "/";
+  }
+
+  const normalizedRoleName = normalizedInput.roleName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+  if (!normalizedRoleName) {
+    return "/workspace";
+  }
+
+  const roleSegment = RESERVED_CUSTOM_ROLE_PATH_SEGMENTS.has(normalizedRoleName)
+    ? `${normalizedRoleName}-${normalizedRoleId}`
+    : normalizedRoleName;
+
+  return `/${roleSegment}`;
 }
 
 export function AuthProvider({ children }) {

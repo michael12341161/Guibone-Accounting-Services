@@ -18,7 +18,18 @@ const EMPTY_FORM = Object.freeze({
   phone_number: "",
 });
 
-function buildFullName(profile) {
+const DEFAULT_PROFILE_COPY = Object.freeze({
+  fallbackName: "Admin",
+  fallbackInitials: "AD",
+  missingProfileMessage: "No linked admin profile was found for this account.",
+  notFoundMessage: "Admin profile not found.",
+  loadErrorMessage: "Unable to load your admin profile right now.",
+  description: "View and manage your administrator account details.",
+  roleInfoLabel: "Admin Role",
+  defaultRoleLabel: "Admin",
+});
+
+function buildFullName(profile, fallbackName = "Admin") {
   const name = joinPersonName([
     profile?.first_name ?? profile?.employee_first_name,
     profile?.middle_name ?? profile?.employee_middle_name,
@@ -26,10 +37,10 @@ function buildFullName(profile) {
   ]);
 
   if (name) return name;
-  return String(profile?.email || profile?.username || "Admin").trim() || "Admin";
+  return String(profile?.email || profile?.username || fallbackName).trim() || fallbackName;
 }
 
-function buildInitials(value) {
+function buildInitials(value, fallbackInitials = "AD") {
   return (
     String(value || "")
       .trim()
@@ -38,7 +49,7 @@ function buildInitials(value) {
       .map((part) => part[0])
       .join("")
       .slice(0, 2)
-      .toUpperCase() || "AD"
+      .toUpperCase() || fallbackInitials
   );
 }
 
@@ -52,7 +63,7 @@ function createFormState(profile) {
   };
 }
 
-function normalizeRoleLabel(profile, user) {
+function normalizeRoleLabel(profile, user, defaultRoleLabel = "Admin") {
   const direct = String(profile?.role_name || profile?.role || "").trim();
   if (direct) return direct;
 
@@ -60,7 +71,7 @@ function normalizeRoleLabel(profile, user) {
   if (roleId === 2) return "Secretary";
   if (roleId === 3) return "Accountant";
   if (roleId === 4) return "Client";
-  return "Admin";
+  return defaultRoleLabel;
 }
 
 function InfoField({ label, value }) {
@@ -72,8 +83,15 @@ function InfoField({ label, value }) {
   );
 }
 
-export default function AdminProfile({ open, onClose, user, onProfileUpdated }) {
+export default function AdminProfile({ open, onClose, user, onProfileUpdated, copy = DEFAULT_PROFILE_COPY }) {
   const userId = Number(user?.id ?? user?.User_ID ?? 0);
+  const profileCopy = useMemo(
+    () => ({
+      ...DEFAULT_PROFILE_COPY,
+      ...(copy && typeof copy === "object" ? copy : {}),
+    }),
+    [copy]
+  );
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -93,7 +111,7 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
       if (!(userId > 0)) {
         setProfile(null);
         setForm(EMPTY_FORM);
-        setError("No linked admin profile was found for this account.");
+        setError(profileCopy.missingProfileMessage);
         return;
       }
 
@@ -101,13 +119,16 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
         if (showLoading) setLoading(true);
         setError("");
 
-        const usersRes = await api.get("user_list.php");
-        const users = Array.isArray(usersRes?.data?.users) ? usersRes.data.users : [];
+        const usersRes = await api.get("user_list.php", {
+          params: { user_id: userId },
+        });
         const nextProfile =
-          users.find((candidate) => Number(candidate?.id ?? candidate?.User_ID ?? 0) === userId) || null;
+          usersRes?.data?.user ||
+          (Array.isArray(usersRes?.data?.users) ? usersRes.data.users[0] : null) ||
+          null;
 
         if (!nextProfile) {
-          throw new Error("Admin profile not found.");
+          throw new Error(profileCopy.notFoundMessage);
         }
 
         setProfile(nextProfile);
@@ -118,13 +139,13 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
         setError(
           loadError?.response?.data?.message ||
             loadError?.message ||
-            "Unable to load your admin profile right now."
+            profileCopy.loadErrorMessage
         );
       } finally {
         if (showLoading) setLoading(false);
       }
     },
-    [userId]
+    [profileCopy.loadErrorMessage, profileCopy.missingProfileMessage, profileCopy.notFoundMessage, userId]
   );
 
   useEffect(() => {
@@ -138,9 +159,18 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
     loadProfile();
   }, [open, loadProfile]);
 
-  const displayName = useMemo(() => buildFullName(profile || user), [profile, user]);
-  const initials = useMemo(() => buildInitials(displayName), [displayName]);
-  const roleLabel = useMemo(() => normalizeRoleLabel(profile, user), [profile, user]);
+  const displayName = useMemo(
+    () => buildFullName(profile || user, profileCopy.fallbackName),
+    [profile, profileCopy.fallbackName, user]
+  );
+  const initials = useMemo(
+    () => buildInitials(displayName, profileCopy.fallbackInitials),
+    [displayName, profileCopy.fallbackInitials]
+  );
+  const roleLabel = useMemo(
+    () => normalizeRoleLabel(profile, user, profileCopy.defaultRoleLabel),
+    [profile, profileCopy.defaultRoleLabel, user]
+  );
   const profileImageUrl = useMemo(
     () => resolveBackendAssetUrl(profile?.profile_image || user?.profile_image),
     [profile, user]
@@ -239,7 +269,6 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
       }
 
       setSuccessMessage(res?.data?.message || "Profile image uploaded successfully.");
-      await loadProfile({ showLoading: false });
     } catch (uploadError) {
       setSaveError(
         uploadError?.response?.data?.message ||
@@ -310,7 +339,6 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
 
       setIsEditing(false);
       showSuccessToast(res?.data?.message || "Profile updated successfully.");
-      await loadProfile({ showLoading: false });
     } catch (saveProfileError) {
       setSaveError(
         saveProfileError?.response?.data?.message ||
@@ -351,7 +379,7 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
         open={open}
         onClose={handleClose}
         title="My Profile"
-        description="View and manage your administrator account details."
+        description={profileCopy.description}
         size="lg"
         footer={footer}
       >
@@ -521,7 +549,7 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated }) 
                 <InfoField label="Contact Number" value={profile?.employee_phone_number || profile?.phone_number} />
                 <InfoField label="Position" value={profile?.employee_position} />
                 <InfoField label="Specialization" value={specializationLabel} />
-                <InfoField label="Admin Role" value={roleLabel} />
+                <InfoField label={profileCopy.roleInfoLabel} value={roleLabel} />
               </div>
             )}
           </div>

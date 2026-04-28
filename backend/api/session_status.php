@@ -20,6 +20,8 @@ if (session_status() === PHP_SESSION_ACTIVE) {
     session_write_close();
 }
 
+$roleName = $user['role'] ?? $user['role_name'] ?? null;
+
 monitoring_auth_respond(200, [
     'success' => true,
     'authenticated' => true,
@@ -27,6 +29,8 @@ monitoring_auth_respond(200, [
         'id' => (int)$user['id'],
         'username' => $user['username'] ?? null,
         'role_id' => (int)$user['role_id'],
+        'role' => $roleName,
+        'role_name' => $roleName,
         'client_id' => array_key_exists('client_id', $user) && $user['client_id'] !== null ? (int)$user['client_id'] : null,
         'email' => $user['email'] ?? null,
         'first_name' => $user['first_name'] ?? null,

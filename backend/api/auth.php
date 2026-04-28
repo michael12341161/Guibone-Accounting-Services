@@ -330,6 +330,66 @@ function monitoring_refresh_auth_user_security_settings(array $user, bool $persi
     return $user;
 }
 
+function monitoring_fallback_role_name(int $roleId): ?string
+{
+    if ($roleId === MONITORING_ROLE_ADMIN) {
+        return 'Admin';
+    }
+    if ($roleId === MONITORING_ROLE_SECRETARY) {
+        return 'Secretary';
+    }
+    if ($roleId === MONITORING_ROLE_ACCOUNTANT) {
+        return 'Accountant';
+    }
+    if ($roleId === MONITORING_ROLE_CLIENT) {
+        return 'Client';
+    }
+
+    return null;
+}
+
+function monitoring_resolve_session_role_name(array $user): ?string
+{
+    $candidates = [
+        $user['role'] ?? null,
+        $user['role_name'] ?? null,
+        $user['Role_name'] ?? null,
+        $user['Role'] ?? null,
+    ];
+
+    foreach ($candidates as $candidate) {
+        $normalized = trim((string)$candidate);
+        if ($normalized !== '') {
+            return $normalized;
+        }
+    }
+
+    $roleId = isset($user['role_id'])
+        ? (int)$user['role_id']
+        : (isset($user['Role_id']) ? (int)$user['Role_id'] : 0);
+    if ($roleId <= 0) {
+        return null;
+    }
+
+    try {
+        $conn = monitoring_user_status_connection();
+        if ($conn instanceof PDO) {
+            $stmt = $conn->prepare('SELECT Role_name FROM role WHERE Role_id = :id LIMIT 1');
+            $stmt->execute([':id' => $roleId]);
+            $roleName = $stmt->fetchColumn();
+            if ($roleName !== false) {
+                $normalized = trim((string)$roleName);
+                if ($normalized !== '') {
+                    return $normalized;
+                }
+            }
+        }
+    } catch (Throwable $__) {
+    }
+
+    return monitoring_fallback_role_name($roleId);
+}
+
 function monitoring_prepare_session_user(array $user): array
 {
     $securitySettings = is_array($user['security_settings'] ?? null) ? $user['security_settings'] : [];
@@ -358,10 +418,14 @@ function monitoring_prepare_session_user(array $user): array
         $passwordDaysUntilExpiry = $passwordExpiryInfo['password_days_until_expiry'];
     }
 
+    $roleName = monitoring_resolve_session_role_name($user);
+
     return [
         'id' => isset($user['id']) ? (int)$user['id'] : 0,
         'username' => isset($user['username']) ? (string)$user['username'] : '',
         'role_id' => isset($user['role_id']) ? (int)$user['role_id'] : 0,
+        'role' => $roleName,
+        'role_name' => $roleName,
         'client_id' => isset($user['client_id']) && $user['client_id'] !== null ? (int)$user['client_id'] : null,
         'email' => isset($user['email']) && $user['email'] !== '' ? (string)$user['email'] : null,
         'first_name' => isset($user['first_name']) && $user['first_name'] !== '' ? (string)$user['first_name'] : null,

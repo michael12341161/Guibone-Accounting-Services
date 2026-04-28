@@ -102,7 +102,12 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
       if (showLoading) setLoading(true);
       setError("");
 
-      const clientRes = await api.get("client_list.php", { params: { client_id: clientId } });
+      const clientRes = await api.get("client_list.php", {
+        params: {
+          client_id: clientId,
+          profile_only: 1,
+        },
+      });
 
       const clients = Array.isArray(clientRes?.data?.clients) ? clientRes.data.clients : [];
       const nextProfile = clients[0] || null;
@@ -241,7 +246,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
       }
 
       setSuccessMessage(res?.data?.message || "Profile image uploaded successfully.");
-      await loadProfile({ showLoading: false });
     } catch (uploadError) {
       setSaveError(
         uploadError?.response?.data?.message ||
@@ -313,7 +317,6 @@ export default function ClientProfile({ open, onClose, user, onProfileUpdated, r
 
       setIsEditing(false);
       showSuccessToast(res.data?.message || "Profile updated successfully.");
-      await loadProfile({ showLoading: false });
     } catch (saveProfileError) {
       setSaveError(
         saveProfileError?.response?.data?.message ||

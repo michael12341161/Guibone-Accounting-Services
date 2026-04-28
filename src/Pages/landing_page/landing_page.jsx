@@ -648,7 +648,7 @@ export default function LandingPage() {
   }
 
   if (user && redirectRoleId) {
-    return <Navigate to={getHomePathForRole(redirectRoleId)} replace />;
+    return <Navigate to={getHomePathForRole(user || redirectRoleId)} replace />;
   }
 
   return (

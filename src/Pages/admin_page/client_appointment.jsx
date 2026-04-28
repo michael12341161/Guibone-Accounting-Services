@@ -242,6 +242,17 @@ function getAppointmentDecisionStatusSortRank(status) {
   return 1;
 }
 
+function getAppointmentRequestSortRank(status, paymentStatus) {
+  const decisionRank = getAppointmentDecisionStatusSortRank(status);
+  const paymentKey = normalizePaymentStatusKey(paymentStatus);
+
+  if (decisionRank === 0 && paymentKey === "paid") {
+    return -1;
+  }
+
+  return decisionRank;
+}
+
 function statusPillClass(status) {
   const value = normalizeAppointmentDecisionStatus(status);
   if (value === "approved") {
@@ -594,8 +605,8 @@ export default function AdminAppointmentManagement() {
       .map((row, index) => ({ row, index }))
       .sort((left, right) => {
         const rankDiff =
-          getAppointmentDecisionStatusSortRank(left.row.status) -
-          getAppointmentDecisionStatusSortRank(right.row.status);
+          getAppointmentRequestSortRank(left.row.status, left.row.paymentStatus) -
+          getAppointmentRequestSortRank(right.row.status, right.row.paymentStatus);
         if (rankDiff !== 0) return rankDiff;
         return left.index - right.index;
       })

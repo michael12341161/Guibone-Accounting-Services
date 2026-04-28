@@ -6,6 +6,8 @@ import { DataTable } from "../../components/UI/table";
 import { createRole, fetchRoles, fetchSpecializationTypes, updateRole } from "../../services/api";
 import { showSuccessToast, useErrorToast } from "../../utils/feedback";
 
+const PERMISSION_ROLE_CATALOG_STORAGE_KEY = "monitoring:permission-role-catalog";
+
 function normalizeRoleName(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
@@ -48,6 +50,19 @@ function createInitialForm() {
   };
 }
 
+function writePermissionRoleCatalog(roles) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      PERMISSION_ROLE_CATALOG_STORAGE_KEY,
+      JSON.stringify(Array.isArray(roles) ? roles : [])
+    );
+  } catch (_) {}
+}
+
 export default function NewRole() {
   const [roles, setRoles] = useState([]);
   const [specializationTypes, setSpecializationTypes] = useState([]);
@@ -76,6 +91,7 @@ export default function NewRole() {
         },
       });
       const nextRoles = Array.isArray(response?.data?.roles) ? response.data.roles : [];
+      writePermissionRoleCatalog(nextRoles);
       setRoles(nextRoles.filter((role) => !isAdminRole(role?.name)));
     } catch (requestError) {
       setError(requestError?.response?.data?.message || requestError?.message || "Unable to load roles.");

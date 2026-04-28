@@ -13,6 +13,82 @@ const ROLE_KEY_BY_ID = Object.freeze({
 const BUILTIN_ROLE_KEYS = Object.freeze(Object.values(ROLE_KEY_BY_ID));
 const FEATURES_WITH_INDEPENDENT_ACTION_ACCESS = new Set(["certificate", "edit-certificate"]);
 
+function getRoleLabelFromKey(roleKey) {
+  const normalized = String(roleKey || "").trim().toLowerCase();
+  if (normalized === "admin") return "Admin";
+  if (normalized === "secretary") return "Secretary";
+  if (normalized === "accountant") return "Accountant";
+  if (normalized === "client") return "Client";
+
+  return humanizePermissionKey(normalized);
+}
+
+export function getMessagingTargetActionKey(roleKey) {
+  const normalizedRoleKey = String(roleKey || "").trim();
+  return normalizedRoleKey ? `contact-${normalizedRoleKey}` : "";
+}
+
+export function getMessagingTargetRoleKey(actionKey) {
+  const normalizedActionKey = String(actionKey || "").trim();
+  const matchedRoleKey = normalizedActionKey.match(/^contact-(.+)$/);
+  return matchedRoleKey ? String(matchedRoleKey[1] || "").trim() : "";
+}
+
+function getMessagingActionDefaultAccess(targetRoleKey, roleKeys = BUILTIN_ROLE_KEYS) {
+  const normalizedTargetRoleKey = String(targetRoleKey || "").trim().toLowerCase();
+
+  return mergeRoleKeys(roleKeys).reduce((accumulator, roleKey) => {
+    const normalizedRoleKey = String(roleKey || "").trim().toLowerCase();
+
+    if (normalizedRoleKey === "admin") {
+      accumulator[roleKey] = normalizedTargetRoleKey !== "";
+      return accumulator;
+    }
+
+    if (normalizedRoleKey === "secretary" || normalizedRoleKey === "accountant") {
+      accumulator[roleKey] = ["admin", "secretary", "accountant", "client"].includes(normalizedTargetRoleKey);
+      return accumulator;
+    }
+
+    if (normalizedRoleKey === "client") {
+      accumulator[roleKey] = ["admin", "secretary", "accountant"].includes(normalizedTargetRoleKey);
+      return accumulator;
+    }
+
+    accumulator[roleKey] = false;
+    return accumulator;
+  }, {});
+}
+
+function getMessagingFeatureActions(roleKeys = BUILTIN_ROLE_KEYS) {
+  return mergeRoleKeys(roleKeys).map((roleKey) => {
+    const roleLabel = getRoleLabelFromKey(roleKey);
+
+    return {
+      key: getMessagingTargetActionKey(roleKey),
+      label: `Can Message ${roleLabel}`,
+      description: `Allow the role to start and continue conversations with ${roleLabel} users.`,
+      targetRoleKey: roleKey,
+      defaultAccess: getMessagingActionDefaultAccess(roleKey, roleKeys),
+    };
+  });
+}
+
+function resolveFeatureDefinition(feature, roleKeys = BUILTIN_ROLE_KEYS) {
+  if (!feature || typeof feature !== "object") {
+    return feature;
+  }
+
+  if (feature.key === "messaging") {
+    return {
+      ...feature,
+      actions: getMessagingFeatureActions(roleKeys),
+    };
+  }
+
+  return feature;
+}
+
 function normalizeRoleKey(value) {
   const normalized = String(value || "").trim();
   if (!normalized || normalized === "actions") {
@@ -520,7 +596,7 @@ export function getModuleLabelByKey(moduleKey) {
   return humanizePermissionKey(normalizedKey);
 }
 
-export function getFeatureDefinition(featureKey) {
+export function getFeatureDefinition(featureKey, roleKeys = BUILTIN_ROLE_KEYS) {
   const normalizedKey = String(featureKey || "").trim();
   if (!normalizedKey) {
     return null;
@@ -529,15 +605,16 @@ export function getFeatureDefinition(featureKey) {
   for (const section of FEATURE_SECTIONS) {
     const feature = section.features.find((item) => item.key === normalizedKey);
     if (feature) {
-      return feature;
+      const resolvedFeature = resolveFeatureDefinition(feature, roleKeys);
+      return resolvedFeature || feature;
     }
   }
 
   return null;
 }
 
-export function getFeatureActionDefinition(featureKey, actionKey) {
-  const feature = getFeatureDefinition(featureKey);
+export function getFeatureActionDefinition(featureKey, actionKey, roleKeys = BUILTIN_ROLE_KEYS) {
+  const feature = getFeatureDefinition(featureKey, roleKeys);
   if (!feature || !Array.isArray(feature.actions)) {
     return null;
   }
@@ -569,10 +646,11 @@ function createActionPermissions(actions = [], roleKeys = BUILTIN_ROLE_KEYS) {
 }
 
 export function createFeaturePermissions(feature, roleKeys = BUILTIN_ROLE_KEYS) {
-  const permissions = createRolePermissions(feature?.defaultAccess, roleKeys);
+  const resolvedFeature = resolveFeatureDefinition(feature, roleKeys);
+  const permissions = createRolePermissions(resolvedFeature?.defaultAccess, roleKeys);
 
-  if (Array.isArray(feature?.actions) && feature.actions.length > 0) {
-    permissions.actions = createActionPermissions(feature.actions, roleKeys);
+  if (Array.isArray(resolvedFeature?.actions) && resolvedFeature.actions.length > 0) {
+    permissions.actions = createActionPermissions(resolvedFeature.actions, roleKeys);
   }
 
   return permissions;
@@ -581,7 +659,7 @@ export function createFeaturePermissions(feature, roleKeys = BUILTIN_ROLE_KEYS) 
 export function createDefaultPermissions(roleKeys = BUILTIN_ROLE_KEYS) {
   return FEATURE_SECTIONS.reduce((accumulator, section) => {
     section.features.forEach((feature) => {
-      accumulator[feature.key] = createFeaturePermissions(feature, roleKeys);
+      accumulator[feature.key] = createFeaturePermissions(resolveFeatureDefinition(feature, roleKeys), roleKeys);
     });
     return accumulator;
   }, {});
@@ -687,33 +765,40 @@ export function mergePermissions(storedPermissions, roleKeys = []) {
 
   return FEATURE_SECTIONS.reduce((accumulator, section) => {
     section.features.forEach((feature) => {
+      const resolvedFeature = resolveFeatureDefinition(feature, availableRoleKeys);
       const storedFeature = resolveStoredFeaturePermissions(storedPermissions, feature.key, availableRoleKeys);
       const mergedFeature = availableRoleKeys.reduce((featureAccumulator, roleKey) => {
-        featureAccumulator[roleKey] = Boolean(storedFeature?.[roleKey] ?? defaults[feature.key]?.[roleKey]);
+        featureAccumulator[roleKey] = Boolean(storedFeature?.[roleKey] ?? defaults[resolvedFeature.key]?.[roleKey]);
         return featureAccumulator;
       }, {});
 
-      if (Array.isArray(feature.actions) && feature.actions.length > 0) {
+      if (Array.isArray(resolvedFeature.actions) && resolvedFeature.actions.length > 0) {
         const storedActions = storedFeature?.actions && typeof storedFeature.actions === "object" ? storedFeature.actions : {};
         const hasStoredActions = Object.keys(storedActions).length > 0;
-        mergedFeature.actions = feature.actions.reduce((actionAccumulator, action) => {
+        mergedFeature.actions = resolvedFeature.actions.reduce((actionAccumulator, action) => {
           const defaultActionPermissions =
-            defaults[feature.key]?.actions?.[action.key] || createRolePermissions(action?.defaultAccess, availableRoleKeys);
+            defaults[resolvedFeature.key]?.actions?.[action.key] || createRolePermissions(action?.defaultAccess, availableRoleKeys);
+          const isLegacyMessagingFeature = resolvedFeature.key === "messaging" && !hasStoredActions;
           const storedActionPermissions =
             storedActions?.[action.key] ||
-            (feature.key === "tasks" && storedActions?.["show-actions"] ? storedActions["show-actions"] : null) ||
-            (!hasStoredActions && storedFeature && typeof storedFeature === "object" ? storedFeature : null);
+            (resolvedFeature.key === "tasks" && storedActions?.["show-actions"] ? storedActions["show-actions"] : null) ||
+            (!hasStoredActions && !isLegacyMessagingFeature && storedFeature && typeof storedFeature === "object" ? storedFeature : null);
 
           actionAccumulator[action.key] = availableRoleKeys.reduce((permissionAccumulator, roleKey) => {
-            permissionAccumulator[roleKey] = Boolean(
-              storedActionPermissions?.[roleKey] ?? defaultActionPermissions?.[roleKey]
-            );
+            if (isLegacyMessagingFeature && storedFeature && typeof storedFeature === "object") {
+              permissionAccumulator[roleKey] = Boolean(
+                Boolean(storedFeature?.[roleKey]) && Boolean(defaultActionPermissions?.[roleKey])
+              );
+              return permissionAccumulator;
+            }
+
+            permissionAccumulator[roleKey] = Boolean(storedActionPermissions?.[roleKey] ?? defaultActionPermissions?.[roleKey]);
             return permissionAccumulator;
           }, {});
           return actionAccumulator;
         }, {});
 
-        if (!featureUsesIndependentAccess(feature.key)) {
+        if (!featureUsesIndependentAccess(resolvedFeature.key)) {
           const mergedActionValues = Object.values(mergedFeature.actions);
           availableRoleKeys.forEach((roleKey) => {
             mergedFeature[roleKey] = mergedActionValues.some((actionPermission) => Boolean(actionPermission?.[roleKey]));
@@ -721,7 +806,7 @@ export function mergePermissions(storedPermissions, roleKeys = []) {
         }
       }
 
-      accumulator[feature.key] = mergedFeature;
+      accumulator[resolvedFeature.key] = mergedFeature;
     });
     return accumulator;
   }, {});

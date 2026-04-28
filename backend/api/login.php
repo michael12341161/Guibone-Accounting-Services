@@ -57,6 +57,7 @@ try {
                 c.Rejection_reason AS Client_Rejection_Reason,
                 u.Email,
                 u.Created_at AS Created_at,
+                r.Role_name AS Role_name,
                 CASE
                     WHEN u.Role_id = 4 THEN c.First_name
                     ELSE u.first_name
@@ -72,6 +73,7 @@ try {
                 ' . $profileImageSelect . '
          FROM user u
          LEFT JOIN client c ON c.User_id = u.User_id
+         LEFT JOIN role r ON r.Role_id = u.Role_id
          LEFT JOIN status es ON es.Status_id = u.Employment_status_id
          LEFT JOIN status s ON s.Status_id = c.Status_id
          WHERE u.Username = :u
@@ -254,6 +256,8 @@ try {
         'id' => $userId,
         'username' => $user['Username'],
         'role_id' => $roleId,
+        'role' => $user['Role_name'] ?? null,
+        'role_name' => $user['Role_name'] ?? null,
         'client_id' => isset($user['Client_ID']) ? (int)$user['Client_ID'] : null,
         'email' => $user['Email'] ?? null,
         'first_name' => $user['First_name'] ?? null,

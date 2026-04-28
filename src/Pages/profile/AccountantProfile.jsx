@@ -101,10 +101,13 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
         if (showLoading) setLoading(true);
         setError("");
 
-        const usersRes = await api.get("user_list.php");
-        const users = Array.isArray(usersRes?.data?.users) ? usersRes.data.users : [];
+        const usersRes = await api.get("user_list.php", {
+          params: { user_id: userId },
+        });
         const nextProfile =
-          users.find((candidate) => Number(candidate?.id ?? candidate?.User_ID ?? 0) === userId) || null;
+          usersRes?.data?.user ||
+          (Array.isArray(usersRes?.data?.users) ? usersRes.data.users[0] : null) ||
+          null;
 
         if (!nextProfile) {
           throw new Error("Accountant profile not found.");
@@ -236,7 +239,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
       }
 
       setSuccessMessage(res?.data?.message || "Profile image uploaded successfully.");
-      await loadProfile({ showLoading: false });
     } catch (uploadError) {
       setSaveError(
         uploadError?.response?.data?.message ||
@@ -299,7 +301,6 @@ export default function AccountantProfile({ open, onClose, user, onProfileUpdate
 
       setIsEditing(false);
       showSuccessToast(res?.data?.message || "Profile updated successfully.");
-      await loadProfile({ showLoading: false });
     } catch (saveProfileError) {
       setSaveError(
         saveProfileError?.response?.data?.message ||

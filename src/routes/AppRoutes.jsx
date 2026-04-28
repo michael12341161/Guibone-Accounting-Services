@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate, createBrowserRouter, useNavigate } from "react-router-dom";
+import { Navigate, createBrowserRouter, useLocation, useNavigate } from "react-router-dom";
 import LandingPage from "../Pages/landing_page/landing_page";
 import LoginPage from "../Pages/auth/login";
 import SignUpPage from "../Pages/auth/sign_up";
@@ -56,8 +56,33 @@ import { ROLE_IDS } from "../utils/helpers";
 
 const BUILTIN_ROLE_IDS = new Set(Object.values(ROLE_IDS));
 
+function normalizeRoutePath(pathname) {
+  const raw = String(pathname || "").trim();
+  if (!raw || raw === "/") {
+    return "/";
+  }
+
+  return raw.replace(/\/+$/, "");
+}
+
+function getTopLevelRoutePath(pathname) {
+  const parts = normalizeRoutePath(pathname).split("/").filter(Boolean);
+  return parts.length > 0 ? `/${parts[0]}` : "/";
+}
+
+function replaceTopLevelRoutePath(pathname, nextBasePath) {
+  const normalizedBasePath = normalizeRoutePath(nextBasePath);
+  const parts = normalizeRoutePath(pathname).split("/").filter(Boolean);
+  if (parts.length <= 1) {
+    return normalizedBasePath;
+  }
+
+  return `${normalizedBasePath}/${parts.slice(1).join("/")}`;
+}
+
 function RoleProtectedRoute({ allowedRoleId, allowRole, LayoutComponent }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, role, logout, isAuthReady } = useAuth();
   const hasResolvedUser = Boolean(user?.id || user?.username);
 
@@ -86,7 +111,18 @@ function RoleProtectedRoute({ allowedRoleId, allowRole, LayoutComponent }) {
     typeof allowRole === "function" ? allowRole(role, user) : role === allowedRoleId;
 
   if (!canAccessRoute) {
-    return <Navigate to={getHomePathForRole(user.role_id)} replace />;
+    return <Navigate to={getHomePathForRole(user)} replace />;
+  }
+
+  const expectedHomePath = getHomePathForRole(user);
+  const currentBasePath = getTopLevelRoutePath(location.pathname);
+  const isCustomRoleUser = Number.isInteger(role) && role > 0 && !BUILTIN_ROLE_IDS.has(role);
+  if (
+    isCustomRoleUser &&
+    normalizeRoutePath(currentBasePath) !== normalizeRoutePath(expectedHomePath)
+  ) {
+    const nextPathname = replaceTopLevelRoutePath(location.pathname, expectedHomePath);
+    return <Navigate to={`${nextPathname}${location.search}${location.hash}`} replace />;
   }
 
   return <LayoutComponent user={user} onLogout={onLogout} />;
@@ -107,6 +143,36 @@ function withModuleAccess(moduleKey, element, actionKey = null) {
       {element}
     </ModuleAccessGate>
   );
+}
+
+function createCustomWorkspaceChildren() {
+  return [
+    { path: "appointments", element: withModuleAccess("appointments", <AdminAppointmentManagement />) },
+    { path: "work-update/history", element: withModuleAccess("work-update", <TasksUpdateHistory />, "history") },
+    { path: "work-update", element: withModuleAccess("work-update", <AdminWorkUpdate />) },
+    { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
+    { path: "settings", element: withModuleAccess("settings", <AdminSettings />) },
+    { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
+    { path: "users/inactive-users", element: withModuleAccess("user-management", <InactiveEmployee />) },
+    { path: "permissions", element: withModuleAccess("permissions", <Permissions />) },
+    { path: "new-specialization", element: withModuleAccess("user-management", <NewSpecialization />) },
+    { path: "new-role", element: withModuleAccess("user-management", <NewRole />) },
+    { path: "client-management", element: withModuleAccess("client-management", <ClientManagement />) },
+    { path: "client-management/inactive-users", element: withModuleAccess("client-management", <InactiveClients />) },
+    { path: "documents", element: withModuleAccess("documents", <DocumentAdminPage />) },
+    { path: "certificate", element: withModuleAccess("certificate", <CertificatePage />) },
+    { path: "certificate/edit", element: withModuleAccess("edit-certificate", <EditCertificate />) },
+    { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
+    { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
+    { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
+    { path: "payment", element: withModuleAccess("payment", <AdminClientPaymentPage />) },
+    { path: "payment/methods", element: withModuleAccess("payment", <NewPaymentMethod />) },
+    { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
+    { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
+    { path: "new-services", element: withModuleAccess("tasks", <NewServices />) },
+    { path: "reports", element: withModuleAccess("reports", <AdminReports />) },
+    { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
+  ];
 }
 
 const publicRoutes = [
@@ -223,33 +289,13 @@ const privateRouteGroups = [
     path: "/workspace",
     allowRole: (roleId) => Number.isInteger(roleId) && roleId > 0 && !BUILTIN_ROLE_IDS.has(roleId),
     component: WorkspaceDashboard,
-    children: [
-      { path: "appointments", element: withModuleAccess("appointments", <AdminAppointmentManagement />) },
-      { path: "work-update/history", element: withModuleAccess("work-update", <TasksUpdateHistory />, "history") },
-      { path: "work-update", element: withModuleAccess("work-update", <AdminWorkUpdate />) },
-      { path: "calendar", element: withModuleAccess("calendar", <Calendar />) },
-      { path: "settings", element: withModuleAccess("settings", <AdminSettings />) },
-      { path: "users", element: withModuleAccess("user-management", <UserManagement />) },
-      { path: "users/inactive-users", element: withModuleAccess("user-management", <InactiveEmployee />) },
-      { path: "permissions", element: withModuleAccess("permissions", <Permissions />) },
-      { path: "new-specialization", element: withModuleAccess("user-management", <NewSpecialization />) },
-      { path: "new-role", element: withModuleAccess("user-management", <NewRole />) },
-      { path: "client-management", element: withModuleAccess("client-management", <ClientManagement />) },
-      { path: "client-management/inactive-users", element: withModuleAccess("client-management", <InactiveClients />) },
-      { path: "documents", element: withModuleAccess("documents", <DocumentAdminPage />) },
-      { path: "certificate", element: withModuleAccess("certificate", <CertificatePage />) },
-      { path: "certificate/edit", element: withModuleAccess("edit-certificate", <EditCertificate />) },
-      { path: "business-status", element: withModuleAccess("business-status", <ClientBusinessStatusPage />) },
-      { path: "new-client-management", element: withModuleAccess("new-client-management", <NewClientManagement />) },
-      { path: "scheduling", element: withModuleAccess("scheduling", <SchedulingManagementAdmin />) },
-      { path: "payment", element: withModuleAccess("payment", <AdminClientPaymentPage />) },
-      { path: "payment/methods", element: withModuleAccess("payment", <NewPaymentMethod />) },
-      { path: "tasks", element: withModuleAccess("tasks", <AdminAccountantTaskManagement />) },
-      { path: "tasks/client-appointments", element: withModuleAccess("tasks", <TaskClientAppointmentsPage />, "client-appointments") },
-      { path: "new-services", element: withModuleAccess("tasks", <NewServices />) },
-      { path: "reports", element: withModuleAccess("reports", <AdminReports />) },
-      { path: "messaging", element: withModuleAccess("messaging", <MessagingPage />) },
-    ],
+    children: createCustomWorkspaceChildren(),
+  },
+  {
+    path: "/:workspaceSlug",
+    allowRole: (roleId) => Number.isInteger(roleId) && roleId > 0 && !BUILTIN_ROLE_IDS.has(roleId),
+    component: WorkspaceDashboard,
+    children: createCustomWorkspaceChildren(),
   },
 ];
 

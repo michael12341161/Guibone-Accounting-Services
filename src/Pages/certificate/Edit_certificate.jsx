@@ -196,8 +196,8 @@ function TiptapPlainTextField({
         class: `${minHeightClass} w-full px-3 py-2 text-sm leading-6 text-slate-700 outline-none whitespace-pre-wrap`,
       },
     },
-    onFocus: () => onFocusEditor(editorKey),
-    onSelectionUpdate: () => onFocusEditor(editorKey),
+    onFocus: ({ editor: activeEditor }) => onFocusEditor(editorKey, activeEditor),
+    onSelectionUpdate: ({ editor: activeEditor }) => onFocusEditor(editorKey, activeEditor),
     onUpdate: ({ editor: activeEditor }) => {
       const nextValue = tiptapEditorToPlainText(activeEditor);
       if (nextValue !== latestValueRef.current) {
@@ -1377,6 +1377,8 @@ export default function EditCertificate() {
   const preserveInlineEditorRef = useRef(false);
   const placeholderTargetRef = useRef(null);
   const richTextEditorsRef = useRef({});
+  const inlineEditorBlurFrameRef = useRef(0);
+  const inlineEditorFocusFrameRef = useRef(0);
   const previewScaleRef = useRef(1);
   const [previewScale, setPreviewScale] = useState(1);
   const [selectedPlaceholderToken, setSelectedPlaceholderToken] = useState(PLACEHOLDER_DROPDOWN_OPTIONS[0] || "");
@@ -1418,12 +1420,23 @@ export default function EditCertificate() {
     delete richTextEditorsRef.current[editorKey];
   }, []);
 
-  const rememberRichTextEditorTarget = useCallback((editorKey) => {
+  const rememberRichTextEditorTarget = useCallback((editorKey, editorInstance = null) => {
+    const selectionFrom =
+      typeof editorInstance?.state?.selection?.from === "number"
+        ? editorInstance.state.selection.from
+        : null;
+    const selectionTo =
+      typeof editorInstance?.state?.selection?.to === "number"
+        ? editorInstance.state.selection.to
+        : selectionFrom;
+
     if (editorKey === "content") {
       placeholderTargetRef.current = {
         kind: "content",
         editorType: "tiptap",
         editorKey,
+        selectionFrom,
+        selectionTo,
       };
       return;
     }
@@ -1434,6 +1447,8 @@ export default function EditCertificate() {
         blockId: String(editorKey).slice(5),
         editorType: "tiptap",
         editorKey,
+        selectionFrom,
+        selectionTo,
       };
       return;
     }
@@ -1444,6 +1459,8 @@ export default function EditCertificate() {
         blockId: String(editorKey).slice(10),
         editorType: "tiptap",
         editorKey,
+        selectionFrom,
+        selectionTo,
       };
     }
   }, []);
@@ -1473,47 +1490,134 @@ export default function EditCertificate() {
     [rememberPlaceholderTarget]
   );
 
-  const restoreInlineEditorFocus = useCallback(() => {
-    if (typeof window === "undefined") {
-      preserveInlineEditorRef.current = false;
+  const syncRichTextPlaceholderTargetSelection = useCallback(() => {
+    const target = placeholderTargetRef.current;
+    if (!target || target.editorType !== "tiptap" || !target.editorKey) {
       return;
     }
 
-    window.requestAnimationFrame(() => {
-      const editor = inlineEditorRef.current;
-      if (!editor || !editingTarget) {
+    const activeEditor = richTextEditorsRef.current[target.editorKey];
+    if (!activeEditor) {
+      return;
+    }
+
+    const selectionFrom =
+      typeof activeEditor.state?.selection?.from === "number"
+        ? activeEditor.state.selection.from
+        : target.selectionFrom ?? null;
+    const selectionTo =
+      typeof activeEditor.state?.selection?.to === "number"
+        ? activeEditor.state.selection.to
+        : target.selectionTo ?? selectionFrom;
+
+    placeholderTargetRef.current = {
+      ...target,
+      selectionFrom,
+      selectionTo,
+    };
+  }, []);
+
+  const cancelPendingInlineEditorBlur = useCallback(() => {
+    if (typeof window === "undefined" || !inlineEditorBlurFrameRef.current) {
+      return;
+    }
+
+    window.cancelAnimationFrame(inlineEditorBlurFrameRef.current);
+    inlineEditorBlurFrameRef.current = 0;
+  }, []);
+
+  const cancelPendingInlineEditorFocus = useCallback(() => {
+    if (typeof window === "undefined" || !inlineEditorFocusFrameRef.current) {
+      return;
+    }
+
+    window.cancelAnimationFrame(inlineEditorFocusFrameRef.current);
+    inlineEditorFocusFrameRef.current = 0;
+  }, []);
+
+  const clearDragState = useCallback((dragKey = null) => {
+    if (!dragStateRef.current) return;
+    if (dragKey && dragStateRef.current.dragKey !== dragKey) return;
+
+    dragStateRef.current = null;
+    setDragTarget(null);
+  }, []);
+
+  const focusInlineEditor = useCallback(
+    (selectionStart = null, selectionEnd = null) => {
+      if (typeof window === "undefined") {
         preserveInlineEditorRef.current = false;
         return;
       }
 
-      editor.focus();
+      cancelPendingInlineEditorFocus();
 
-      const selectionStart = placeholderTargetRef.current?.selectionStart;
-      const selectionEnd =
-        typeof placeholderTargetRef.current?.selectionEnd === "number"
-          ? placeholderTargetRef.current.selectionEnd
-          : selectionStart;
+      // Let the double-click finish and the editor mount before restoring the caret.
+      inlineEditorFocusFrameRef.current = window.requestAnimationFrame(() => {
+        inlineEditorFocusFrameRef.current = window.requestAnimationFrame(() => {
+          inlineEditorFocusFrameRef.current = 0;
 
-      if (typeof editor.setSelectionRange === "function") {
-        const valueLength = String(editor.value || "").length;
-        const nextStart =
-          typeof selectionStart === "number" ? Math.min(Math.max(selectionStart, 0), valueLength) : valueLength;
-        const nextEnd =
-          typeof selectionEnd === "number" ? Math.min(Math.max(selectionEnd, nextStart), valueLength) : nextStart;
-        editor.setSelectionRange(nextStart, nextEnd);
-      }
+          const editor = inlineEditorRef.current;
+          if (!editor || !editingTarget) {
+            preserveInlineEditorRef.current = false;
+            return;
+          }
 
-      preserveInlineEditorRef.current = false;
-    });
-  }, [editingTarget]);
+          editor.focus({ preventScroll: true });
+
+          if (typeof editor.setSelectionRange === "function") {
+            const valueLength = String(editor.value || "").length;
+            const nextStart =
+              typeof selectionStart === "number" ? Math.min(Math.max(selectionStart, 0), valueLength) : valueLength;
+            const nextEnd =
+              typeof selectionEnd === "number" ? Math.min(Math.max(selectionEnd, nextStart), valueLength) : nextStart;
+            editor.setSelectionRange(nextStart, nextEnd);
+          }
+
+          preserveInlineEditorRef.current = false;
+        });
+      });
+    },
+    [cancelPendingInlineEditorFocus, editingTarget]
+  );
+
+  const stopInlineEditing = useCallback(() => {
+    cancelPendingInlineEditorBlur();
+    cancelPendingInlineEditorFocus();
+    setEditingTarget(null);
+    setEditingBounds(null);
+  }, [cancelPendingInlineEditorBlur, cancelPendingInlineEditorFocus]);
+
+  const restoreInlineEditorFocus = useCallback(() => {
+    const selectionStart = placeholderTargetRef.current?.selectionStart;
+    const selectionEnd =
+      typeof placeholderTargetRef.current?.selectionEnd === "number"
+        ? placeholderTargetRef.current.selectionEnd
+        : selectionStart;
+
+    focusInlineEditor(selectionStart, selectionEnd);
+  }, [focusInlineEditor]);
 
   const beginPlaceholderToolbarInteraction = useCallback(() => {
+    syncRichTextPlaceholderTargetSelection();
+
     if (!editingTarget) {
       return;
     }
 
     preserveInlineEditorRef.current = true;
-  }, [editingTarget]);
+  }, [editingTarget, syncRichTextPlaceholderTargetSelection]);
+
+  const endPlaceholderToolbarInteraction = useCallback(() => {
+    preserveInlineEditorRef.current = false;
+  }, []);
+
+  const clearActiveCertificateEditorTarget = () => {
+    clearDragState();
+    stopInlineEditing();
+    endPlaceholderToolbarInteraction();
+    placeholderTargetRef.current = null;
+  };
 
   const handleInlineEditorBlur = useCallback((event) => {
     const nextTarget = event.relatedTarget;
@@ -1525,12 +1629,36 @@ export default function EditCertificate() {
       return;
     }
 
-    stopInlineEditing();
-  }, []);
+    cancelPendingInlineEditorBlur();
+
+    if (typeof window === "undefined") {
+      stopInlineEditing();
+      return;
+    }
+
+    inlineEditorBlurFrameRef.current = window.requestAnimationFrame(() => {
+      inlineEditorBlurFrameRef.current = 0;
+
+      const activeElement = document.activeElement;
+      if (
+        preserveInlineEditorRef.current ||
+        (activeElement instanceof HTMLElement && placeholderToolbarRef.current?.contains(activeElement)) ||
+        activeElement === inlineEditorRef.current
+      ) {
+        return;
+      }
+
+      stopInlineEditing();
+    });
+  }, [cancelPendingInlineEditorBlur, stopInlineEditing]);
 
   const handleAddPlaceholder = () => {
+    syncRichTextPlaceholderTargetSelection();
+
     const placeholder = String(selectedPlaceholderToken || "").trim();
     const target = placeholderTargetRef.current;
+
+    endPlaceholderToolbarInteraction();
 
     if (!placeholder) {
       showInfoToast("Choose a placeholder first, then click Add.");
@@ -1558,7 +1686,29 @@ export default function EditCertificate() {
         return;
       }
 
-      activeEditor.chain().focus().insertContent(placeholder).run();
+      const chain = activeEditor.chain().focus();
+      if (typeof target.selectionFrom === "number") {
+        chain.setTextSelection({
+          from: target.selectionFrom,
+          to: typeof target.selectionTo === "number" ? target.selectionTo : target.selectionFrom,
+        });
+      }
+      chain.insertContent(placeholder).run();
+
+      const nextSelectionFrom =
+        typeof activeEditor.state?.selection?.from === "number"
+          ? activeEditor.state.selection.from
+          : null;
+      const nextSelectionTo =
+        typeof activeEditor.state?.selection?.to === "number"
+          ? activeEditor.state.selection.to
+          : nextSelectionFrom;
+
+      placeholderTargetRef.current = {
+        ...target,
+        selectionFrom: nextSelectionFrom,
+        selectionTo: nextSelectionTo,
+      };
       return;
     }
 
@@ -1869,22 +2019,10 @@ export default function EditCertificate() {
     updateSignatureLine(blockId, "x", nextX);
   };
 
-  const clearDragState = (dragKey = null) => {
-    if (!dragStateRef.current) return;
-    if (dragKey && dragStateRef.current.dragKey !== dragKey) return;
-
-    dragStateRef.current = null;
-    setDragTarget(null);
-  };
-
-  const stopInlineEditing = () => {
-    setEditingTarget(null);
-    setEditingBounds(null);
-  };
-
   const startInlineEditing = (kind, blockId = null) => (event) => {
     event.preventDefault();
     event.stopPropagation();
+    cancelPendingInlineEditorBlur();
     clearDragState();
     if (kind === "text" && blockId) {
       setTemplate((current) => {
@@ -2058,15 +2196,25 @@ export default function EditCertificate() {
   }, [updateSignatureLine]);
 
   useEffect(() => {
-    const editor = inlineEditorRef.current;
-    if (!editingTarget || !editor) return;
+    if (!editingTarget) return undefined;
 
-    editor.focus();
-    if (typeof editor.setSelectionRange === "function") {
-      const length = editor.value?.length ?? 0;
-      editor.setSelectionRange(length, length);
-    }
-  }, [editingTarget]);
+    const activePlaceholderTarget = placeholderTargetRef.current;
+    const activePlaceholderKey = activePlaceholderTarget
+      ? getDragKey(activePlaceholderTarget.kind, activePlaceholderTarget.blockId ?? null)
+      : null;
+    const selectionStart =
+      activePlaceholderKey === editingTarget ? activePlaceholderTarget?.selectionStart ?? null : null;
+    const selectionEnd =
+      activePlaceholderKey === editingTarget && typeof activePlaceholderTarget?.selectionEnd === "number"
+        ? activePlaceholderTarget.selectionEnd
+        : selectionStart;
+
+    focusInlineEditor(selectionStart, selectionEnd);
+
+    return () => {
+      cancelPendingInlineEditorFocus();
+    };
+  }, [cancelPendingInlineEditorFocus, editingTarget, focusInlineEditor]);
 
   useEffect(() => {
     const editor = inlineEditorRef.current;
@@ -2075,6 +2223,14 @@ export default function EditCertificate() {
     editor.style.height = "auto";
     editor.style.height = `${Math.max(editingBounds?.height || 0, editor.scrollHeight)}px`;
   }, [editingBounds, editingTarget, template.contentBlock.text, template.textBlocks]);
+
+  useEffect(
+    () => () => {
+      cancelPendingInlineEditorBlur();
+      cancelPendingInlineEditorFocus();
+    },
+    [cancelPendingInlineEditorBlur, cancelPendingInlineEditorFocus]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -2206,7 +2362,7 @@ export default function EditCertificate() {
       window.removeEventListener("pointerup", stopDragging);
       window.removeEventListener("pointercancel", stopDragging);
     };
-  }, [setTemplate]);
+  }, [clearDragState, setTemplate]);
 
   const handleDragStart = (kind, blockId = null) => (event) => {
     if (editingTarget || !sheetRef.current) return;
@@ -2228,6 +2384,20 @@ export default function EditCertificate() {
     };
 
     setDragTarget(dragKey);
+  };
+
+  const handleImageOnlyDragStart = (kind, blockId = null) => (event) => {
+    const eventTarget = event.target;
+    const isImageTarget =
+      typeof window !== "undefined" &&
+      eventTarget instanceof window.Element &&
+      eventTarget.tagName.toLowerCase() === "img";
+
+    if (!isImageTarget) {
+      return;
+    }
+
+    handleDragStart(kind, blockId)(event);
   };
 
   const handleSave = async () => {
@@ -2381,9 +2551,9 @@ export default function EditCertificate() {
                       <span className={LABEL_CLASS}>Service</span>
                       <select
                         value={selectedService}
+                        onMouseDown={clearActiveCertificateEditorTarget}
                         onChange={(event) => {
-                          clearDragState();
-                          stopInlineEditing();
+                          clearActiveCertificateEditorTarget();
                           setSelectedService(event.target.value);
                         }}
                         className={`${HEADER_SELECT_CLASS} mt-2 w-full`}
@@ -2399,7 +2569,11 @@ export default function EditCertificate() {
                       <span className={LABEL_CLASS}>Font</span>
                       <select
                         value={template.fontFamily}
-                        onChange={(event) => updateLayoutSetting("fontFamily", event.target.value)}
+                        onMouseDown={clearActiveCertificateEditorTarget}
+                        onChange={(event) => {
+                          clearActiveCertificateEditorTarget();
+                          updateLayoutSetting("fontFamily", event.target.value);
+                        }}
                         className={`${HEADER_SELECT_CLASS} mt-2 w-full`}
                         disabled={Boolean(serviceLayoutPreset?.fontFamily)}
                       >
@@ -2414,7 +2588,11 @@ export default function EditCertificate() {
                       <span className={LABEL_CLASS}>Page Size</span>
                       <select
                         value={template.pageSize}
-                        onChange={(event) => updateLayoutSetting("pageSize", event.target.value)}
+                        onMouseDown={clearActiveCertificateEditorTarget}
+                        onChange={(event) => {
+                          clearActiveCertificateEditorTarget();
+                          updateLayoutSetting("pageSize", event.target.value);
+                        }}
                         className={`${HEADER_SELECT_CLASS} mt-2 w-full`}
                         disabled={Boolean(serviceLayoutPreset?.pageSize)}
                       >
@@ -2429,7 +2607,11 @@ export default function EditCertificate() {
                       <span className={LABEL_CLASS}>Theme</span>
                       <select
                         value={template.themeKey || DEFAULT_CERTIFICATE_THEME_KEY}
-                        onChange={(event) => updateLayoutSetting("themeKey", event.target.value)}
+                        onMouseDown={clearActiveCertificateEditorTarget}
+                        onChange={(event) => {
+                          clearActiveCertificateEditorTarget();
+                          updateLayoutSetting("themeKey", event.target.value);
+                        }}
                         className={`${HEADER_SELECT_CLASS} mt-2 w-full`}
                       >
                         {CERTIFICATE_THEME_OPTIONS.map((option) => (
@@ -2455,14 +2637,17 @@ export default function EditCertificate() {
                         onMouseDown={beginPlaceholderToolbarInteraction}
                         onChange={(event) => {
                           setSelectedPlaceholderToken(event.target.value);
-                          if (editingTarget) {
-                            restoreInlineEditorFocus();
-                          }
                         }}
-                        onBlur={() => {
-                          if (editingTarget && preserveInlineEditorRef.current) {
-                            restoreInlineEditorFocus();
+                        onBlur={(event) => {
+                          const nextTarget = event.relatedTarget;
+                          if (
+                            nextTarget instanceof HTMLElement &&
+                            placeholderToolbarRef.current?.contains(nextTarget)
+                          ) {
+                            return;
                           }
+
+                          endPlaceholderToolbarInteraction();
                         }}
                         className={`${HEADER_SELECT_CLASS} mt-2 w-full`}
                       >
@@ -2589,6 +2774,7 @@ export default function EditCertificate() {
                   {hasMainContent ? (
                     isEditingBlock("content") ? (
                       <textarea
+                        autoFocus
                         ref={inlineEditorRef}
                         value={template.contentBlock.text}
                         onChange={(event) => updateBlock("text", event.target.value)}
@@ -2608,17 +2794,15 @@ export default function EditCertificate() {
                           width: editingBounds?.width ? `${editingBounds.width}px` : contentStyle.width,
                           minHeight: editingBounds?.height ? `${editingBounds.height}px` : undefined,
                           boxSizing: "border-box",
+                          caretColor: certificate.contentBlock.color || "#000000",
                           overflow: "hidden",
                         }}
                       />
                     ) : (
                       <div
-                        onPointerDown={handleDragStart("content")}
                         onDoubleClick={startInlineEditing("content")}
                         data-drag-key={getDragKey("content")}
-                        className={`absolute z-10 select-none whitespace-pre-wrap break-words px-2 py-2 font-sans leading-[1.55] cursor-grab touch-none active:cursor-grabbing ${
-                          dragTarget === getDragKey("content") ? "outline outline-2 outline-slate-300/70" : ""
-                        }`}
+                        className="absolute z-10 select-none whitespace-pre-wrap break-words px-2 py-2 font-sans leading-[1.55]"
                         style={contentStyle}
                       >
                         {certificate.contentBlock.text}
@@ -2630,6 +2814,7 @@ export default function EditCertificate() {
                     isEditingBlock("text", block.id) ? (
                       <textarea
                         key={block.id}
+                        autoFocus
                         ref={inlineEditorRef}
                         value={block.text}
                         onChange={(event) => updateTextBlock(block.id, "text", event.target.value)}
@@ -2649,18 +2834,16 @@ export default function EditCertificate() {
                         width: editingBounds?.width ? `${editingBounds.width}px` : `${block.width}px`,
                         minHeight: editingBounds?.height ? `${editingBounds.height}px` : undefined,
                         boxSizing: "border-box",
+                        caretColor: block.color || "#000000",
                         overflow: "hidden",
                       }}
                     />
                   ) : (
                       <div
                         key={block.id}
-                        onPointerDown={handleDragStart("text", block.id)}
                         onDoubleClick={startInlineEditing("text", block.id)}
                         data-drag-key={getDragKey("text", block.id)}
-                        className={`absolute z-10 select-none whitespace-pre-wrap break-words px-2 py-2 font-sans leading-[1.45] cursor-grab touch-none active:cursor-grabbing ${
-                          dragTarget === getDragKey("text", block.id) ? "outline outline-2 outline-slate-300/70" : ""
-                        }`}
+                        className="absolute z-10 select-none whitespace-pre-wrap break-words px-2 py-2 font-sans leading-[1.45]"
                         style={getTextBlockStyle(block)}
                       >
                         {block.text || getDefaultAddedTextLabel(index)}
@@ -2679,8 +2862,8 @@ export default function EditCertificate() {
                       <div
                         key={block.id}
                         data-drag-key={getDragKey("signature", block.id)}
-                        onPointerDown={handleDragStart("signature", block.id)}
-                        className={`absolute z-10 select-none rounded-xl px-2 py-2 text-center font-sans cursor-grab touch-none active:cursor-grabbing ${
+                        onPointerDown={handleImageOnlyDragStart("signature", block.id)}
+                        className={`absolute z-10 select-none rounded-xl px-2 py-2 text-center font-sans ${
                           dragTarget === getDragKey("signature", block.id) ? "outline outline-2 outline-slate-300/70" : ""
                         }`}
                         style={getSignatureStyle(block)}
@@ -2689,7 +2872,7 @@ export default function EditCertificate() {
                           <img
                             src={block.signatureSrc}
                             alt=""
-                            className="absolute left-1/2 max-w-[92%] -translate-x-1/2 object-contain"
+                            className="absolute left-1/2 max-w-[92%] -translate-x-1/2 cursor-grab object-contain touch-none active:cursor-grabbing"
                             style={{
                               bottom: `calc(100% + ${signatureImageBottomOffset}px)`,
                               height: `${getSignatureImageHeight(block)}px`,

@@ -7,12 +7,11 @@ import {
   FEATURE_SECTIONS,
   getRoleKeyFromId,
   getFeatureDefinition,
+  getMessagingTargetRoleKey,
   createFeaturePermissions,
   featureUsesIndependentAccess,
   mergePermissions,
 } from "../../utils/module_permissions";
-
-const VISIBLE_FEATURE_SECTIONS = FEATURE_SECTIONS;
 const ROLE_EDITING_STORAGE_KEY = "monitoring:permission-role-editing-states";
 const ROLE_CATALOG_STORAGE_KEY = "monitoring:permission-role-catalog";
 
@@ -275,10 +274,50 @@ function permissionsHaveUnsavedChanges(currentPermissions, savedPermissions) {
   );
 }
 
-function applyBulkRoleAccess(base, roleKey, enabled, roleKeys) {
+function buildVisibleFeatureSections(roleKeys) {
+  return FEATURE_SECTIONS.map((section) => ({
+    ...section,
+    features: section.features.map((feature) => getFeatureDefinition(feature.key, roleKeys) || feature),
+  }));
+}
+
+function buildRoleLabelMap(roleColumns) {
+  return roleColumns.reduce((map, role) => {
+    const roleKey = String(role?.key || "").trim();
+    if (roleKey) {
+      map[roleKey] = String(role?.label || "").trim() || normalizeRoleLabel(roleKey);
+    }
+    return map;
+  }, {});
+}
+
+function getActionDisplayCopy(featureKey, action, roleLabelMap) {
+  if (featureKey !== "messaging") {
+    return {
+      label: action?.label || "Action",
+      description: action?.description || "",
+    };
+  }
+
+  const targetRoleKey = String(action?.targetRoleKey || getMessagingTargetRoleKey(action?.key) || "").trim();
+  const targetRoleLabel = targetRoleKey ? roleLabelMap[targetRoleKey] || normalizeRoleLabel(targetRoleKey) : "";
+  if (!targetRoleLabel) {
+    return {
+      label: action?.label || "Action",
+      description: action?.description || "",
+    };
+  }
+
+  return {
+    label: `Can Message ${targetRoleLabel}`,
+    description: `Allow the role to start and continue conversations with ${targetRoleLabel} users.`,
+  };
+}
+
+function applyBulkRoleAccess(base, roleKey, enabled, roleKeys, featureSections) {
   const next = { ...base };
 
-  for (const section of FEATURE_SECTIONS) {
+  for (const section of featureSections) {
     for (const feature of section.features) {
       const defaultFeaturePermissions = createFeaturePermissions(feature, roleKeys);
       const featurePermissions = next[feature.key] || defaultFeaturePermissions;
@@ -304,8 +343,8 @@ function applyBulkRoleAccess(base, roleKey, enabled, roleKeys) {
   return next;
 }
 
-function countEnabledPermissionsForRole(permissions, roleKey) {
-  return VISIBLE_FEATURE_SECTIONS.reduce((count, section) => {
+function countEnabledPermissionsForRole(permissions, roleKey, featureSections) {
+  return featureSections.reduce((count, section) => {
     return (
       count +
       section.features.reduce((sectionCount, feature) => {
@@ -334,6 +373,8 @@ export default function PermissionsPage() {
     [availableRoles, draftPermissions, permissions]
   );
   const roleKeys = useMemo(() => roleColumns.map((role) => role.key), [roleColumns]);
+  const visibleFeatureSections = useMemo(() => buildVisibleFeatureSections(roleKeys), [roleKeys]);
+  const roleLabelMap = useMemo(() => buildRoleLabelMap(roleColumns), [roleColumns]);
 
   useEffect(() => {
     if (!permissions) {
@@ -416,7 +457,7 @@ export default function PermissionsPage() {
   }, [roleColumns, roleEditingStates]);
 
   const togglePermission = (featureKey, roleKey) => {
-    const featureDefinition = getFeatureDefinition(featureKey);
+    const featureDefinition = getFeatureDefinition(featureKey, roleKeys);
     if (!featureDefinition) {
       return;
     }
@@ -474,12 +515,12 @@ export default function PermissionsPage() {
       if (!current) {
         return current;
       }
-      return applyBulkRoleAccess(current, roleKey, enabled, roleKeys);
+      return applyBulkRoleAccess(current, roleKey, enabled, roleKeys, visibleFeatureSections);
     });
   };
 
   const toggleActionPermission = (featureKey, actionKey, roleKey) => {
-    const featureDefinition = getFeatureDefinition(featureKey);
+    const featureDefinition = getFeatureDefinition(featureKey, roleKeys);
     const actionDefinition = featureDefinition?.actions?.find((action) => action.key === actionKey);
 
     if (!featureDefinition || !actionDefinition) {
@@ -675,7 +716,7 @@ export default function PermissionsPage() {
 
       <div className="flex flex-col gap-6">
         {roleColumns.map((role) => {
-          const enabledCount = countEnabledPermissionsForRole(currentPermissions, role.key);
+          const enabledCount = countEnabledPermissionsForRole(currentPermissions, role.key, visibleFeatureSections);
           const isRoleEditingEnabled = roleEditingStates[role.key] !== false;
           const isRoleSaving = savingRole === role.key;
 
@@ -742,7 +783,7 @@ export default function PermissionsPage() {
                 className="grid items-start gap-6 p-5"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
               >
-                {VISIBLE_FEATURE_SECTIONS.map((section) => (
+                {visibleFeatureSections.map((section) => (
                   <div key={section.label} className="min-h-0 min-w-0">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">{section.label}</div>
 
@@ -812,6 +853,7 @@ export default function PermissionsPage() {
                                     <div className="mt-3 space-y-2">
                                       {feature.actions.map((action) => {
                                         const actionChecked = Boolean(currentPermissions?.[feature.key]?.actions?.[action.key]?.[role.key]);
+                                        const actionCopy = getActionDisplayCopy(feature.key, action, roleLabelMap);
 
                                         return (
                                           <label
@@ -831,8 +873,8 @@ export default function PermissionsPage() {
                                             />
 
                                             <span className="min-w-0">
-                                              <span className="block text-sm font-medium text-slate-900">{action.label}</span>
-                                              <span className="mt-0.5 block text-xs text-slate-500">{action.description}</span>
+                                              <span className="block text-sm font-medium text-slate-900">{actionCopy.label}</span>
+                                              <span className="mt-0.5 block text-xs text-slate-500">{actionCopy.description}</span>
                                             </span>
                                           </label>
                                         );

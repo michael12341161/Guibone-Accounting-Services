@@ -291,6 +291,76 @@ function mapUserRow(array $row): array {
     ];
 }
 
+function fetchUserListRowById(PDO $conn, int $userId, string $profileImageSelect): ?array {
+    if ($userId <= 0) {
+        return null;
+    }
+
+    $stmt = $conn->prepare(
+        'SELECT u.User_id AS id,
+                u.Username AS username,
+                u.Email AS email,
+                ' . $profileImageSelect . ',
+                u.Role_id AS role_id,
+                u.Employment_status_id AS employment_status_id,
+                r.Role_name AS role,
+                c.Client_ID AS client_id,
+                c.First_name AS client_first_name,
+                c.Middle_name AS client_middle_name,
+                c.Last_name AS client_last_name,
+                c.Date_of_Birth AS client_date_of_birth,
+                c.Phone AS client_phone,
+                c.Status_id AS client_status_id,
+                s.Status_name AS client_status_name,
+                es.Status_name AS employment_status_name,
+                u.first_name AS profile_first_name,
+                u.middle_name AS profile_middle_name,
+                u.last_name AS profile_last_name,
+                u.date_of_birth AS profile_date_of_birth,
+                u.phone_number AS profile_phone_number,
+                u.specialization_type_ID AS profile_specialization_type_id,
+                st.Name AS profile_specialization_type_name,
+                u.sss_account_number AS profile_sss_account_number,
+                u.pagibig_account_number AS profile_pagibig_account_number,
+                u.philhealth_account_number AS profile_philhealth_account_number
+         FROM user u
+         LEFT JOIN role r ON r.Role_id = u.Role_id
+         LEFT JOIN status es ON es.Status_id = u.Employment_status_id
+         LEFT JOIN client c ON c.User_id = u.User_id
+         LEFT JOIN status s ON s.Status_id = c.Status_id
+         LEFT JOIN specialization_type st ON st.specialization_type_ID = u.specialization_type_ID
+         WHERE u.User_id = :user_id
+         LIMIT 1'
+    );
+    $stmt->execute([':user_id' => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function attachUserListSpecializationDetails(PDO $conn, array $row): array {
+    $userId = isset($row['id']) ? (int)$row['id'] : 0;
+    $assignedIds = $userId > 0 ? employeeSpecializationGetUserAssignments($conn, $userId) : [];
+    $specializationId = employeeSpecializationNormalizeId($row['profile_specialization_type_id'] ?? null);
+    if (empty($assignedIds) && $specializationId !== null) {
+        $assignedIds = [$specializationId];
+    }
+
+    $assignedNames = [];
+    foreach ($assignedIds as $assignedId) {
+        $specializationRow = findSpecializationTypeById($conn, $assignedId);
+        if ($specializationRow !== null) {
+            $assignedNames[] = trim((string)($specializationRow['name'] ?? ''));
+        }
+    }
+
+    $row['_specialization_assignments'] = array_values($assignedIds);
+    $row['_specialization_names'] = array_values(array_filter($assignedNames, 'strlen'));
+    $row['_specialization_service_ids'] = employeeSpecializationResolveServiceIds($conn, $assignedIds);
+    $row['_specialization_service_names'] = employeeSpecializationResolveServiceNames($conn, $assignedIds);
+
+    return $row;
+}
+
 function normalizeUserListFilterValue($value): string {
     $normalized = preg_replace('/\s+/', ' ', trim((string)($value ?? '')));
     return strtolower((string)($normalized ?? ''));
@@ -311,6 +381,28 @@ function readUserListPositiveIntQueryParam(string $key, int $default, int $min =
     }
 
     return $value;
+}
+
+function readUserListRequestedIdQueryParam(array $keys): int {
+    foreach ($keys as $key) {
+        $raw = trim((string)($_GET[$key] ?? ''));
+        if ($raw === '') {
+            continue;
+        }
+
+        if (!ctype_digit($raw)) {
+            respond(422, ['success' => false, 'message' => $key . ' must be a positive integer']);
+        }
+
+        $value = (int)$raw;
+        if ($value <= 0) {
+            respond(422, ['success' => false, 'message' => $key . ' must be a positive integer']);
+        }
+
+        return $value;
+    }
+
+    return 0;
 }
 
 function buildUserListStatusSqlExpression(): string {
@@ -524,6 +616,32 @@ try {
         [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY],
         ['user-management']
     );
+    $requestedUserId = readUserListRequestedIdQueryParam(['user_id']);
+    if ($requestedUserId > 0) {
+        $sessionUserId = isset($sessionUser['id']) ? (int)$sessionUser['id'] : 0;
+        if (!$canViewAllUsers && $requestedUserId !== $sessionUserId) {
+            monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
+        }
+
+        $row = fetchUserListRowById($conn, $requestedUserId, $profileImageSelect);
+        if (!$row) {
+            respond(404, ['success' => false, 'message' => 'User not found']);
+        }
+
+        $user = mapUserRow(attachUserListSpecializationDetails($conn, $row));
+        respond(200, [
+            'success' => true,
+            'user' => $user,
+            'users' => [$user],
+            'meta' => [
+                'total' => 1,
+                'page' => 1,
+                'page_size' => 1,
+                'total_pages' => 1,
+            ],
+        ]);
+    }
+
     $specializationMetadata = buildUserListSpecializationMetadata($conn);
     $statusSqlExpression = buildUserListStatusSqlExpression();
     $search = trim((string)($_GET['search'] ?? ''));
