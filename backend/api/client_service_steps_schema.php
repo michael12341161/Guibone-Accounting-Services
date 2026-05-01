@@ -22,6 +22,6 @@ function monitoring_ensure_client_service_steps_column_supports_long_text(PDO $c
 
     throw new RuntimeException(
         'Database schema is incompatible for task service steps. Column `Steps` on `client_services` must be a TEXT-like type. '
-        . 'Import monitoring/monitoring.sql or apply the required migration before using this endpoint.'
+        . 'Import monitoring/database/monitoring.sql before using this endpoint.'
     );
 }

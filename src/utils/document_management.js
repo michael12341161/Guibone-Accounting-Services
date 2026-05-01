@@ -8,29 +8,40 @@ const DOCUMENT_VALIDITY_RULES = {
     durationOptions: [{ days: 365, label: "1 year" }],
     durationSummary: "365 days",
   },
-  lgu: {
-    key: "lgu",
-    label: "1 year",
-    defaultDurationDays: 365,
-    durationOptions: [{ days: 365, label: "1 year" }],
-    durationSummary: "365 days",
-  },
   dti: {
     key: "dti",
-    label: "1-5 years",
-    defaultDurationDays: 365,
-    durationOptions: [
-      { days: 365, label: "1 year" },
-      { days: 730, label: "2 years" },
-      { days: 1095, label: "3 years" },
-      { days: 1460, label: "4 years" },
-      { days: 1825, label: "5 years" },
-    ],
-    durationSummary: "365-1825 days",
+    label: "5 years",
+    defaultDurationDays: 1825,
+    durationOptions: [{ days: 1825, label: "5 years" }],
+    durationSummary: "1825 days",
   },
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DOCUMENT_DISPLAY_ORDER = [
+  "valid_id",
+  "birth_certificate",
+  "psa_birth_certificate",
+  "marriage_contract",
+  "business_permit",
+  "dti",
+  "sec",
+  "bir",
+  "philhealth",
+  "pag_ibig",
+  "sss",
+];
+const DOCUMENT_DISPLAY_ORDER_INDEX = new Map(
+  DOCUMENT_DISPLAY_ORDER.map((key, index) => [key, index])
+);
+
+function getDocumentSortKey(value) {
+  const key = normalizeDocumentKey(value);
+  if (key === "validid") return "valid_id";
+  if (key === "psa_birth_certificate") return "birth_certificate";
+  if (key === "pagibig") return "pag_ibig";
+  return key;
+}
 
 export function normalizeDocumentKey(value) {
   const raw = String(value || "")
@@ -40,18 +51,22 @@ export function normalizeDocumentKey(value) {
     .replace(/^_+|_+$/g, "");
 
   if (raw === "psa_birthcertificate") return "psa_birth_certificate";
+  if (raw === "pagibig") return "pag_ibig";
   return raw;
 }
 
 export function formatDocumentTypeLabel(value) {
-  const key = normalizeDocumentKey(value);
+  const key = getDocumentSortKey(value);
   if (key === "valid_id" || key === "validid") return "Valid ID";
   if (key === "birth_certificate" || key === "psa_birth_certificate") return "PSA Birth Certificate";
   if (key === "marriage_contract") return "Marriage Contract (if applicable)";
   if (key === "business_permit") return "Business Permit";
   if (key === "dti") return "DTI";
   if (key === "sec") return "SEC";
-  if (key === "lgu") return "LGU";
+  if (key === "bir") return "BIR";
+  if (key === "philhealth") return "PhilHealth";
+  if (key === "pag_ibig") return "Pag-IBIG";
+  if (key === "sss") return "SSS";
 
   return String(value || "")
     .trim()
@@ -203,11 +218,22 @@ export function formatDocumentRemainingDays(expirationDate, referenceDate = new 
 
 function resolveDocumentDurationDays(name, document) {
   const storedDurationDays = parsePositiveInteger(document?.duration_days);
-  if (storedDurationDays) return storedDurationDays;
+  const durationOptions = getDocumentDurationOptions(name);
+  if (
+    storedDurationDays &&
+    (durationOptions.length === 0 || durationOptions.some((option) => option.days === storedDurationDays))
+  ) {
+    return storedDurationDays;
+  }
 
   const rule = getDocumentValidityRule(name);
   const fallbackDurationDays = parsePositiveInteger(rule?.defaultDurationDays);
   return fallbackDurationDays || null;
+}
+
+function shouldRecalculateExpirationDate(document, resolvedDurationDays) {
+  const storedDurationDays = parsePositiveInteger(document?.duration_days);
+  return Boolean(storedDurationDays && resolvedDurationDays && storedDurationDays !== resolvedDurationDays);
 }
 
 function resolveDocumentStatus(name, document, isUploaded, isExpired) {
@@ -240,6 +266,18 @@ function compareDocumentTypes(left, right) {
     return leftBusinessPermit ? -1 : 1;
   }
 
+  const leftRank = DOCUMENT_DISPLAY_ORDER_INDEX.get(
+    getDocumentSortKey(left?.name || left?.document_type_name || "")
+  );
+  const rightRank = DOCUMENT_DISPLAY_ORDER_INDEX.get(
+    getDocumentSortKey(right?.name || right?.document_type_name || "")
+  );
+  if (leftRank !== undefined || rightRank !== undefined) {
+    if (leftRank === undefined) return 1;
+    if (rightRank === undefined) return -1;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+  }
+
   const leftId = Number(left?.id || left?.document_type_id || 0);
   const rightId = Number(right?.id || right?.document_type_id || 0);
   if (leftId && rightId && leftId !== rightId) {
@@ -266,8 +304,11 @@ export function buildDocumentSlots(documentTypes = [], uploadedDocuments = [], r
     const name = String(documentType?.name || document?.document_type_name || "document").trim();
     const isUploaded = Boolean(document?.filepath);
     const durationDays = resolveDocumentDurationDays(name, document);
+    const storedExpirationDate = String(document?.expiration_date || "").trim();
     const expirationDate =
-      String(document?.expiration_date || "").trim() || calculateExpirationDate(document?.uploaded_at, durationDays);
+      storedExpirationDate && !shouldRecalculateExpirationDate(document, durationDays)
+        ? storedExpirationDate
+        : calculateExpirationDate(document?.uploaded_at, durationDays);
     const isExpired = isDocumentExpired(expirationDate, referenceDate);
     const remainingDays = getDocumentRemainingDays(expirationDate, referenceDate);
     const remainingDurationLabel = formatDocumentRemainingDays(expirationDate, referenceDate);
@@ -299,8 +340,11 @@ export function buildDocumentSlots(documentTypes = [], uploadedDocuments = [], r
 
     const name = String(document?.document_type_name || `document_${mapKey}`).trim();
     const durationDays = resolveDocumentDurationDays(name, document);
+    const storedExpirationDate = String(document?.expiration_date || "").trim();
     const expirationDate =
-      String(document?.expiration_date || "").trim() || calculateExpirationDate(document?.uploaded_at, durationDays);
+      storedExpirationDate && !shouldRecalculateExpirationDate(document, durationDays)
+        ? storedExpirationDate
+        : calculateExpirationDate(document?.uploaded_at, durationDays);
     const isExpired = isDocumentExpired(expirationDate, referenceDate);
     const remainingDays = getDocumentRemainingDays(expirationDate, referenceDate);
     const remainingDurationLabel = formatDocumentRemainingDays(expirationDate, referenceDate);

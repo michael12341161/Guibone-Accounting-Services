@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
+require_once __DIR__ . '/service_type_helpers.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -81,25 +82,24 @@ function isConsultationPlaceholder(string $value): bool {
     return $normalized === '' || $normalized === 'consultation';
 }
 
-function resolveConsultationService(PDO $conn, string $serviceName): array {
+function resolveConsultationService(PDO $conn, string $serviceName, int $serviceId = 0): array {
     $name = trim($serviceName);
-    if ($name === '' || isConsultationPlaceholder($name)) {
-        return [null, ''];
+    if (($serviceId <= 0 && $name === '') || isConsultationPlaceholder($name)) {
+        return [null, '', null, ''];
     }
 
-    $stmt = $conn->prepare('SELECT Services_type_Id, Name FROM services_type WHERE Name = :n LIMIT 1');
-    $stmt->execute([':n' => $name]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$row) {
-        return [null, $name];
+    $service = monitoring_find_service_type($conn, $name, $serviceId, false);
+    if ($service === null) {
+        return [null, $name, null, $name];
     }
 
-    return [(int)$row['Services_type_Id'], trim((string)$row['Name'])];
+    return [(int)$service['id'], (string)$service['name'], $service['description'], (string)$service['label']];
 }
 
 function resolveDefaultConsultationService(PDO $conn): array {
+    $labelSql = monitoring_service_type_label_sql();
     $stmt = $conn->query(
-        "SELECT Services_type_Id, Name
+        "SELECT Services_type_Id, Name, description, {$labelSql} AS service_label
          FROM services_type
          WHERE Name IS NOT NULL
            AND TRIM(Name) <> ''
@@ -110,10 +110,15 @@ function resolveDefaultConsultationService(PDO $conn): array {
     );
     $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
     if (!$row) {
-        return [null, ''];
+        return [null, '', null, ''];
     }
 
-    return [(int)$row['Services_type_Id'], trim((string)$row['Name'])];
+    $service = monitoring_service_type_from_row($row);
+    if ($service === null) {
+        return [null, '', null, ''];
+    }
+
+    return [(int)$service['id'], (string)$service['name'], $service['description'], (string)$service['label']];
 }
 
 function resolveStatusId(PDO $conn, string $group, $names, int $fallback): int {
@@ -159,7 +164,9 @@ try {
     $clientId = isset($data['client_id']) ? (int)$data['client_id'] : 0;
     $clientUsername = isset($data['client_username']) ? trim((string)$data['client_username']) : '';
     $serviceInput = isset($data['service']) ? trim((string)$data['service']) : '';
+    $serviceIdInput = isset($data['service_id']) ? (int)$data['service_id'] : 0;
     $consultationServiceInput = isset($data['consultation_service']) ? trim((string)$data['consultation_service']) : '';
+    $consultationServiceIdInput = isset($data['consultation_service_id']) ? (int)$data['consultation_service_id'] : 0;
     $meetingType = isset($data['meeting_type']) ? trim((string)$data['meeting_type']) : '';
     $date = isset($data['date']) ? trim((string)$data['date']) : '';
     $time = isset($data['time']) ? trim((string)$data['time']) : '';
@@ -218,9 +225,10 @@ try {
 
     $selectedConsultationService = $consultationServiceInput !== '' ? $consultationServiceInput : $serviceInput;
     if (isConsultationPlaceholder($selectedConsultationService)) {
-        [$serviceId, $serviceName] = resolveDefaultConsultationService($conn);
+        [$serviceId, $serviceName, $serviceDescription, $serviceLabel] = resolveDefaultConsultationService($conn);
     } else {
-        [$serviceId, $serviceName] = resolveConsultationService($conn, $selectedConsultationService);
+        $selectedServiceId = $consultationServiceIdInput > 0 ? $consultationServiceIdInput : $serviceIdInput;
+        [$serviceId, $serviceName, $serviceDescription, $serviceLabel] = resolveConsultationService($conn, $selectedConsultationService, $selectedServiceId);
     }
     if ($serviceId === null || $serviceName === '') {
         respond(422, ['success' => false, 'message' => 'Please choose a valid consultation service.']);
@@ -267,7 +275,7 @@ try {
         $descriptionParts[] = '[Appointment_Type] ' . $meetingType;
     }
     if ($serviceName !== '') {
-        $descriptionParts[] = '[Service] ' . $serviceName;
+        $descriptionParts[] = '[Service] ' . $serviceLabel;
     }
     $descriptionParts[] = '[Time] ' . $time;
     if ($notes !== '') {
@@ -318,11 +326,14 @@ try {
             'Action_by' => null,
             'Services_type_Id' => $serviceId,
             'service_id' => $serviceId,
-            'consultation_service' => $serviceName,
-            'Consultation_Service' => $serviceName,
-            'name' => $serviceName,
-            'Name' => $serviceName,
-            'service' => $serviceName,
+            'consultation_service' => $serviceLabel,
+            'Consultation_Service' => $serviceLabel,
+            'name' => $serviceLabel,
+            'Name' => $serviceLabel,
+            'service' => $serviceLabel,
+            'service_label' => $serviceLabel,
+            'raw_service_name' => $serviceName,
+            'service_description' => $serviceDescription,
             'date' => $date,
             'Date' => $date,
             'time' => $time,

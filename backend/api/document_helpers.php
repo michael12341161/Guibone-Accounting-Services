@@ -9,7 +9,10 @@ function monitoring_document_known_types(): array
         4 => 'business_permit',
         5 => 'dti',
         6 => 'sec',
-        7 => 'lgu',
+        7 => 'bir',
+        8 => 'sss',
+        9 => 'philhealth',
+        10 => 'pag_ibig',
     ];
 }
 
@@ -116,15 +119,10 @@ function monitoring_document_expiration_profiles(): array
             'default_duration_days' => 365,
             'allowed_duration_days' => [365],
         ],
-        'lgu' => [
-            'label' => '1 year',
-            'default_duration_days' => 365,
-            'allowed_duration_days' => [365],
-        ],
         'dti' => [
-            'label' => '1-5 years',
-            'default_duration_days' => 365,
-            'allowed_duration_days' => [365, 730, 1095, 1460, 1825],
+            'label' => '5 years',
+            'default_duration_days' => 1825,
+            'allowed_duration_days' => [1825],
         ],
     ];
 }

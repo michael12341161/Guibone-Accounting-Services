@@ -297,13 +297,13 @@ export const FEATURE_SECTIONS = [
       {
         key: "documents",
         label: "Documents",
-        description: "Manage Business Permit, DTI, SEC, and LGU files for client businesses.",
+        description: "Manage Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files for client businesses.",
         defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
         actions: [
           {
             key: "upload",
             label: "Can Upload",
-            description: "Allow the role to upload or replace Business Permit, DTI, SEC, and LGU files.",
+            description: "Allow the role to upload or replace Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files.",
             defaultAccess: { admin: true, secretary: true, accountant: false, client: false },
           },
           {

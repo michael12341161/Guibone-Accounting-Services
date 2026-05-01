@@ -51,7 +51,10 @@ const PROCESSING_DOCUMENT_OPTIONS = [
   { value: "business_permit", label: "Business Permit" },
   { value: "dti", label: "DTI" },
   { value: "sec", label: "SEC" },
-  { value: "lgu", label: "LGU" },
+  { value: "bir", label: "BIR" },
+  { value: "philhealth", label: "PhilHealth" },
+  { value: "pag_ibig", label: "Pag-IBIG" },
+  { value: "sss", label: "SSS" },
 ];
 const PROCESSING_DOCUMENT_KEYS = new Set(
   PROCESSING_DOCUMENT_OPTIONS.map((option) => option.value)

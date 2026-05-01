@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
+require_once __DIR__ . '/service_type_helpers.php';
 require_once __DIR__ . '/task_workload_settings_helper.php';
 require_once __DIR__ . '/task_deadline_monitor.php';
 require_once __DIR__ . '/employee_specialization.php';
@@ -435,6 +436,10 @@ try {
     if ($serviceNameInput === '' && isset($data['service'])) {
         $serviceNameInput = trim((string)$data['service']);
     }
+    if ($serviceNameInput === '' && isset($data['service_name'])) {
+        $serviceNameInput = trim((string)$data['service_name']);
+    }
+    $serviceIdInput = isset($data['service_id']) ? (int)$data['service_id'] : 0;
     $accountantId = isset($data['accountant_id']) ? (int)$data['accountant_id'] : 0;
     $partnerId = isset($data['partner_id']) ? (int)$data['partner_id'] : 0;
     $deadlineInput = isset($data['deadline']) ? trim((string)$data['deadline']) : '';
@@ -481,27 +486,14 @@ try {
         $description = implode("\n", $next);
     }
 
-    $serviceId = 0;
-    $serviceName = $serviceNameInput;
-    if ($serviceNameInput !== '') {
-        $svc = $conn->prepare('SELECT Services_type_Id, Name FROM services_type WHERE Name = :name LIMIT 1');
-        $svc->execute([':name' => $serviceNameInput]);
-        $row = $svc->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            $serviceId = (int)$row['Services_type_Id'];
-            $serviceName = (string)$row['Name'];
-        }
+    $service = monitoring_find_service_type($conn, $serviceNameInput, $serviceIdInput, true);
+    if ($service === null) {
+        respond(500, ['success' => false, 'message' => 'No services configured']);
     }
-
-    if ($serviceId <= 0) {
-        $first = $conn->query('SELECT Services_type_Id, Name FROM services_type ORDER BY Services_type_Id ASC LIMIT 1');
-        $row = $first ? $first->fetch(PDO::FETCH_ASSOC) : null;
-        if (!$row) {
-            respond(500, ['success' => false, 'message' => 'No services configured']);
-        }
-        $serviceId = (int)$row['Services_type_Id'];
-        $serviceName = (string)$row['Name'];
-    }
+    $serviceId = (int)$service['id'];
+    $serviceName = (string)$service['name'];
+    $serviceLabel = (string)$service['label'];
+    $serviceDescription = $service['description'];
 
     $serviceAccessState = monitoring_client_service_access_state($conn, $clientId);
     if (empty($serviceAccessState['business_registered']) && !monitoring_service_name_is_processing($serviceName)) {
@@ -672,7 +664,12 @@ try {
             'deadline' => $deadlineDate ?: ($deadlineInput !== '' ? $deadlineInput : null),
             'due_date' => $deadlineDate ?: ($deadlineInput !== '' ? $deadlineInput : null),
             'status' => 'Not Started',
-            'service' => $serviceName,
+            'service' => $serviceLabel,
+            'service_name' => $serviceLabel,
+            'service_label' => $serviceLabel,
+            'raw_service_name' => $serviceName,
+            'service_description' => $serviceDescription,
+            'service_id' => $serviceId,
             'client_id' => $clientId,
             'client_name' => $clientRow['client_name'] ?? null,
             'created_at' => $createdAtValue,

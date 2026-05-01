@@ -50,7 +50,10 @@ const FALLBACK_DOCUMENT_TYPES = [
   { id: 4, name: "business_permit" },
   { id: 5, name: "dti" },
   { id: 6, name: "sec" },
-  { id: 7, name: "lgu" },
+  { id: 7, name: "bir" },
+  { id: 9, name: "philhealth" },
+  { id: 10, name: "pag_ibig" },
+  { id: 8, name: "sss" },
 ];
 const CLIENT_LIST_PARAMS = { exclude_unapproved_self_signup: 1 };
 
@@ -200,7 +203,10 @@ function formatDocumentTypeLabel(value) {
   if (raw === "business_permit") return "Business Permit";
   if (raw === "dti") return "DTI";
   if (raw === "sec") return "SEC";
-  if (raw === "lgu") return "LGU";
+  if (raw === "bir") return "BIR";
+  if (raw === "philhealth") return "PhilHealth";
+  if (raw === "pag_ibig" || raw === "pagibig") return "Pag-IBIG";
+  if (raw === "sss") return "SSS";
   return raw
     .split("_")
     .filter(Boolean)

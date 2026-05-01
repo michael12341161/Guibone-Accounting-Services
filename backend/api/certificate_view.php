@@ -137,7 +137,7 @@ try {
             cert.delivered_at,
             cs.Client_ID AS task_client_id,
             COALESCE(cs.Steps, "") AS steps,
-            COALESCE(st.Name, cs.Name) AS service_name,
+            COALESCE(' . monitoring_service_type_label_sql('st') . ', cs.Name) AS service_name,
             CONCAT_WS(" ", c.First_name, c.Middle_name, c.Last_name) AS client_name,
             c.First_name AS first_name,
             c.Middle_name AS middle_name,

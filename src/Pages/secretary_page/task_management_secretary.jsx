@@ -1477,12 +1477,16 @@ export default function SecretaryTaskManagement() {
       // So:
       // - title: the task title (free text)
       // - status: the selected service name (must be a valid service)
+      const selectedServiceRecord = (Array.isArray(services) ? services : []).find(
+        (service) => String(service?.name || "").trim() === String(form.service_name || "").trim()
+      );
       const payload = {
         client_id: parseInt(selectedClientId, 10),
         title: form.title,
         description: descWithPriority,
         deadline: form.due_date || null,
         status: form.service_name || "",
+        service_id: selectedServiceRecord?.id ? Number(selectedServiceRecord.id) : undefined,
         accountant_id: form.accountant_id ? parseInt(form.accountant_id, 10) : undefined,
         partner_id: selectedAssigneeIsSecretary && form.partner_id ? parseInt(form.partner_id, 10) : 0,
       };

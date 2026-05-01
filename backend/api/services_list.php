@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
+require_once __DIR__ . '/service_type_helpers.php';
 require_once __DIR__ . '/service_bundle_settings_helper.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
@@ -36,7 +37,9 @@ try {
         ? $bundleSettings['services']
         : [];
 
-    $sql = "SELECT Services_type_Id AS id, Name AS name
+    $sql = "SELECT Services_type_Id AS id,
+                   Name AS service_name,
+                   description
             FROM services_type
             WHERE Name IS NOT NULL AND TRIM(Name) <> ''
             ORDER BY Services_type_Id ASC";
@@ -47,7 +50,7 @@ try {
     $services = [];
     foreach ($rows as $row) {
         $serviceId = isset($row['id']) ? (int)$row['id'] : 0;
-        $serviceName = isset($row['name']) ? trim((string)$row['name']) : '';
+        $serviceName = isset($row['service_name']) ? trim((string)$row['service_name']) : '';
         if ($serviceId <= 0 || $serviceName === '') {
             continue;
         }
@@ -58,12 +61,12 @@ try {
             continue;
         }
 
-        $services[] = [
-            'id' => $serviceId,
-            'name' => $serviceName,
-            'disabled' => $disabled,
+        $payload = monitoring_service_type_payload($row, $disabled, [
             'bundle_steps' => monitoring_normalize_service_bundle_steps($serviceConfig['bundle_steps'] ?? []),
-        ];
+        ]);
+        if ($payload !== null) {
+            $services[] = $payload;
+        }
     }
 
     $effectiveClientId = 0;
@@ -92,12 +95,16 @@ try {
 
         if (!$businessRegistered) {
             $services = array_values(array_filter($services, function ($service) {
-                return monitoring_service_name_is_processing(isset($service['name']) ? (string)$service['name'] : '');
+                return monitoring_service_name_is_processing(isset($service['service_name']) ? (string)$service['service_name'] : (string)($service['name'] ?? ''));
             }));
             if (count($services) === 0) {
                 $services = [[
                     'id' => null,
                     'name' => 'Processing',
+                    'service_name' => 'Processing',
+                    'raw_name' => 'Processing',
+                    'service_label' => 'Processing',
+                    'description' => null,
                     'disabled' => false,
                     'bundle_steps' => [],
                 ]];

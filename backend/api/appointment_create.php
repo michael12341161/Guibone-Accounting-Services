@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
+require_once __DIR__ . '/service_type_helpers.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -77,23 +78,18 @@ function resolveClientId(PDO $conn, int $clientId, string $clientUsername): int 
     return 0;
 }
 
-function resolveService(PDO $conn, string $serviceName): array {
-    $name = trim($serviceName);
-    if ($name !== '') {
-        $stmt = $conn->prepare('SELECT Services_type_Id, Name FROM services_type WHERE Name = :n LIMIT 1');
-        $stmt->execute([':n' => $name]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return [(int)$row['Services_type_Id'], (string)$row['Name']];
-        }
+function resolveService(PDO $conn, string $serviceName, int $serviceId = 0): array {
+    $service = monitoring_find_service_type($conn, $serviceName, $serviceId, true);
+    if ($service === null) {
+        return [0, trim($serviceName), null, trim($serviceName)];
     }
 
-    $fallback = $conn->query('SELECT Services_type_Id, Name FROM services_type ORDER BY Services_type_Id ASC LIMIT 1');
-    $row = $fallback ? $fallback->fetch(PDO::FETCH_ASSOC) : null;
-    if (!$row) {
-        return [0, $name];
-    }
-    return [(int)$row['Services_type_Id'], (string)$row['Name']];
+    return [
+        (int)$service['id'],
+        (string)$service['name'],
+        $service['description'],
+        (string)$service['label'],
+    ];
 }
 
 function resolveStatusId(PDO $conn, string $group, $names, int $fallback): int {
@@ -143,7 +139,10 @@ function processingDocumentCatalog(): array {
         'business_permit' => 'Business Permit',
         'dti' => 'DTI',
         'sec' => 'SEC',
-        'lgu' => 'LGU',
+        'bir' => 'BIR',
+        'philhealth' => 'PhilHealth',
+        'pag_ibig' => 'Pag-IBIG',
+        'sss' => 'SSS',
     ];
 }
 
@@ -195,6 +194,7 @@ try {
     $clientId = isset($data['client_id']) ? (int)$data['client_id'] : 0;
     $clientUsername = isset($data['client_username']) ? trim((string)$data['client_username']) : '';
     $serviceInput = isset($data['service']) ? trim((string)$data['service']) : '';
+    $serviceIdInput = isset($data['service_id']) ? (int)$data['service_id'] : 0;
     $appointmentType = isset($data['appointment_type']) ? trim((string)$data['appointment_type']) : 'Service';
     $meetingType = isset($data['meeting_type']) ? trim((string)$data['meeting_type']) : '';
     $date = isset($data['date']) ? trim((string)$data['date']) : '';
@@ -242,7 +242,7 @@ try {
 
     $serviceAccessState = monitoring_client_service_access_state($conn, $resolvedClientId);
     $businessRegistered = !empty($serviceAccessState['business_registered']);
-    [$serviceId, $serviceName] = resolveService($conn, $serviceInput);
+    [$serviceId, $serviceName, $serviceDescription, $serviceLabel] = resolveService($conn, $serviceInput, $serviceIdInput);
     if ($serviceId <= 0) {
         respond(500, ['success' => false, 'message' => 'No services configured']);
     }
@@ -264,7 +264,7 @@ try {
     }
 
     $createdAtSeed = date('c');
-    $descriptionLines = ["[Service] {$serviceName}"];
+    $descriptionLines = ["[Service] {$serviceLabel}", "[Service_ID] {$serviceId}"];
     foreach ($processingDocuments as $documentLabel) {
         $descriptionLines[] = '[Processing_Document] ' . $documentLabel;
     }
@@ -347,8 +347,11 @@ try {
             'action_by' => null,
             'Action_by' => null,
             'service_id' => $serviceId,
-            'service' => $serviceName,
-            'service_name' => $serviceName,
+            'service' => $serviceLabel,
+            'service_name' => $serviceLabel,
+            'service_label' => $serviceLabel,
+            'raw_service_name' => $serviceName,
+            'service_description' => $serviceDescription,
             'appointment_type' => $appointmentType,
             'meeting_type' => $meetingType !== '' ? $meetingType : null,
             'processing_documents' => array_keys($processingDocuments),

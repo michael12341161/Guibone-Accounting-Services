@@ -46,14 +46,18 @@ function enrichDocumentRow(array $row, ?int $expiredStatusId = null): array
         $documentTypeName = (string)($knownTypes[$documentTypeId] ?? '');
     }
 
-    $durationDays = isset($row['duration_days']) ? (int)($row['duration_days'] ?? 0) : 0;
-    if ($durationDays <= 0) {
-        $resolvedDurationDays = monitoring_document_resolve_duration_days($documentTypeName);
-        $durationDays = $resolvedDurationDays !== null ? (int)$resolvedDurationDays : 0;
-    }
+    $storedDurationDays = isset($row['duration_days']) ? (int)($row['duration_days'] ?? 0) : 0;
+    $resolvedDurationDays = monitoring_document_resolve_duration_days(
+        $documentTypeName,
+        $storedDurationDays > 0 ? $storedDurationDays : null
+    );
+    $durationDays = $resolvedDurationDays !== null ? (int)$resolvedDurationDays : 0;
 
     $expirationDate = trim((string)($row['expiration_date'] ?? ''));
-    if ($expirationDate === '' && $durationDays > 0) {
+    $shouldRecalculateExpirationDate = $storedDurationDays > 0
+        && $durationDays > 0
+        && $storedDurationDays !== $durationDays;
+    if (($expirationDate === '' || $shouldRecalculateExpirationDate) && $durationDays > 0) {
         $expirationDate = (string)(monitoring_document_calculate_expiration_date($row['uploaded_at'] ?? null, $durationDays) ?? '');
     }
 

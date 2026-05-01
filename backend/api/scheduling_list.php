@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/service_type_helpers.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -156,7 +157,9 @@ try {
                s.Status_ID,
                {$actionSelect}
                st.Status_name,
-               sv.Name AS service_name,
+               sv.Name AS raw_service_name,
+               sv.description AS service_description,
+               " . monitoring_service_type_label_sql('sv') . " AS service_name,
                CONCAT_WS(' ', c.First_name, c.Middle_name, c.Last_name) AS Client_name
         FROM consultation s
         LEFT JOIN status st ON st.Status_id = s.Status_ID
@@ -212,12 +215,13 @@ try {
 
         $statusName = isset($row['Status_name']) ? (string)$row['Status_name'] : '';
         $status = statusLabel($statusName);
-        $serviceName = $selectedServiceName !== ''
-            ? $selectedServiceName
-            : (isset($row['service_name']) ? trim((string)$row['service_name']) : '');
+        $dbServiceName = isset($row['service_name']) ? trim((string)$row['service_name']) : '';
+        $serviceName = $dbServiceName !== '' ? $dbServiceName : $selectedServiceName;
         if ($serviceName === '') {
             $serviceName = 'Consultation';
         }
+        $rawServiceName = isset($row['raw_service_name']) ? trim((string)$row['raw_service_name']) : $serviceName;
+        $serviceDescription = isset($row['service_description']) ? trim((string)$row['service_description']) : '';
         $recordType = $typeName !== '' ? $typeName : 'Consultation';
         $createdAt = readDescriptionMetaValue($desc, 'CreatedAt');
 
@@ -265,6 +269,9 @@ try {
             'consultation_service' => $serviceName,
             'Name' => $serviceName,
             'service' => $serviceName,
+            'service_label' => $serviceName,
+            'raw_service_name' => $rawServiceName,
+            'service_description' => $serviceDescription !== '' ? $serviceDescription : null,
             'Type' => $recordType,
             'type' => $recordType,
             'record_kind' => 'consultation',

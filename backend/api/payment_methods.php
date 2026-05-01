@@ -25,6 +25,7 @@ function normalizePaymentMethodRow(array $row, bool $disabled = false): ?array
         'id' => $id,
         'name' => $name,
         'description' => $description !== '' ? $description : null,
+        'created_at' => isset($row['created_at']) ? (string)$row['created_at'] : null,
         'disabled' => $disabled,
     ];
 }
@@ -39,7 +40,7 @@ try {
     monitoring_require_schema_columns(
         $conn,
         'payment_type',
-        ['payment_type_ID', 'type_name', 'description'],
+        ['payment_type_ID', 'type_name', 'description', 'created_at'],
         'payment methods'
     );
 
@@ -51,7 +52,8 @@ try {
     $stmt = $conn->query(
         "SELECT payment_type_ID AS id,
                 type_name AS name,
-                description
+                description,
+                created_at
          FROM payment_type
          WHERE type_name IS NOT NULL
            AND TRIM(type_name) <> ''

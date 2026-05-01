@@ -25,14 +25,18 @@ function enrichWatchlistDocumentRow(array $row, ?int $expiredStatusId = null): a
         $documentTypeName = (string)($knownTypes[$documentTypeId] ?? '');
     }
 
-    $durationDays = isset($row['duration_days']) ? (int)($row['duration_days'] ?? 0) : 0;
-    if ($durationDays <= 0) {
-        $resolvedDurationDays = monitoring_document_resolve_duration_days($documentTypeName);
-        $durationDays = $resolvedDurationDays !== null ? (int)$resolvedDurationDays : 0;
-    }
+    $storedDurationDays = isset($row['duration_days']) ? (int)($row['duration_days'] ?? 0) : 0;
+    $resolvedDurationDays = monitoring_document_resolve_duration_days(
+        $documentTypeName,
+        $storedDurationDays > 0 ? $storedDurationDays : null
+    );
+    $durationDays = $resolvedDurationDays !== null ? (int)$resolvedDurationDays : 0;
 
     $expirationDate = trim((string)($row['expiration_date'] ?? ''));
-    if ($expirationDate === '' && $durationDays > 0) {
+    $shouldRecalculateExpirationDate = $storedDurationDays > 0
+        && $durationDays > 0
+        && $storedDurationDays !== $durationDays;
+    if (($expirationDate === '' || $shouldRecalculateExpirationDate) && $durationDays > 0) {
         $expirationDate = (string)(monitoring_document_calculate_expiration_date($row['uploaded_at'] ?? null, $durationDays) ?? '');
     }
 
@@ -84,7 +88,7 @@ try {
         monitoring_document_merge_known_types($documentTypes),
         static function (array $row): bool {
             $key = monitoring_document_normalize_key((string)($row['name'] ?? ''));
-            return in_array($key, ['business_permit', 'dti', 'sec', 'lgu'], true);
+            return in_array($key, ['business_permit', 'dti', 'sec', 'bir', 'philhealth', 'pag_ibig', 'sss'], true);
         }
     ));
 

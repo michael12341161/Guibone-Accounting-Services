@@ -41,8 +41,27 @@ const FALLBACK_DOCUMENT_TYPES = [
   { id: 4, name: "business_permit" },
   { id: 5, name: "dti" },
   { id: 6, name: "sec" },
-  { id: 7, name: "lgu" },
+  { id: 7, name: "bir" },
+  { id: 9, name: "philhealth" },
+  { id: 10, name: "pag_ibig" },
+  { id: 8, name: "sss" },
 ];
+const SIGNUP_DOCUMENT_ORDER = [
+  "valid_id",
+  "birth_certificate",
+  "psa_birth_certificate",
+  "marriage_contract",
+  "business_permit",
+  "dti",
+  "sec",
+  "bir",
+  "philhealth",
+  "pag_ibig",
+  "sss",
+];
+const SIGNUP_DOCUMENT_ORDER_INDEX = new Map(
+  SIGNUP_DOCUMENT_ORDER.map((key, index) => [key, index])
+);
 
 const REQUIRED_SIGNUP_DOCUMENT_KEYS = new Set([
   "valid_id",
@@ -118,14 +137,17 @@ function hasBusinessDetails(business) {
 }
 
 function formatDocumentTypeLabel(value) {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = normalizeDocumentKey(value);
   if (raw === "valid_id") return "Valid ID";
-  if (raw === "birth_certificate") return "PSA Birth Certificate";
+  if (raw === "birth_certificate" || raw === "psa_birth_certificate") return "PSA Birth Certificate";
   if (raw === "marriage_contract") return "Marriage Contract (if applicable)";
   if (raw === "business_permit") return "Business Permit";
   if (raw === "dti") return "DTI";
   if (raw === "sec") return "SEC";
-  if (raw === "lgu") return "LGU";
+  if (raw === "bir") return "BIR";
+  if (raw === "philhealth") return "PhilHealth";
+  if (raw === "pag_ibig") return "Pag-IBIG";
+  if (raw === "sss") return "SSS";
 
   return raw
     .split("_")
@@ -142,7 +164,29 @@ function normalizeDocumentKey(value) {
     .replace(/^_+|_+$/g, "");
 
   if (raw === "psa_birthcertificate") return "psa_birth_certificate";
+  if (raw === "pagibig") return "pag_ibig";
   return raw;
+}
+
+function compareSignupDocumentTypes(left, right) {
+  const leftKey = normalizeDocumentKey(left?.name);
+  const rightKey = normalizeDocumentKey(right?.name);
+  const leftRank = SIGNUP_DOCUMENT_ORDER_INDEX.get(leftKey);
+  const rightRank = SIGNUP_DOCUMENT_ORDER_INDEX.get(rightKey);
+
+  if (leftRank !== undefined || rightRank !== undefined) {
+    if (leftRank === undefined) return 1;
+    if (rightRank === undefined) return -1;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+  }
+
+  const leftId = normalizeIdValue(left?.id) ?? Number.MAX_SAFE_INTEGER;
+  const rightId = normalizeIdValue(right?.id) ?? Number.MAX_SAFE_INTEGER;
+  if (leftId !== rightId) {
+    return leftId - rightId;
+  }
+
+  return formatDocumentTypeLabel(left?.name || "").localeCompare(formatDocumentTypeLabel(right?.name || ""));
 }
 
 function isRequiredSignupDocument(documentType) {
@@ -320,7 +364,7 @@ export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const signupDocumentTypes = useMemo(
-    () => (Array.isArray(documentTypes) ? documentTypes : []),
+    () => (Array.isArray(documentTypes) ? [...documentTypes].sort(compareSignupDocumentTypes) : []),
     [documentTypes]
   );
   const requiredDocumentTypes = useMemo(
@@ -1111,7 +1155,7 @@ export default function SignUpPage() {
 
               <SectionPanel
                 title="Document Upload"
-                description="Upload the required documents to complete your registration. Marriage Contract, Business Permit, DTI, SEC, and LGU files can also be attached here when available, but they are optional."
+                description="Upload the required documents to complete your registration. Marriage Contract, Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files can also be attached here when available, but they are optional."
               >
                 <div className="grid gap-5 md:grid-cols-2">
                   {signupDocumentTypes.map((document) => (
@@ -1133,7 +1177,7 @@ export default function SignUpPage() {
                   Required: {requiredDocumentLabels.length ? requiredDocumentLabels.join(", ") : "PSA Birth Certificate, Valid ID"}.
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  Optional: Marriage Contract (if applicable), Business Permit, DTI, SEC, and LGU.
+                  Optional: Marriage Contract (if applicable), Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS.
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
                   If you sign up without a Business Permit, Create Appointment will show only Processing until the admin uploads your permit and your business becomes registered.

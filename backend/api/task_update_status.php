@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_access.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
+require_once __DIR__ . '/service_type_helpers.php';
 require_once __DIR__ . '/certificate_helpers.php';
 require_once __DIR__ . '/task_deadline_monitor.php';
 
@@ -198,7 +199,9 @@ function fetchTask(PDO $conn, int $taskId): ?array {
             st.Status_name AS status_name,
             cs.Client_ID AS client_id,
             cs.Services_type_Id AS service_id,
-            s.Name AS service_name,
+            s.Name AS raw_service_name,
+            s.description AS service_description,
+            ' . monitoring_service_type_label_sql('s') . ' AS service_name,
             cs.User_ID AS accountant_id,
             u.Username AS accountant_name,
             CONCAT_WS(" ", c.First_name, c.Middle_name, c.Last_name) AS client_name
@@ -382,18 +385,17 @@ try {
 
     if ($hasService) {
         $serviceName = trim((string)$data['service']);
-        $serviceLookup = $conn->prepare('SELECT Services_type_Id FROM services_type WHERE Name = :name LIMIT 1');
-        $serviceLookup->execute([':name' => $serviceName]);
-        $newServiceId = (int)($serviceLookup->fetchColumn() ?: 0);
-        if ($newServiceId <= 0) {
+        $service = monitoring_find_service_type($conn, $serviceName, isset($data['service_id']) ? (int)$data['service_id'] : 0, false);
+        if ($service === null) {
             $conn->rollBack();
             respond(422, ['success' => false, 'message' => 'Invalid service. Select a service from the list.']);
         }
+        $newServiceId = (int)$service['id'];
 
         $updTaskService = $conn->prepare('UPDATE client_services SET Services_type_Id = :sid WHERE Client_services_ID = :id');
         $updTaskService->execute([':sid' => $newServiceId, ':id' => $taskId]);
         $currentServiceId = $newServiceId;
-        $currentServiceName = $serviceName;
+        $currentServiceName = (string)$service['label'];
     }
 
     if ($hasDeadline) {
@@ -469,17 +471,16 @@ try {
             $statusShouldFollowProgress = true;
         } else {
             // Backward compatibility: allow service name via status field.
-            $serviceLookup = $conn->prepare('SELECT Services_type_Id FROM services_type WHERE Name = :name LIMIT 1');
-            $serviceLookup->execute([':name' => $statusInput]);
-            $serviceIdFromStatus = (int)($serviceLookup->fetchColumn() ?: 0);
-            if ($serviceIdFromStatus <= 0) {
+            $serviceFromStatus = monitoring_find_service_type($conn, $statusInput, 0, false);
+            if ($serviceFromStatus === null) {
                 $conn->rollBack();
                 respond(422, ['success' => false, 'message' => 'Invalid status']);
             }
+            $serviceIdFromStatus = (int)$serviceFromStatus['id'];
             $updTaskService = $conn->prepare('UPDATE client_services SET Services_type_Id = :sid WHERE Client_services_ID = :id');
             $updTaskService->execute([':sid' => $serviceIdFromStatus, ':id' => $taskId]);
             $currentServiceId = $serviceIdFromStatus;
-            $currentServiceName = $statusInput;
+            $currentServiceName = (string)$serviceFromStatus['label'];
         }
     } else {
         $hasDoneTag = preg_match('/^\s*\[Done\]\s*$/mi', $currentDescription) === 1;
@@ -587,6 +588,11 @@ try {
             'description' => $descriptionOut,
             'status' => $statusOut,
             'service' => $updated['service_name'] ?? null,
+            'service_name' => $updated['service_name'] ?? null,
+            'service_label' => $updated['service_name'] ?? null,
+            'raw_service_name' => $updated['raw_service_name'] ?? null,
+            'service_description' => !empty($updated['service_description']) ? $updated['service_description'] : null,
+            'service_id' => isset($updated['service_id']) ? (int)$updated['service_id'] : null,
             'deadline' => $deadline !== '' ? $deadline : null,
             'due_date' => $deadline !== '' ? $deadline : ($updated['due_date'] ?? null),
             'client_id' => isset($updated['client_id']) ? (int)$updated['client_id'] : null,

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/service_type_helpers.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/management_catalog_settings_helper.php';
 
@@ -19,12 +20,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     monitoring_require_role_or_module_access($conn, [MONITORING_ROLE_ADMIN], 'user-management');
-    monitoring_require_schema_columns($conn, 'services_type', ['Services_type_Id', 'Name'], 'service');
+    monitoring_service_type_require_schema($conn, 'service');
     $includeDisabled = !empty($_GET['include_disabled']);
 
     $specializationTypes = loadSpecializationTypes($conn);
     $serviceStmt = $conn->query(
-        'SELECT Services_type_Id AS id, Name AS name
+        'SELECT Services_type_Id AS id, Name AS service_name, description
          FROM services_type
          WHERE Name IS NOT NULL AND TRIM(Name) <> ""
          ORDER BY Services_type_Id ASC'
@@ -34,12 +35,15 @@ try {
     $serviceNameMap = [];
     foreach ($serviceRows as $row) {
         $serviceId = (int)($row['id'] ?? 0);
-        $serviceName = trim((string)($row['name'] ?? ''));
+        $serviceName = trim((string)($row['service_name'] ?? ''));
         if ($serviceId <= 0 || $serviceName === '') {
             continue;
         }
-        $services[] = ['id' => $serviceId, 'name' => $serviceName];
-        $serviceNameMap[$serviceId] = $serviceName;
+        $payload = monitoring_service_type_payload($row);
+        if ($payload !== null) {
+            $services[] = $payload;
+            $serviceNameMap[$serviceId] = (string)$payload['name'];
+        }
     }
 
     $settings = monitoring_get_specialization_management_settings($conn);

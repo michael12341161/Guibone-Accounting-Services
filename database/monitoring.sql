@@ -1,24 +1,31 @@
--- ============================================================
--- dbmonitoring — FULL DATABASE (Schema + Data + Optimizations)
--- MariaDB 10.4+ / MySQL 8.0+
--- Generated: 2026-04-25
--- Includes: All original tables, data, indexes, foreign keys
---           + 3NF normalization fixes and performance indexes
--- ============================================================
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Host: 127.0.0.1
+-- Generation Time: May 01, 2026 at 01:08 AM
+-- Server version: 10.4.32-MariaDB
+-- PHP Version: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-SET FOREIGN_KEY_CHECKS = 0;
 START TRANSACTION;
 SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
 /*!40101 SET NAMES utf8mb4 */;
 
--- ============================================================
--- CREATE DATABASE
--- ============================================================
-CREATE DATABASE IF NOT EXISTS `dbmonitoring`
-  DEFAULT CHARACTER SET utf8mb4
-  COLLATE utf8mb4_general_ci;
-USE `dbmonitoring`;
+--
+-- Database: `dbmonitoring`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `announcements`
+--
 
 CREATE TABLE `announcements` (
   `announcement_ID` int(11) NOT NULL,
@@ -64,43 +71,6 @@ CREATE TABLE `audit_logs` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `audit_logs`
---
-
-INSERT INTO `audit_logs` (`audit_logs_ID`, `user_id`, `action`, `ip_address`, `location`, `device`, `browser`, `os`, `created_at`) VALUES
-(82, 1, 'Login successful', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 21:50:14'),
-(83, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 21:59:35'),
-(84, 21, 'Login successful', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:01:31'),
-(85, 21, 'Logged out', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:01:37'),
-(86, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:02:17'),
-(87, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:04:32'),
-(88, 21, 'Failed login attempt', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:04:47'),
-(89, 1, 'Security settings updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:04:56'),
-(90, 1, 'Login successful', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:05:09'),
-(91, 1, 'Logged out', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:05:16'),
-(92, 21, 'Login successful', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:05:23'),
-(93, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:08:10'),
-(94, 22, 'Login successful', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:09:34'),
-(95, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:10:25'),
-(96, 22, 'Logged out', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:10:32'),
-(97, 24, 'Login successful', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:10:49'),
-(98, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:11:02'),
-(99, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:12:16'),
-(100, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:20:44'),
-(101, 1, 'Module permissions updated', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:20:54'),
-(102, 21, 'Logged out', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:46:53'),
-(103, 24, 'Logged out', '202.61.110.220', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-19 22:54:53'),
-(104, 1, 'Login successful', '202.61.110.212', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:21:22'),
-(105, 1, 'Logged out', '202.61.110.212', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:21:36'),
-(106, 24, 'Login successful', '202.61.110.212', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:21:52'),
-(107, 21, 'Failed login attempt', '202.61.110.212', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:51:28'),
-(108, 21, 'Login successful', '202.61.110.212', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:51:31'),
-(109, 24, 'Logged out', '202.61.110.212', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:51:53'),
-(110, 22, 'Failed login attempt', '202.61.110.213', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:52:02'),
-(111, 22, 'Login successful', '202.61.110.213', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-20 00:52:06'),
-(112, 1, 'Login successful', '2001:fd8:c7b9:6400:3532:4d94:4752:ceda', 'Cagayan de Oro, Northern Mindanao, Philippines', 'Desktop', 'Chrome 147.0.0.0', 'Windows 11', '2026-04-24 22:47:44');
-
 -- --------------------------------------------------------
 
 --
@@ -120,21 +90,19 @@ CREATE TABLE `bundle_tasks` (
 --
 
 INSERT INTO `bundle_tasks` (`Bundle_Tasks_ID`, `Services_type_Id`, `Step_Number`, `Assignee`, `Step_Text`) VALUES
-(1, 1, 1, 'secretary', 'Collect and validate the client\'s tax source documents for the filing period.'),
-(2, 1, 2, 'accountant', 'Review records and reconcile transactions that affect the tax filing.'),
-(3, 1, 3, 'accountant', 'Prepare the tax return and compute the amount due or refund.'),
-(4, 1, 4, 'owner', 'Review the prepared return and approve it before submission.'),
-(5, 1, 5, 'secretary', 'Submit the filing and save the official proof of submission.'),
-(6, 2, 1, 'secretary', 'Request the audit requirements and prior records from the client.'),
-(7, 2, 2, 'accountant', 'Organize the working papers and supporting schedules.'),
-(8, 2, 3, 'accountant', 'Perform audit testing and document the findings.'),
-(9, 2, 4, 'owner', 'Review the findings and approve the final audit report.'),
-(10, 2, 5, 'secretary', 'Release the completed audit report to the client.'),
-(11, 3, 1, 'secretary', 'Collect bookkeeping documents, receipts, and supporting files from the client.'),
-(12, 3, 2, 'accountant', 'Record and categorize the transactions for the covered period.'),
-(13, 3, 3, 'accountant', 'Reconcile the bank records and subsidiary ledgers.'),
-(14, 3, 4, 'accountant', 'Prepare the bookkeeping summary and draft reports.'),
-(15, 3, 5, 'owner', 'Review the reports and confirm the bookkeeping output.'),
+(1, 1, 1, 'secretary', 'Communicate with the client via text or email to gather the required non-VAT filing information.'),
+(2, 1, 2, 'accountant', 'Encode and organize the collected data into the Excel template for non-VAT processing.'),
+(3, 1, 3, 'accountant', 'Review and validate the sales and purchases records for the non-VAT period.'),
+(4, 1, 4, 'secretary', 'Submit the non-VAT filing and save the official proof of submission.'),
+(5, 2, 1, 'accountant', 'Gather and review all sales and purchases records for the VAT period.'),
+(6, 2, 2, 'accountant', 'Perform data entry of all VAT-related transactions into the accounting system.'),
+(7, 2, 3, 'accountant', 'Record journal entries or encode the data into the BIR system for VAT computation.'),
+(8, 2, 4, 'secretary', 'Process the tax filing and confirm payment of the VAT due.'),
+(9, 3, 1, 'accountant', 'Add all sales for the audit period and compile the complete sales records.'),
+(10, 3, 2, 'secretary', 'Prepare and submit the filing based on the audited sales data.'),
+(11, 4, 1, 'secretary', 'Collect and organize all bookkeeping documents from the client.'),
+(12, 4, 2, 'accountant', 'Record and process cash vouchers for all transactions.'),
+(13, 4, 3, 'accountant', 'Prepare and reconcile bank statements on a monthly basis.'),
 (16, 5, 1, 'secretary', 'Confirm the client\'s requirements and identify missing documents.'),
 (17, 5, 2, 'secretary', 'Prepare the processing checklist and required forms.'),
 (18, 5, 3, 'accountant', 'Review the submitted details and attachments for completeness.'),
@@ -197,9 +165,9 @@ CREATE TABLE `business_type` (
 --
 
 INSERT INTO `business_type` (`Business_type_ID`, `Business_name`) VALUES
-(1, 'Sole Proprietor'),
+(3, 'Corporation'),
 (2, 'Partnership'),
-(3, 'Corporation');
+(1, 'Sole Proprietor');
 
 -- --------------------------------------------------------
 
@@ -217,7 +185,7 @@ CREATE TABLE `certificates` (
   `end_date` date DEFAULT NULL,
   `issue_date` date NOT NULL,
   `issued_by` varchar(150) DEFAULT NULL,
-  `company_name` varchar(150) DEFAULT 'Guibone Accounting Services',
+  `company_name` varchar(150) DEFAULT 'Guibone Accounting Services' COMMENT 'Snapshot at time of issuance. Source of truth: settings.system_company_name',
   `template_snapshot` longtext DEFAULT NULL,
   `certificate_html` longtext DEFAULT NULL,
   `recipient_email` varchar(150) DEFAULT NULL,
@@ -243,12 +211,12 @@ CREATE TABLE `civil_status_type` (
 --
 
 INSERT INTO `civil_status_type` (`civil_status_type_ID`, `civil_status_type_name`) VALUES
-(1, 'Single'),
-(2, 'Married'),
-(3, 'Widowed'),
-(4, 'Separated'),
+(6, 'Annulled'),
 (5, 'Divorced'),
-(6, 'Annulled');
+(2, 'Married'),
+(4, 'Separated'),
+(1, 'Single'),
+(3, 'Widowed');
 
 -- --------------------------------------------------------
 
@@ -310,7 +278,7 @@ CREATE TABLE `client_services` (
   `Name` varchar(150) NOT NULL,
   `created_by` int(11) DEFAULT NULL,
   `User_ID` int(11) DEFAULT NULL,
-  `Steps` text DEFAULT NULL,
+  `Steps` text DEFAULT NULL COMMENT 'Runtime snapshot of task steps. Canonical source: bundle_tasks. Candidate for future junction table normalization.',
   `Date` date DEFAULT NULL,
   `Status_ID` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -377,13 +345,16 @@ CREATE TABLE `document_type` (
 --
 
 INSERT INTO `document_type` (`Document_type_ID`, `Document_name`) VALUES
-(1, 'valid_id'),
+(7, 'bir'),
 (2, 'birth_certificate'),
-(3, 'marriage_contract'),
 (4, 'business_permit'),
 (5, 'dti'),
+(3, 'marriage_contract'),
+(10, 'pag_ibig'),
+(9, 'philhealth'),
 (6, 'sec'),
-(7, 'lgu');
+(8, 'sss'),
+(1, 'valid_id');
 
 -- --------------------------------------------------------
 
@@ -442,57 +413,6 @@ CREATE TABLE `notifications` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `notifications`
---
-
-INSERT INTO `notifications` (`notifications_ID`, `user_id`, `sender_id`, `type`, `message`, `is_read`, `created_at`) VALUES
-(34, 23, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(35, 24, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(36, 25, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(37, 26, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(38, 27, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(39, 28, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(40, 29, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(41, 30, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(42, 31, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(43, 32, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(44, 33, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(45, 34, 1, 'module_permission_revoked', 'Dashboard Access Removed: Admin admin removed your access to Dashboard.', 0, '2026-04-19 22:20:44'),
-(46, 23, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(47, 24, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(48, 25, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(49, 26, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(50, 27, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(51, 28, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(52, 29, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(53, 30, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(54, 31, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(55, 32, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(56, 33, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54'),
-(57, 34, 1, 'module_permission_granted', 'Dashboard Access Granted: Admin admin granted you access to Dashboard.', 0, '2026-04-19 22:20:54');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `payment_type`
---
-
-CREATE TABLE `payment_type` (
-  `payment_type_ID` int(11) NOT NULL,
-  `type_name` varchar(50) NOT NULL,
-  `description` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `payment_type`
---
-
-INSERT INTO `payment_type` (`payment_type_ID`, `type_name`, `description`) VALUES
-(1, 'Bank', 'Payment via bank transfer'),
-(2, 'GCash', 'Payment via GCash e-wallet');
-
 -- --------------------------------------------------------
 
 --
@@ -513,6 +433,29 @@ CREATE TABLE `payment` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `payment_type`
+--
+
+CREATE TABLE `payment_type` (
+  `payment_type_ID` int(11) NOT NULL,
+  `type_name` varchar(50) NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `payment_type`
+--
+
+INSERT INTO `payment_type` (`payment_type_ID`, `type_name`, `description`, `created_at`) VALUES
+(1, 'Bank', 'Payment via bank transfer', '2026-04-30 22:57:37'),
+(2, 'GCash', 'Payment via GCash e-wallet', '2026-04-30 22:57:37'),
+(3, 'Cash', 'Payment via cash', '2026-04-30 22:57:37'),
+(4, 'ePay/Landbank', 'Payment via ePay/Landbank', '2026-04-30 22:57:37');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `permissions`
 --
 
@@ -521,7 +464,7 @@ CREATE TABLE `permissions` (
   `module_key` varchar(100) NOT NULL,
   `action_key` varchar(100) NOT NULL DEFAULT '',
   `permission_name` varchar(191) NOT NULL,
-  `User_ID` int(11) DEFAULT NULL
+  `User_ID` int(11) DEFAULT NULL COMMENT 'Admin who created this permission (not part of permission logic). Access control is via role_permissions.'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -854,18 +797,20 @@ INSERT INTO `role_permissions` (`role_permissions_ID`, `Role_id`, `permission_id
 
 CREATE TABLE `services_type` (
   `Services_type_Id` int(11) NOT NULL,
-  `Name` varchar(150) NOT NULL
+  `Name` varchar(150) NOT NULL,
+  `description` varchar(150) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `services_type`
 --
 
-INSERT INTO `services_type` (`Services_type_Id`, `Name`) VALUES
-(1, 'Tax Filing'),
-(2, 'Auditing'),
-(3, 'Book Keeping'),
-(5, 'Processing');
+INSERT INTO `services_type` (`Services_type_Id`, `Name`, `description`) VALUES
+(1, 'Tax Filing', 'Non-VAT'),
+(2, 'Tax Filing', 'VAT'),
+(3, 'Auditing', NULL),
+(4, 'Book Keeping', NULL),
+(5, 'Processing', NULL);
 
 -- --------------------------------------------------------
 
@@ -922,10 +867,10 @@ CREATE TABLE `specialization_type` (
 --
 
 INSERT INTO `specialization_type` (`specialization_type_ID`, `Name`) VALUES
-(1, 'Tax Filing Operations'),
+(4, 'Accounting Operations'),
 (2, 'Auditing Operations'),
 (3, 'Book Keeping Operations'),
-(4, 'Accounting Operations');
+(1, 'Tax Filing Operations');
 
 -- --------------------------------------------------------
 
@@ -944,34 +889,34 @@ CREATE TABLE `status` (
 --
 
 INSERT INTO `status` (`Status_id`, `Status_group`, `Status_name`) VALUES
-(1, 'CLIENT', 'Active'),
-(2, 'CLIENT', 'Inactive'),
-(3, 'EMPLOYMENT', 'Active'),
-(4, 'EMPLOYMENT', 'Inactive'),
-(5, 'EMPLOYMENT', 'Resigned'),
-(6, 'APPOINTMENT', 'Pending'),
 (7, 'APPOINTMENT', 'Approved'),
+(6, 'APPOINTMENT', 'Pending'),
 (8, 'APPOINTMENT', 'Reject'),
-(10, 'TASK', 'Not Started'),
-(11, 'TASK', 'In Progress'),
-(12, 'TASK', 'Completed'),
-(13, 'TASK', 'Cancelled'),
-(14, 'CONSULTATION', 'Approved'),
-(15, 'CONSULTATION', 'Pending'),
-(16, 'CONSULTATION', 'Reject'),
 (17, 'BUSINESS', 'Pending'),
 (18, 'BUSINESS', 'Registered'),
 (19, 'BUSINESS', 'Unregistered'),
-(20, 'TASK', 'Incomplete'),
-(21, 'TASK', 'Overdue'),
-(22, 'DOCUMENTS', 'Renewed'),
+(1, 'CLIENT', 'Active'),
+(2, 'CLIENT', 'Inactive'),
+(14, 'CONSULTATION', 'Approved'),
+(15, 'CONSULTATION', 'Pending'),
+(16, 'CONSULTATION', 'Reject'),
 (23, 'DOCUMENTS', 'Expired'),
-(24, 'PERMISSION_PAGE', 'Unlocked'),
-(25, 'PERMISSION_PAGE', 'Locked'),
+(22, 'DOCUMENTS', 'Renewed'),
+(3, 'EMPLOYMENT', 'Active'),
+(4, 'EMPLOYMENT', 'Inactive'),
+(5, 'EMPLOYMENT', 'Resigned'),
+(27, 'PAYMENT', 'Paid'),
 (26, 'PAYMENT', 'Pending'),
 (29, 'PAYMENT', 'Processing'),
-(27, 'PAYMENT', 'Paid'),
-(28, 'PAYMENT', 'Reject');
+(28, 'PAYMENT', 'Reject'),
+(25, 'PERMISSION_PAGE', 'Locked'),
+(24, 'PERMISSION_PAGE', 'Unlocked'),
+(13, 'TASK', 'Cancelled'),
+(12, 'TASK', 'Completed'),
+(11, 'TASK', 'In Progress'),
+(20, 'TASK', 'Incomplete'),
+(10, 'TASK', 'Not Started'),
+(21, 'TASK', 'Overdue');
 
 -- --------------------------------------------------------
 
@@ -1024,6 +969,27 @@ INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `F
 (35, 'dong', '$2y$10$aGPL1eUp8Qa8zt0mEnzuvOafz5bg3/BOue8yrMCpGu1NXhE0VY8bW', '2026-04-25 06:49:07', 0, NULL, 2, NULL, 'wintaxpaasa@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2004-02-01', '09354786152', 4, NULL, '1234567890', NULL, '2026-04-24 22:49:07', '2026-04-24 22:49:07'),
 (36, 'roberth', '$2y$10$gXgVnMgqOurf5iYkoF7yjOATOjBjxHWgMOw3FxpJ5XFc7oN83.1oi', '2026-04-25 06:49:50', 0, NULL, 3, NULL, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2004-02-22', NULL, 2, NULL, '1234567890', NULL, '2026-04-24 22:49:50', '2026-04-24 22:49:50');
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_specialization`
+--
+
+CREATE TABLE `user_specialization` (
+  `user_specialization_ID` int(11) NOT NULL,
+  `User_id` int(11) NOT NULL,
+  `specialization_type_ID` int(11) NOT NULL,
+  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Normalized multi-specialization mapping. Replaces JSON blob in settings(user_specialization_assignments). Migrate data here when ready.';
+
+--
+-- Dumping data for table `user_specialization`
+--
+
+INSERT INTO `user_specialization` (`user_specialization_ID`, `User_id`, `specialization_type_ID`, `assigned_at`) VALUES
+(1, 36, 2, '2026-04-30 22:57:43'),
+(2, 35, 4, '2026-04-30 22:57:43');
+
 --
 -- Indexes for dumped tables
 --
@@ -1033,7 +999,8 @@ INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `F
 --
 ALTER TABLE `announcements`
   ADD PRIMARY KEY (`announcement_ID`),
-  ADD KEY `created_by` (`created_by`);
+  ADD KEY `created_by` (`created_by`),
+  ADD KEY `idx_announcements_dates` (`start_date`,`end_date`);
 
 --
 -- Indexes for table `appointment`
@@ -1043,13 +1010,17 @@ ALTER TABLE `appointment`
   ADD KEY `Client_ID` (`Client_ID`),
   ADD KEY `Services_type_Id` (`Services_type_Id`),
   ADD KEY `Status_ID` (`Status_ID`),
-  ADD KEY `action_by` (`action_by`);
+  ADD KEY `action_by` (`action_by`),
+  ADD KEY `idx_appointment_date_status` (`Date`,`Status_ID`),
+  ADD KEY `idx_appointment_client_date` (`Client_ID`,`Date`);
 
 --
 -- Indexes for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  ADD PRIMARY KEY (`audit_logs_ID`);
+  ADD PRIMARY KEY (`audit_logs_ID`),
+  ADD KEY `idx_audit_logs_user_created` (`user_id`,`created_at`),
+  ADD KEY `idx_audit_logs_action` (`action`);
 
 --
 -- Indexes for table `bundle_tasks`
@@ -1064,15 +1035,18 @@ ALTER TABLE `bundle_tasks`
 --
 ALTER TABLE `business`
   ADD PRIMARY KEY (`Business_id`),
+  ADD UNIQUE KEY `uniq_business_tin` (`TIN_number`),
   ADD KEY `Client_ID` (`Client_ID`),
   ADD KEY `Business_type_ID` (`Business_type_ID`),
-  ADD KEY `Status_id` (`Status_id`);
+  ADD KEY `Status_id` (`Status_id`),
+  ADD KEY `idx_business_location` (`Province`,`Municipality`);
 
 --
 -- Indexes for table `business_type`
 --
 ALTER TABLE `business_type`
-  ADD PRIMARY KEY (`Business_type_ID`);
+  ADD PRIMARY KEY (`Business_type_ID`),
+  ADD UNIQUE KEY `uniq_business_type_name` (`Business_name`);
 
 --
 -- Indexes for table `certificates`
@@ -1084,19 +1058,21 @@ ALTER TABLE `certificates`
   ADD KEY `Client_ID` (`Client_ID`),
   ADD KEY `Services_type_Id` (`Services_type_Id`),
   ADD KEY `Edit_certificate_ID` (`Edit_certificate_ID`),
-  ADD KEY `Client_services_ID` (`Client_services_ID`);
+  ADD KEY `idx_certificates_delivery` (`delivery_status`,`delivered_at`);
 
 --
 -- Indexes for table `civil_status_type`
 --
 ALTER TABLE `civil_status_type`
-  ADD PRIMARY KEY (`civil_status_type_ID`);
+  ADD PRIMARY KEY (`civil_status_type_ID`),
+  ADD UNIQUE KEY `uniq_civil_status_name` (`civil_status_type_name`);
 
 --
 -- Indexes for table `client`
 --
 ALTER TABLE `client`
   ADD PRIMARY KEY (`Client_ID`),
+  ADD UNIQUE KEY `uniq_client_tin` (`Tin_no`),
   ADD KEY `civil_status_type_ID` (`civil_status_type_ID`),
   ADD KEY `Status_id` (`Status_id`),
   ADD KEY `User_id` (`User_id`),
@@ -1111,7 +1087,8 @@ ALTER TABLE `client_services`
   ADD KEY `Services_type_Id` (`Services_type_Id`),
   ADD KEY `created_by` (`created_by`),
   ADD KEY `User_ID` (`User_ID`),
-  ADD KEY `Status_ID` (`Status_ID`);
+  ADD KEY `Status_ID` (`Status_ID`),
+  ADD KEY `idx_client_services_client_status` (`Client_ID`,`Status_ID`);
 
 --
 -- Indexes for table `consultation`
@@ -1131,13 +1108,16 @@ ALTER TABLE `documents`
   ADD KEY `appointment_id` (`appointment_id`),
   ADD KEY `Client_ID` (`Client_ID`),
   ADD KEY `Document_type_ID` (`Document_type_ID`),
-  ADD KEY `Status_id` (`Status_id`);
+  ADD KEY `Status_id` (`Status_id`),
+  ADD KEY `idx_documents_expiration` (`expiration_date`,`Status_id`),
+  ADD KEY `idx_documents_client_type` (`Client_ID`,`Document_type_ID`);
 
 --
 -- Indexes for table `document_type`
 --
 ALTER TABLE `document_type`
-  ADD PRIMARY KEY (`Document_type_ID`);
+  ADD PRIMARY KEY (`Document_type_ID`),
+  ADD UNIQUE KEY `uniq_document_type_name` (`Document_name`);
 
 --
 -- Indexes for table `edit_certificate`
@@ -1156,8 +1136,8 @@ ALTER TABLE `messages`
   ADD PRIMARY KEY (`Message_ID`),
   ADD KEY `idx_messages_sender_id` (`sender_id`),
   ADD KEY `idx_messages_receiver_id` (`receiver_id`),
-  ADD KEY `sender_id` (`sender_id`),
-  ADD KEY `receiver_id` (`receiver_id`);
+  ADD KEY `idx_messages_conversation` (`sender_id`,`receiver_id`,`created_at`),
+  ADD KEY `idx_messages_receiver_read` (`receiver_id`,`is_read`);
 
 --
 -- Indexes for table `notifications`
@@ -1165,13 +1145,8 @@ ALTER TABLE `messages`
 ALTER TABLE `notifications`
   ADD PRIMARY KEY (`notifications_ID`),
   ADD KEY `idx_notifications_user_id` (`user_id`),
-  ADD KEY `idx_notifications_sender_id` (`sender_id`);
-
---
--- Indexes for table `payment_type`
---
-ALTER TABLE `payment_type`
-  ADD PRIMARY KEY (`payment_type_ID`);
+  ADD KEY `idx_notifications_sender_id` (`sender_id`),
+  ADD KEY `idx_notifications_user_read` (`user_id`,`is_read`);
 
 --
 -- Indexes for table `payment`
@@ -1182,7 +1157,14 @@ ALTER TABLE `payment`
   ADD KEY `appointment_ID` (`appointment_ID`),
   ADD KEY `payment_type_ID` (`payment_type_ID`),
   ADD KEY `Status_ID` (`Status_ID`),
-  ADD KEY `action_by` (`action_by`);
+  ADD KEY `action_by` (`action_by`),
+  ADD KEY `idx_payment_status` (`Status_ID`);
+
+--
+-- Indexes for table `payment_type`
+--
+ALTER TABLE `payment_type`
+  ADD PRIMARY KEY (`payment_type_ID`);
 
 --
 -- Indexes for table `permissions`
@@ -1191,13 +1173,15 @@ ALTER TABLE `permissions`
   ADD PRIMARY KEY (`permission_id`),
   ADD UNIQUE KEY `permission_name` (`permission_name`),
   ADD UNIQUE KEY `uniq_module_action` (`module_key`,`action_key`),
-  ADD KEY `User_ID` (`User_ID`);
+  ADD KEY `User_ID` (`User_ID`),
+  ADD KEY `idx_permissions_user_id` (`User_ID`);
 
 --
 -- Indexes for table `role`
 --
 ALTER TABLE `role`
   ADD PRIMARY KEY (`Role_id`),
+  ADD UNIQUE KEY `uniq_role_name` (`Role_name`),
   ADD KEY `Permission_page_status_id` (`Permission_page_status_id`);
 
 --
@@ -1206,7 +1190,8 @@ ALTER TABLE `role`
 ALTER TABLE `role_permissions`
   ADD PRIMARY KEY (`role_permissions_ID`),
   ADD UNIQUE KEY `uniq_role_permission` (`Role_id`,`permission_id`),
-  ADD KEY `permission_id` (`permission_id`);
+  ADD KEY `permission_id` (`permission_id`),
+  ADD KEY `idx_role_permissions_role_allowed` (`Role_id`,`is_allowed`);
 
 --
 -- Indexes for table `services_type`
@@ -1225,21 +1210,36 @@ ALTER TABLE `settings`
 -- Indexes for table `specialization_type`
 --
 ALTER TABLE `specialization_type`
-  ADD PRIMARY KEY (`specialization_type_ID`);
+  ADD PRIMARY KEY (`specialization_type_ID`),
+  ADD UNIQUE KEY `uniq_specialization_name` (`Name`);
 
 --
 -- Indexes for table `status`
 --
 ALTER TABLE `status`
-  ADD PRIMARY KEY (`Status_id`);
+  ADD PRIMARY KEY (`Status_id`),
+  ADD UNIQUE KEY `uniq_status_group_name` (`Status_group`,`Status_name`);
 
 --
 -- Indexes for table `user`
 --
 ALTER TABLE `user`
   ADD PRIMARY KEY (`User_id`),
+  ADD UNIQUE KEY `uniq_user_username` (`Username`),
+  ADD UNIQUE KEY `uniq_user_email` (`Email`),
   ADD KEY `Role_id` (`Role_id`),
-  ADD KEY `specialization_type_ID` (`specialization_type_ID`);
+  ADD KEY `specialization_type_ID` (`specialization_type_ID`),
+  ADD KEY `user_ibfk_employment_status` (`Employment_status_id`),
+  ADD KEY `idx_user_role_status` (`Role_id`,`Employment_status_id`);
+
+--
+-- Indexes for table `user_specialization`
+--
+ALTER TABLE `user_specialization`
+  ADD PRIMARY KEY (`user_specialization_ID`),
+  ADD UNIQUE KEY `uniq_user_specialization` (`User_id`,`specialization_type_ID`),
+  ADD KEY `idx_user_spec_user` (`User_id`),
+  ADD KEY `idx_user_spec_type` (`specialization_type_ID`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -1321,7 +1321,7 @@ ALTER TABLE `documents`
 -- AUTO_INCREMENT for table `document_type`
 --
 ALTER TABLE `document_type`
-  MODIFY `Document_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `Document_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `edit_certificate`
@@ -1342,16 +1342,16 @@ ALTER TABLE `notifications`
   MODIFY `notifications_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=58;
 
 --
--- AUTO_INCREMENT for table `payment_type`
---
-ALTER TABLE `payment_type`
-  MODIFY `payment_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
 -- AUTO_INCREMENT for table `payment`
 --
 ALTER TABLE `payment`
   MODIFY `payment_ID` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `payment_type`
+--
+ALTER TABLE `payment_type`
+  MODIFY `payment_type_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `permissions`
@@ -1402,6 +1402,12 @@ ALTER TABLE `user`
   MODIFY `User_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=37;
 
 --
+-- AUTO_INCREMENT for table `user_specialization`
+--
+ALTER TABLE `user_specialization`
+  MODIFY `user_specialization_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
 -- Constraints for dumped tables
 --
 
@@ -1421,6 +1427,18 @@ ALTER TABLE `appointment`
   ADD CONSTRAINT `appointment_ibfk_4` FOREIGN KEY (`action_by`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
+-- Constraints for table `audit_logs`
+--
+ALTER TABLE `audit_logs`
+  ADD CONSTRAINT `audit_logs_ibfk_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`User_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Constraints for table `bundle_tasks`
+--
+ALTER TABLE `bundle_tasks`
+  ADD CONSTRAINT `bundle_tasks_ibfk_service` FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
 -- Constraints for table `business`
 --
 ALTER TABLE `business`
@@ -1435,9 +1453,7 @@ ALTER TABLE `certificates`
   ADD CONSTRAINT `certificates_ibfk_1` FOREIGN KEY (`Client_ID`) REFERENCES `client` (`Client_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `certificates_ibfk_2` FOREIGN KEY (`Services_type_Id`) REFERENCES `services_type` (`Services_type_Id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `certificates_ibfk_3` FOREIGN KEY (`Client_services_ID`) REFERENCES `client_services` (`Client_services_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `certificates_ibfk_4` FOREIGN KEY (`Edit_certificate_ID`) REFERENCES `edit_certificate` (`Edit_certificate_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `certificates_ibfk_client_service` FOREIGN KEY (`Client_services_ID`) REFERENCES `client_services` (`Client_services_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `certificates_ibfk_edit_certificate` FOREIGN KEY (`Edit_certificate_ID`) REFERENCES `edit_certificate` (`Edit_certificate_ID`) ON DELETE SET NULL ON UPDATE CASCADE;
+  ADD CONSTRAINT `certificates_ibfk_4` FOREIGN KEY (`Edit_certificate_ID`) REFERENCES `edit_certificate` (`Edit_certificate_ID`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `client`
@@ -1532,261 +1548,17 @@ ALTER TABLE `role_permissions`
 --
 ALTER TABLE `user`
   ADD CONSTRAINT `user_ibfk_1` FOREIGN KEY (`Role_id`) REFERENCES `role` (`Role_id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `user_ibfk_3` FOREIGN KEY (`specialization_type_ID`) REFERENCES `specialization_type` (`specialization_type_ID`) ON DELETE SET NULL ON UPDATE CASCADE;
+  ADD CONSTRAINT `user_ibfk_3` FOREIGN KEY (`specialization_type_ID`) REFERENCES `specialization_type` (`specialization_type_ID`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `user_ibfk_employment_status` FOREIGN KEY (`Employment_status_id`) REFERENCES `status` (`Status_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Constraints for table `user_specialization`
+--
+ALTER TABLE `user_specialization`
+  ADD CONSTRAINT `user_spec_ibfk_type` FOREIGN KEY (`specialization_type_ID`) REFERENCES `specialization_type` (`specialization_type_ID`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `user_spec_ibfk_user` FOREIGN KEY (`User_id`) REFERENCES `user` (`User_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 COMMIT;
 
--- ============================================================
--- ============================================================
--- PART 2: NORMALIZATION & OPTIMIZATION (3NF)
--- Safe, non-destructive additions only
--- ============================================================
--- ============================================================
-
--- ============================================================
--- SECTION 1: FIX AUTO_INCREMENT ON audit_logs
--- ============================================================
-
-ALTER TABLE `audit_logs`
-  MODIFY `audit_logs_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=113;
-
--- ============================================================
--- SECTION 2: UNIQUE CONSTRAINTS (Entity Integrity)
--- ============================================================
-
--- user.Username must be unique (used for login)
-ALTER TABLE `user`
-  ADD UNIQUE KEY `uniq_user_username` (`Username`);
-
--- user.Email must be unique (used as login identifier for clients)
-ALTER TABLE `user`
-  ADD UNIQUE KEY `uniq_user_email` (`Email`);
-
--- business.TIN_number must be unique per business (nullable excluded)
-ALTER TABLE `business`
-  ADD UNIQUE KEY `uniq_business_tin` (`TIN_number`);
-
--- client.Tin_no must be unique per client (nullable excluded)
-ALTER TABLE `client`
-  ADD UNIQUE KEY `uniq_client_tin` (`Tin_no`);
-
--- status rows must not repeat the same group+name pair
-ALTER TABLE `status`
-  ADD UNIQUE KEY `uniq_status_group_name` (`Status_group`, `Status_name`);
-
--- lookup tables: enforce unique names
-ALTER TABLE `specialization_type`
-  ADD UNIQUE KEY `uniq_specialization_name` (`Name`);
-
-ALTER TABLE `services_type`
-  ADD UNIQUE KEY `uniq_services_type_name` (`Name`);
-
-ALTER TABLE `business_type`
-  ADD UNIQUE KEY `uniq_business_type_name` (`Business_name`);
-
-ALTER TABLE `civil_status_type`
-  ADD UNIQUE KEY `uniq_civil_status_name` (`civil_status_type_name`);
-
-ALTER TABLE `document_type`
-  ADD UNIQUE KEY `uniq_document_type_name` (`Document_name`);
-
-ALTER TABLE `role`
-  ADD UNIQUE KEY `uniq_role_name` (`Role_name`);
-
--- ============================================================
--- SECTION 3: MISSING FOREIGN KEYS
--- ============================================================
-
--- audit_logs.user_id → user.User_id (was missing)
-ALTER TABLE `audit_logs`
-  ADD CONSTRAINT `audit_logs_ibfk_user`
-    FOREIGN KEY (`user_id`)
-    REFERENCES `user` (`User_id`)
-    ON DELETE SET NULL
-    ON UPDATE CASCADE;
-
--- user.Employment_status_id → status.Status_id (was missing)
-ALTER TABLE `user`
-  ADD CONSTRAINT `user_ibfk_employment_status`
-    FOREIGN KEY (`Employment_status_id`)
-    REFERENCES `status` (`Status_id`)
-    ON DELETE SET NULL
-    ON UPDATE CASCADE;
-
--- bundle_tasks.Services_type_Id → services_type (was missing)
-ALTER TABLE `bundle_tasks`
-  ADD CONSTRAINT `bundle_tasks_ibfk_service`
-    FOREIGN KEY (`Services_type_Id`)
-    REFERENCES `services_type` (`Services_type_Id`)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE;
-
--- ============================================================
--- SECTION 4: 3NF — TRANSITIVE DEPENDENCY ANNOTATIONS
--- ============================================================
-
--- permissions.User_ID is not part of the permission definition;
--- it records who created the entry (admin). Clarified via COMMENT.
-ALTER TABLE `permissions`
-  MODIFY `User_ID` int(11) DEFAULT NULL
-  COMMENT 'Admin who created this permission (not part of permission logic). Access control is via role_permissions.';
-
--- certificates.company_name is a snapshot of settings.system_company_name.
--- Kept as snapshot for historical accuracy; source of truth is settings table.
-ALTER TABLE `certificates`
-  MODIFY `company_name` varchar(150) DEFAULT 'Guibone Accounting Services'
-  COMMENT 'Snapshot at time of issuance. Source of truth: settings.system_company_name';
-
--- client_services.Steps stores a runtime snapshot of bundle_tasks steps.
--- Canonical step definitions live in bundle_tasks. Candidate for future normalization.
-ALTER TABLE `client_services`
-  MODIFY `Steps` text DEFAULT NULL
-  COMMENT 'Runtime snapshot of task steps. Canonical source: bundle_tasks. Candidate for future junction table normalization.';
-
--- ============================================================
--- SECTION 5: NEW TABLE — user_specialization (3NF Fix)
--- Replaces the JSON blob in settings(user_specialization_assignments)
--- for multi-specialization support. Non-destructive; settings row kept.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS `user_specialization` (
-  `user_specialization_ID` int(11) NOT NULL AUTO_INCREMENT,
-  `User_id` int(11) NOT NULL,
-  `specialization_type_ID` int(11) NOT NULL,
-  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`user_specialization_ID`),
-  UNIQUE KEY `uniq_user_specialization` (`User_id`, `specialization_type_ID`),
-  KEY `idx_user_spec_user` (`User_id`),
-  KEY `idx_user_spec_type` (`specialization_type_ID`),
-  CONSTRAINT `user_spec_ibfk_user`
-    FOREIGN KEY (`User_id`)
-    REFERENCES `user` (`User_id`)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `user_spec_ibfk_type`
-    FOREIGN KEY (`specialization_type_ID`)
-    REFERENCES `specialization_type` (`specialization_type_ID`)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-COMMENT='Normalized multi-specialization mapping. Replaces JSON blob in settings(user_specialization_assignments). Migrate data here when ready.';
-
--- Seed from existing user.specialization_type_ID values
-INSERT IGNORE INTO `user_specialization` (`User_id`, `specialization_type_ID`)
-SELECT `User_id`, `specialization_type_ID`
-FROM `user`
-WHERE `specialization_type_ID` IS NOT NULL;
-
--- ============================================================
--- SECTION 6: REMOVE DUPLICATE INDEXES & REDUNDANT FKs
--- ============================================================
-
--- messages: duplicate plain keys for sender_id and receiver_id
--- (named indexes idx_messages_sender_id/receiver_id already exist)
-ALTER TABLE `messages`
-  DROP KEY `sender_id`,
-  DROP KEY `receiver_id`;
-
--- certificates: duplicate FK constraints on same columns
--- certificates_ibfk_3 = certificates_ibfk_client_service  (Client_services_ID)
--- certificates_ibfk_4 = certificates_ibfk_edit_certificate (Edit_certificate_ID)
-ALTER TABLE `certificates`
-  DROP FOREIGN KEY `certificates_ibfk_client_service`,
-  DROP FOREIGN KEY `certificates_ibfk_edit_certificate`;
-
--- Drop the orphaned index left by the removed duplicate FK
-ALTER TABLE `certificates`
-  DROP KEY `Client_services_ID`;
-
--- ============================================================
--- SECTION 7: RBAC SUPPORT INDEX
--- ============================================================
-
--- permissions.User_ID: index for efficient admin-based joins
-CREATE INDEX `idx_permissions_user_id`
-  ON `permissions` (`User_ID`);
-
--- ============================================================
--- SECTION 8: PERFORMANCE INDEXES
--- ============================================================
-
--- audit_logs: filter by user and date range (most common query)
-CREATE INDEX `idx_audit_logs_user_created`
-  ON `audit_logs` (`user_id`, `created_at`);
-
--- audit_logs: filter by action type
-CREATE INDEX `idx_audit_logs_action`
-  ON `audit_logs` (`action`);
-
--- notifications: unread count per user
-CREATE INDEX `idx_notifications_user_read`
-  ON `notifications` (`user_id`, `is_read`);
-
--- messages: conversation thread between two users
-CREATE INDEX `idx_messages_conversation`
-  ON `messages` (`sender_id`, `receiver_id`, `created_at`);
-
--- messages: unread inbox per receiver
-CREATE INDEX `idx_messages_receiver_read`
-  ON `messages` (`receiver_id`, `is_read`);
-
--- documents: expiration monitoring dashboard
-CREATE INDEX `idx_documents_expiration`
-  ON `documents` (`expiration_date`, `Status_id`);
-
--- documents: per-client document lookup by type
-CREATE INDEX `idx_documents_client_type`
-  ON `documents` (`Client_ID`, `Document_type_ID`);
-
--- client_services: per-client service status filter
-CREATE INDEX `idx_client_services_client_status`
-  ON `client_services` (`Client_ID`, `Status_ID`);
-
--- appointment: scheduling calendar queries
-CREATE INDEX `idx_appointment_date_status`
-  ON `appointment` (`Date`, `Status_ID`);
-
--- appointment: per-client appointment history
-CREATE INDEX `idx_appointment_client_date`
-  ON `appointment` (`Client_ID`, `Date`);
-
--- business: location-based reporting
-CREATE INDEX `idx_business_location`
-  ON `business` (`Province`, `Municipality`);
-
--- user: role-based listing with employment status filter
-CREATE INDEX `idx_user_role_status`
-  ON `user` (`Role_id`, `Employment_status_id`);
-
--- payment: status-based payment lookup
-CREATE INDEX `idx_payment_status`
-  ON `payment` (`Status_ID`);
-
--- certificates: delivery monitoring
-CREATE INDEX `idx_certificates_delivery`
-  ON `certificates` (`delivery_status`, `delivered_at`);
-
--- announcements: active announcement lookup by date range
-CREATE INDEX `idx_announcements_dates`
-  ON `announcements` (`start_date`, `end_date`);
-
--- role_permissions: role-based access check (hottest query in RBAC)
-CREATE INDEX `idx_role_permissions_role_allowed`
-  ON `role_permissions` (`Role_id`, `is_allowed`);
-
--- ============================================================
--- END OF OPTIMIZATION
--- ============================================================
-
-SET FOREIGN_KEY_CHECKS = 1;
-COMMIT;
-
-
--- ============================================================
--- SUMMARY OF CHANGES
--- ============================================================
--- [1NF] Fixed: audit_logs AUTO_INCREMENT
--- [2NF] Added: 11 UNIQUE constraints across 9 tables
--- [3NF] Fixed: Transitive dependency annotations (3 columns)
--- [3NF] Added: user_specialization junction table (replaces JSON blob)
--- [FK]  Added: 3 missing FOREIGN KEY constraints
--- [IDX] Removed: 4 duplicate/redundant indexes and 2 duplicate FKs
--- [IDX] Added: 16 performance composite indexes
--- ============================================================
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

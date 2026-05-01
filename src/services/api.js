@@ -183,16 +183,38 @@ export function normalizeServiceOptions(rows) {
   const normalized = rows
     .map((entry) => {
       if (typeof entry === "string") {
-        return { id: "", name: String(entry).trim(), disabled: false, bundle_steps: [] };
+        const name = String(entry).trim();
+        return {
+          id: "",
+          name,
+          service_label: name,
+          display_name: name,
+          service_name: name,
+          raw_name: name,
+          description: "",
+          disabled: false,
+          bundle_steps: [],
+        };
       }
 
-      const name = String(entry?.Name || entry?.name || "").trim();
-      if (!name) return null;
+      const rawName = String(entry?.service_name ?? entry?.raw_name ?? entry?.Name ?? "").trim();
+      const description = String(entry?.description ?? entry?.service_description ?? "").trim();
+      const fallbackName = String(entry?.name || "").trim();
+      const serviceLabel = String(entry?.service_label ?? entry?.display_name ?? "").trim();
+      const name = serviceLabel || (rawName && description ? `${rawName} - ${description}` : rawName || fallbackName);
+      const serviceName = rawName || fallbackName || name;
+      if (!name || !serviceName) return null;
 
       return {
         ...entry,
         id: entry?.Services_type_Id ?? entry?.services_type_id ?? entry?.id ?? "",
         name,
+        Name: name,
+        service_label: name,
+        display_name: name,
+        service_name: serviceName,
+        raw_name: serviceName,
+        description,
         disabled: Boolean(entry?.disabled),
         bundle_steps: Array.isArray(entry?.bundle_steps) ? entry.bundle_steps : [],
       };
@@ -255,6 +277,7 @@ function normalizePaymentMethodOptions(rows) {
         id,
         name,
         description,
+        created_at: entry?.created_at ?? entry?.createdAt ?? null,
         disabled: Boolean(entry?.disabled),
       };
     })

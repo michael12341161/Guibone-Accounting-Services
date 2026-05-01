@@ -61,8 +61,8 @@ const serviceItems = [
     description: "Monitor BIR compliance requirements, deadlines, and filing milestones with clear status updates.",
   },
   {
-    title: "LGU Permit Processing",
-    description: "Centralize permit requirements, follow-ups, and document validation for local registrations.",
+    title: "SSS, PhilHealth & Pag-IBIG Registration",
+    description: "Track agency registrations, supporting requirements, and filing progress for employer compliance.",
   },
   {
     title: "Tax Consultation",

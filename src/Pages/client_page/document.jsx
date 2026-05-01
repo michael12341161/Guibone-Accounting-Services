@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Eye, FileText, ShieldCheck } from "lucide-react";
+import { Download, Eye, FileText, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader } from "../../components/UI/card";
 import { Button } from "../../components/UI/buttons";
 import { Modal } from "../../components/UI/modal";
@@ -15,7 +15,15 @@ import {
   resolveDocumentUrl,
 } from "../../utils/document_management";
 
-const MANAGED_DOCUMENT_KEYS = new Set(["business_permit", "dti", "sec", "lgu"]);
+const MANAGED_DOCUMENT_KEYS = new Set([
+  "business_permit",
+  "dti",
+  "sec",
+  "bir",
+  "philhealth",
+  "pag_ibig",
+  "sss",
+]);
 
 function formatDateTime(value) {
   const raw = String(value || "").trim();
@@ -176,7 +184,7 @@ export default function ClientDocumentsPage() {
       <Card>
         <CardHeader
           title="Business Documents"
-          description="View Business Permit, DTI, SEC, and LGU uploaded by the admin. Only the Business Permit changes registration status."
+          description="View Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS uploaded by the admin. Only the Business Permit changes registration status."
         />
         <CardContent className="space-y-4">
           {error ? (
@@ -230,9 +238,12 @@ export default function ClientDocumentsPage() {
               <CardContent className="space-y-1">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Supporting Business Docs</div>
                 <div className="text-sm font-semibold text-slate-900">
-                  {uploadedSupportDocumentCount} / {supportDocumentSlots.length || 3} uploaded
+                  {uploadedSupportDocumentCount} / {supportDocumentSlots.length || 6} uploaded
                 </div>
-                <CardDescription>DTI, SEC, and LGU are supporting documents only and do not register the business.</CardDescription>
+                <CardDescription>
+                  DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS are supporting documents only and do not register the
+                  business.
+                </CardDescription>
               </CardContent>
             </Card>
           </div>
@@ -243,7 +254,7 @@ export default function ClientDocumentsPage() {
         <Card className="min-w-0">
           <CardHeader
             title="Business Document Details"
-            description="These files are uploaded by the admin. Business Permit registers your business; DTI, SEC, and LGU are for supporting records only."
+            description="These files are uploaded by the admin. Business Permit registers your business; the rest are supporting business records."
           />
           <CardContent>
             {loading ? (
@@ -255,7 +266,7 @@ export default function ClientDocumentsPage() {
                 Business document types are not configured yet for your account.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                 {managedDocumentSlots.map((slot) => {
                   const badgeClass = getDocumentStatusBadgeClass(slot.status);
                   const badgeLabel = slot.status;
@@ -316,6 +327,14 @@ export default function ClientDocumentsPage() {
                             </Button>
                             <a
                               href={resolveDocumentUrl(slot.filepath)}
+                              download={slot.filename || true}
+                              className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                            >
+                              <Download className="h-4 w-4" />
+                              {`Download ${viewerLabel}`}
+                            </a>
+                            <a
+                              href={resolveDocumentUrl(slot.filepath)}
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
@@ -343,15 +362,25 @@ export default function ClientDocumentsPage() {
         size="lg"
         footer={
           viewerDocumentUrl ? (
-            <a
-              href={viewerDocumentUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <Eye className="h-4 w-4" />
-              Open
-            </a>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={viewerDocumentUrl}
+                download={viewerSlot?.filename || true}
+                className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </a>
+              <a
+                href={viewerDocumentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <Eye className="h-4 w-4" />
+                Open
+              </a>
+            </div>
           ) : null
         }
       >

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/client_service_steps_schema.php';
+require_once __DIR__ . '/service_type_helpers.php';
 require_once __DIR__ . '/task_deadline_monitor.php';
 require_once __DIR__ . '/employee_specialization.php';
 
@@ -242,7 +243,9 @@ try {
                 st.Status_name AS status_name,
                 cs.Client_ID AS client_id,
                 cs.Services_type_Id AS service_id,
-                s.Name AS service_name,
+                s.Name AS raw_service_name,
+                s.description AS service_description,
+                ' . monitoring_service_type_label_sql('s') . ' AS service_name,
                 CONCAT_WS(" ", c.First_name, c.Middle_name, c.Last_name) AS client_name,
                 cs.User_ID AS accountant_id,
                 u.Username AS accountant_name,
@@ -318,6 +321,9 @@ try {
             'status_id' => isset($row['status_id']) ? (int)$row['status_id'] : null,
             'service' => $row['service_name'] ?? null,
             'service_name' => $row['service_name'] ?? null,
+            'service_label' => $row['service_name'] ?? null,
+            'raw_service_name' => $row['raw_service_name'] ?? null,
+            'service_description' => !empty($row['service_description']) ? $row['service_description'] : null,
             'service_id' => isset($row['service_id']) ? (int)$row['service_id'] : null,
             'client_id' => isset($row['client_id']) ? (int)$row['client_id'] : null,
             'client_name' => $row['client_name'] ?? null,

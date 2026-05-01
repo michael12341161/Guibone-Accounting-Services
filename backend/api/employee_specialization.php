@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/service_type_helpers.php';
+
 if (!function_exists('monitoring_quote_identifier')) {
     function monitoring_quote_identifier(string $name): string {
         return '`' . str_replace('`', '``', $name) . '`';
@@ -1516,7 +1518,7 @@ function employeeSpecializationResolveServiceNames(PDO $conn, array $specializat
 
     $placeholders = implode(',', array_fill(0, count($serviceIds), '?'));
     $stmt = $conn->prepare(
-        "SELECT Services_type_Id AS id, Name AS name
+        "SELECT Services_type_Id AS id, Name AS service_name, description
          FROM services_type
          WHERE Services_type_Id IN ($placeholders)"
     );
@@ -1526,7 +1528,8 @@ function employeeSpecializationResolveServiceNames(PDO $conn, array $specializat
     $nameMap = [];
     foreach ($rows as $row) {
         $serviceId = (int)($row['id'] ?? 0);
-        $serviceName = trim((string)($row['name'] ?? ''));
+        $payload = monitoring_service_type_payload($row);
+        $serviceName = trim((string)($payload['name'] ?? ''));
         if ($serviceId > 0 && $serviceName !== '') {
             $nameMap[$serviceId] = $serviceName;
         }

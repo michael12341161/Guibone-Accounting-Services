@@ -19,6 +19,7 @@ function createInitialForm() {
   return {
     serviceId: "",
     serviceName: "",
+    serviceDescription: "",
     disabled: false,
     bundleSteps: [createEmptyStep()],
   };
@@ -82,7 +83,9 @@ export default function NewServices() {
         return {
           id: serviceId || String(service?.name || "").trim(),
           serviceId,
-          name: normalizeServiceName(service?.name),
+          name: normalizeServiceName(service?.service_name || service?.raw_name || service?.Name || service?.name),
+          label: normalizeServiceName(service?.service_label || service?.display_name || service?.name),
+          description: normalizeServiceName(service?.description || service?.service_description),
           disabled: Boolean(service?.disabled),
           bundleSteps: Array.isArray(bundle?.steps) ? bundle.steps : [],
           stepCount: Array.isArray(bundle?.steps) ? bundle.steps.length : 0,
@@ -90,7 +93,7 @@ export default function NewServices() {
       })
       .filter((service) => {
         if (!query) return true;
-        return `${service.name} ${service.disabled ? "disabled" : "active"} ${service.stepCount}`.toLowerCase().includes(query);
+        return `${service.name} ${service.description} ${service.label} ${service.disabled ? "disabled" : "active"} ${service.stepCount}`.toLowerCase().includes(query);
       });
   }, [search, services]);
 
@@ -104,14 +107,22 @@ export default function NewServices() {
       return "Service name must be 150 characters or fewer.";
     }
 
+    const normalizedDescription = normalizeServiceName(form.serviceDescription);
+    if (normalizedDescription.length > 150) {
+      return "Service description must be 150 characters or fewer.";
+    }
+
     const duplicate = serviceRows.some((service) => {
       if (String(service.serviceId) === String(form.serviceId || "")) {
         return false;
       }
-      return String(service.name || "").trim().toLowerCase() === normalizedName.toLowerCase();
+      return (
+        String(service.name || "").trim().toLowerCase() === normalizedName.toLowerCase() &&
+        String(service.description || "").trim().toLowerCase() === normalizedDescription.toLowerCase()
+      );
     });
     if (duplicate) {
-      return "Another service already uses that name.";
+      return "Another service already uses that name and description.";
     }
 
     const steps = normalizeBundleSteps(form.bundleSteps);
@@ -134,6 +145,7 @@ export default function NewServices() {
     setForm({
       serviceId: String(service?.serviceId || ""),
       serviceName: String(service?.name || ""),
+      serviceDescription: String(service?.description || ""),
       disabled: Boolean(service?.disabled),
       bundleSteps: Array.isArray(service?.bundleSteps) && service.bundleSteps.length
         ? cloneBundleSteps(service.bundleSteps)
@@ -201,7 +213,8 @@ export default function NewServices() {
     }
 
     const payload = {
-      name: normalizeServiceName(form.serviceName),
+      service_name: normalizeServiceName(form.serviceName),
+      description: normalizeServiceName(form.serviceDescription),
       bundle_steps: normalizeBundleSteps(form.bundleSteps),
       disabled: Boolean(form.disabled),
     };
@@ -241,7 +254,8 @@ export default function NewServices() {
       setError("");
       await updateServiceType({
         service_id: Number(service.serviceId),
-        name: service.name,
+        service_name: service.name,
+        description: service.description,
         disabled: !service.disabled,
         bundle_steps: normalizeBundleSteps(service.bundleSteps),
       });
@@ -259,12 +273,18 @@ export default function NewServices() {
         header: "Name",
         render: (value, row) => (
           <div className="min-w-[220px]">
-            <div className="font-medium text-slate-900">{value}</div>
+            <div className="font-medium text-slate-900">{row.label || value}</div>
             <div className="mt-1 text-xs text-slate-500">
               {row.stepCount} bundle task{row.stepCount === 1 ? "" : "s"}
             </div>
           </div>
         ),
+      },
+      {
+        key: "description",
+        header: "Description",
+        width: "20%",
+        render: (value) => <span className="text-sm text-slate-700">{value || "-"}</span>,
       },
       {
         key: "disabled",
@@ -417,6 +437,27 @@ export default function NewServices() {
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100"
               placeholder="Enter service name"
               autoFocus
+            />
+          </div>
+
+          <div>
+            <label htmlFor="service-description" className="mb-1 block text-xs font-medium text-slate-600">
+              Description
+            </label>
+            <input
+              id="service-description"
+              type="text"
+              value={form.serviceDescription}
+              onChange={(event) => {
+                setForm((current) => ({ ...current, serviceDescription: event.target.value }));
+                if (fieldError) {
+                  setFieldError("");
+                }
+              }}
+              maxLength={150}
+              disabled={submitting}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100"
+              placeholder="Optional subtype, such as VAT or Non-VAT"
             />
           </div>
 

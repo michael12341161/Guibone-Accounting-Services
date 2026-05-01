@@ -461,7 +461,7 @@ function buildUserListSpecializationMetadata(PDO $conn): array {
         try {
             $placeholders = implode(',', array_fill(0, count($allServiceIds), '?'));
             $stmt = $conn->prepare(
-                "SELECT Services_type_Id AS id, Name AS name
+                "SELECT Services_type_Id AS id, Name AS service_name, description
                  FROM services_type
                  WHERE Services_type_Id IN ($placeholders)"
             );
@@ -469,7 +469,8 @@ function buildUserListSpecializationMetadata(PDO $conn): array {
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
             foreach ($rows as $row) {
                 $serviceId = (int)($row['id'] ?? 0);
-                $serviceName = trim((string)($row['name'] ?? ''));
+                $payload = monitoring_service_type_payload($row);
+                $serviceName = trim((string)($payload['name'] ?? ''));
                 if ($serviceId > 0 && $serviceName !== '') {
                     $serviceNameMap[$serviceId] = $serviceName;
                 }

@@ -6,7 +6,11 @@ function normalizeServiceNameKey(value) {
 
   if (!compact) return "";
   if (compact === "booking" || compact.includes("bookkeep")) return "bookkeeping";
-  if (compact.includes("taxfil")) return "taxfiling";
+  if (compact.includes("taxfil")) {
+    if (compact.includes("nonvat")) return "taxfilingnonvat";
+    if (compact.includes("vat")) return "taxfilingvat";
+    return "taxfiling";
+  }
   if (compact.includes("audit")) return "auditing";
   if (compact.includes("taxcomp")) return "taxcomputation";
   return compact;

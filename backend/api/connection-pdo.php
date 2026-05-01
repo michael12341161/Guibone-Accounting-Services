@@ -84,7 +84,7 @@
                 . $identifier
                 . ' for '
                 . $feature
-                . '. Import monitoring/monitoring.sql or apply the required migration before using this endpoint.';
+                . '. Import monitoring/database/monitoring.sql before using this endpoint.';
         }
     }
 

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/employee_specialization.php';
+require_once __DIR__ . '/service_type_helpers.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/Exception.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/PHPMailer.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/SMTP.php';
@@ -297,7 +298,11 @@ if (!function_exists('monitoring_certificate_resolve_service_definition')) {
         foreach (monitoring_certificate_service_definitions() as $definition) {
             $candidates = array_merge([$definition['key'], $definition['label']], $definition['db_names']);
             foreach ($candidates as $candidate) {
-                if ($normalized === monitoring_certificate_normalize_service_name((string)$candidate)) {
+                $candidateNormalized = monitoring_certificate_normalize_service_name((string)$candidate);
+                if (
+                    $normalized === $candidateNormalized
+                    || ($candidateNormalized !== '' && strpos($normalized, $candidateNormalized . ' ') === 0)
+                ) {
                     return $definition;
                 }
             }
@@ -308,17 +313,33 @@ if (!function_exists('monitoring_certificate_resolve_service_definition')) {
 }
 
 if (!function_exists('monitoring_certificate_fetch_service_row')) {
-    function monitoring_certificate_fetch_service_row(PDO $conn, string $serviceValue): ?array
+    function monitoring_certificate_fetch_service_row(PDO $conn, string $serviceValue, int $serviceId = 0): ?array
     {
+        $service = monitoring_find_service_type($conn, $serviceValue, $serviceId, false);
+        if ($service !== null) {
+            $definition = monitoring_certificate_resolve_service_definition((string)$service['name'])
+                ?: monitoring_certificate_resolve_service_definition($serviceValue);
+            if ($definition === null) {
+                return null;
+            }
+
+            return [
+                'service_id' => (int)$service['id'],
+                'service_name' => (string)$service['name'],
+                'service_key' => $definition['key'],
+                'service_label' => (string)$service['label'],
+            ];
+        }
+
         $definition = monitoring_certificate_resolve_service_definition($serviceValue);
         if ($definition === null) {
             return null;
         }
-
         $dbNames = $definition['db_names'];
         $placeholders = implode(',', array_fill(0, count($dbNames), '?'));
+        $labelSql = monitoring_service_type_label_sql();
         $stmt = $conn->prepare(
-            "SELECT Services_type_Id, Name
+            "SELECT Services_type_Id, Name, description, {$labelSql} AS service_label
              FROM services_type
              WHERE LOWER(TRIM(Name)) IN ({$placeholders})
              ORDER BY Services_type_Id ASC
@@ -339,7 +360,7 @@ if (!function_exists('monitoring_certificate_fetch_service_row')) {
             'service_id' => (int)$row['Services_type_Id'],
             'service_name' => (string)$row['Name'],
             'service_key' => $definition['key'],
-            'service_label' => $definition['label'],
+            'service_label' => monitoring_service_type_label($row['Name'] ?? '', $row['description'] ?? null),
         ];
     }
 }
@@ -799,7 +820,7 @@ if (!function_exists('monitoring_certificate_build_state')) {
         $stmt = $conn->query(
             'SELECT
                 ec.*,
-                st.Name AS service_name,
+                ' . monitoring_service_type_label_sql('st') . ' AS service_name,
                 editor_user.Username AS editor_username,
                 editor_user.first_name AS editor_first_name,
                 editor_user.middle_name AS editor_middle_name,
@@ -1779,7 +1800,7 @@ if (!function_exists('monitoring_certificate_fetch_selected_template_row')) {
         }
 
         $stmt = $conn->prepare(
-            'SELECT ec.*, st.Name AS service_name
+            'SELECT ec.*, ' . monitoring_service_type_label_sql('st') . ' AS service_name
              FROM edit_certificate ec
              LEFT JOIN services_type st ON st.Services_type_Id = ec.Services_type_Id
              WHERE ec.Services_type_Id = :service_id
@@ -1801,7 +1822,7 @@ if (!function_exists('monitoring_certificate_fetch_template_row_by_id')) {
         }
 
         $stmt = $conn->prepare(
-            'SELECT ec.*, st.Name AS service_name
+            'SELECT ec.*, ' . monitoring_service_type_label_sql('st') . ' AS service_name
              FROM edit_certificate ec
              LEFT JOIN services_type st ON st.Services_type_Id = ec.Services_type_Id
              WHERE ec.Edit_certificate_ID = :edit_certificate_id
@@ -1928,7 +1949,7 @@ if (!function_exists('monitoring_certificate_issue_for_client_service')) {
                 cs.Services_type_Id AS service_id,
                 cs.Date AS due_date,
                 COALESCE(cs.Steps, "") AS steps,
-                COALESCE(st.Name, cs.Name) AS service_name,
+                COALESCE(' . monitoring_service_type_label_sql('st') . ', cs.Name) AS service_name,
                 c.First_name AS first_name,
                 c.Middle_name AS middle_name,
                 c.Last_name AS last_name,
@@ -1974,7 +1995,11 @@ if (!function_exists('monitoring_certificate_issue_for_client_service')) {
             ];
         }
 
-        $service = monitoring_certificate_fetch_service_row($conn, (string)($task['service_name'] ?? ''));
+        $service = monitoring_certificate_fetch_service_row(
+            $conn,
+            (string)($task['service_name'] ?? ''),
+            (int)($task['service_id'] ?? 0)
+        );
         $serviceLabel = $service !== null
             ? (string)$service['service_label']
             : (trim((string)($task['service_name'] ?? '')) !== '' ? trim((string)$task['service_name']) : 'Service');

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/connection-pdo.php';
+require_once __DIR__ . '/service_type_helpers.php';
 
 monitoring_bootstrap_api(['GET', 'OPTIONS']);
 
@@ -265,7 +266,10 @@ function processingDocumentCatalog(): array {
         'business_permit' => 'Business Permit',
         'dti' => 'DTI',
         'sec' => 'SEC',
-        'lgu' => 'LGU',
+        'bir' => 'BIR',
+        'philhealth' => 'PhilHealth',
+        'pag_ibig' => 'Pag-IBIG',
+        'sss' => 'SSS',
     ];
 }
 
@@ -440,7 +444,9 @@ try {
                a.Date,
                {$descriptionSelect}
                {$documentSelect}
-               s.Name AS Service_name,
+               s.Name AS raw_service_name,
+               s.description AS service_description,
+               " . monitoring_service_type_label_sql('s') . " AS Service_name,
                {$serviceAmountSelect}
                st.Status_name,
                CONCAT_WS(' ', c.First_name, c.Middle_name, c.Last_name) AS Client_name,
@@ -512,6 +518,8 @@ try {
         $statusName = isset($row['Status_name']) ? (string)$row['Status_name'] : '';
         $normalized = statusLabel($statusName);
         $serviceName = isset($row['Service_name']) ? (string)$row['Service_name'] : 'Appointment';
+        $rawServiceName = isset($row['raw_service_name']) ? trim((string)$row['raw_service_name']) : $serviceName;
+        $serviceDescription = isset($row['service_description']) ? trim((string)$row['service_description']) : '';
         $serviceAmount = normalizeMoneyValue($row['Service_amount'] ?? null);
         $date = isset($row['Date']) ? (string)$row['Date'] : null;
         $description = isset($row['Appointment_description']) ? trim((string)$row['Appointment_description']) : '';
@@ -536,6 +544,9 @@ try {
         $selectedServices = [[
             'id' => isset($row['service_id']) ? (int)$row['service_id'] : null,
             'name' => $serviceName,
+            'service_name' => $rawServiceName,
+            'service_label' => $serviceName,
+            'description' => $serviceDescription !== '' ? $serviceDescription : null,
             'price' => $serviceAmount,
         ]];
 
@@ -578,6 +589,9 @@ try {
             'service' => $serviceName,
             'service_name' => $serviceName,
             'Service_name' => $serviceName,
+            'service_label' => $serviceName,
+            'raw_service_name' => $rawServiceName,
+            'service_description' => $serviceDescription !== '' ? $serviceDescription : null,
             'service_price' => $serviceAmount,
             'service_amount' => $serviceAmount,
             'selected_services' => $selectedServices,

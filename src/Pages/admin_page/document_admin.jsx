@@ -21,14 +21,25 @@ import {
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { showConfirmDialog, useErrorToast } from "../../utils/feedback";
 
-const MANAGED_DOCUMENT_KEYS = new Set(["business_permit", "dti", "sec", "lgu"]);
-const SUPPORTING_DOCUMENT_KEYS = new Set(["dti", "sec", "lgu"]);
-const EXPIRING_DOCUMENT_KEYS = new Set(["business_permit", "dti", "lgu"]);
+const MANAGED_DOCUMENT_KEYS = new Set([
+  "business_permit",
+  "dti",
+  "sec",
+  "bir",
+  "philhealth",
+  "pag_ibig",
+  "sss",
+]);
+const SUPPORTING_DOCUMENT_KEYS = new Set(["dti", "sec", "bir", "philhealth", "pag_ibig", "sss"]);
+const EXPIRING_DOCUMENT_KEYS = new Set(["business_permit", "dti"]);
 const WATCHLIST_DOCUMENT_TYPES = [
   { id: 4, name: "business_permit" },
   { id: 5, name: "dti" },
   { id: 6, name: "sec" },
-  { id: 7, name: "lgu" },
+  { id: 7, name: "bir" },
+  { id: 9, name: "philhealth" },
+  { id: 10, name: "pag_ibig" },
+  { id: 8, name: "sss" },
 ];
 
 function normalizeClientId(value) {
@@ -491,9 +502,9 @@ export default function DocumentAdminPage() {
       return {
         key: "lacking",
         title: "Lacking Documents",
-        description: "These businesses are still missing one or more DTI, SEC, or LGU supporting documents.",
+        description: "These businesses are still missing one or more supporting business documents.",
         rows: watchlistGroups.lacking,
-        emptyMessage: "No businesses are missing DTI, SEC, or LGU documents right now.",
+        emptyMessage: "No businesses are missing supporting business documents right now.",
       };
     }
 
@@ -501,9 +512,9 @@ export default function DocumentAdminPage() {
       return {
         key: "expired",
         title: "Expired Documents",
-        description: "These businesses have expired Business Permit, DTI, or LGU documents on file.",
+        description: "These businesses have expired Business Permit or DTI documents on file.",
         rows: watchlistGroups.expired,
-        emptyMessage: "No expired Business Permit, DTI, or LGU documents right now.",
+        emptyMessage: "No expired Business Permit or DTI documents right now.",
       };
     }
 
@@ -511,9 +522,9 @@ export default function DocumentAdminPage() {
       return {
         key: "near-expiry",
         title: "Near Expiry Documents",
-        description: "These businesses have Business Permit, DTI, or LGU documents that expire within the next 30 days.",
+        description: "These businesses have Business Permit or DTI documents that expire within the next 30 days.",
         rows: watchlistGroups.nearExpiry,
-        emptyMessage: "No Business Permit, DTI, or LGU documents are expiring within the next 30 days.",
+        emptyMessage: "No Business Permit or DTI documents are expiring within the next 30 days.",
       };
     }
 
@@ -642,7 +653,7 @@ export default function DocumentAdminPage() {
           {activeWatchlist?.key === "lacking" ? (
             <>
               <div className="font-medium text-slate-900">{row.missingDocumentSummary || "No missing documents"}</div>
-              <div className="text-xs text-slate-500">Missing DTI, SEC, and/or LGU supporting files.</div>
+              <div className="text-xs text-slate-500">Missing one or more supporting business files.</div>
             </>
           ) : activeWatchlist?.key === "expired" ? (
             <>
@@ -650,7 +661,7 @@ export default function DocumentAdminPage() {
               <div className="text-xs text-slate-500">
                 {row.firstExpiredDocument?.expirationDate
                   ? `First expired on ${formatDate(row.firstExpiredDocument.expirationDate)}`
-                  : "Business Permit, DTI, and LGU are tracked here."}
+                  : "Business Permit and DTI are tracked here."}
               </div>
             </>
           ) : activeWatchlist?.key === "near-expiry" ? (
@@ -792,7 +803,7 @@ export default function DocumentAdminPage() {
       <Card>
         <CardHeader
           title="Business Document Management"
-          description="Manage Business Permit, DTI, SEC, and LGU files here. Only the Business Permit marks the client business as registered."
+          description="Manage Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files here. Only the Business Permit marks the client business as registered."
         />
         <CardContent className="space-y-4">
           {error ? (
@@ -853,7 +864,7 @@ export default function DocumentAdminPage() {
                 </div>
                 <div className="mt-3 text-3xl font-semibold text-slate-900">{watchlistGroups.lacking.length}</div>
                 <div className="mt-2 text-xs leading-5 text-slate-600">
-                  Businesses missing DTI, SEC, or LGU supporting documents.
+                  Businesses missing one or more supporting business documents.
                 </div>
               </button>
 
@@ -868,7 +879,7 @@ export default function DocumentAdminPage() {
                 </div>
                 <div className="mt-3 text-3xl font-semibold text-slate-900">{watchlistGroups.expired.length}</div>
                 <div className="mt-2 text-xs leading-5 text-slate-600">
-                  Businesses with expired Business Permit, DTI, or LGU documents.
+                  Businesses with expired Business Permit or DTI documents.
                 </div>
               </button>
 
@@ -883,7 +894,7 @@ export default function DocumentAdminPage() {
                 </div>
                 <div className="mt-3 text-3xl font-semibold text-slate-900">{watchlistGroups.nearExpiry.length}</div>
                 <div className="mt-2 text-xs leading-5 text-slate-600">
-                  Businesses with Business Permit, DTI, or LGU documents expiring within the next {NEAR_EXPIRY_DAYS} days.
+                  Businesses with Business Permit or DTI documents expiring within the next {NEAR_EXPIRY_DAYS} days.
                 </div>
               </button>
             </div>
