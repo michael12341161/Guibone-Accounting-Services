@@ -526,7 +526,9 @@ INSERT INTO `permissions` (`permission_id`, `module_key`, `action_key`, `permiss
 (109, 'work-update', 'restore', 'work-update.restore', 1),
 (110, 'messaging', '', 'messaging', 1),
 (111, 'reports', '', 'reports', 1),
-(112, 'client-account', '', 'client-account', 1);
+(112, 'client-account', '', 'client-account', 1),
+(113, 'payment', '', 'payment', 1),
+(114, 'payment-methods', '', 'payment-methods', 1);
 
 -- --------------------------------------------------------
 
@@ -787,7 +789,15 @@ INSERT INTO `role_permissions` (`role_permissions_ID`, `Role_id`, `permission_id
 (441, 1, 112, 1),
 (442, 2, 112, 0),
 (443, 3, 112, 0),
-(444, 4, 112, 1);
+(444, 4, 112, 1),
+(445, 1, 113, 1),
+(446, 2, 113, 0),
+(447, 3, 113, 0),
+(448, 4, 113, 0),
+(449, 1, 114, 1),
+(450, 2, 114, 0),
+(451, 3, 114, 0),
+(452, 4, 114, 0);
 
 -- --------------------------------------------------------
 
@@ -1357,7 +1367,7 @@ ALTER TABLE `payment_type`
 -- AUTO_INCREMENT for table `permissions`
 --
 ALTER TABLE `permissions`
-  MODIFY `permission_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=113;
+  MODIFY `permission_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=115;
 
 --
 -- AUTO_INCREMENT for table `role`
@@ -1369,7 +1379,7 @@ ALTER TABLE `role`
 -- AUTO_INCREMENT for table `role_permissions`
 --
 ALTER TABLE `role_permissions`
-  MODIFY `role_permissions_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=445;
+  MODIFY `role_permissions_ID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=453;
 
 --
 -- AUTO_INCREMENT for table `services_type`

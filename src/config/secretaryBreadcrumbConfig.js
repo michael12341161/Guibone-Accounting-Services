@@ -12,6 +12,8 @@ import {
   LayoutDashboard,
   MessageCircleMore,
   PencilLine,
+  PlusSquare,
+  ReceiptText,
   UserCog,
   UserPlus,
   Users,
@@ -32,6 +34,12 @@ export const secretaryBreadcrumbConfig = {
     "/secretary/documents": { label: "Documents", icon: FileText },
     "/secretary/messaging": { label: "Messaging", icon: MessageCircleMore },
     "/secretary/new-client-management": { label: "New Client", icon: UserPlus },
+    "/secretary/payment": { label: "Client Payments", icon: ReceiptText },
+    "/secretary/payment/methods": {
+      label: "Payment Methods",
+      icon: PlusSquare,
+      skipParentSegments: ["/secretary/payment"],
+    },
     "/secretary/reports": { label: "Reports", icon: BarChart3, accessKey: "reports" },
     "/secretary/scheduling": { label: "Consultation", icon: CalendarClock },
     "/secretary/tasks": {

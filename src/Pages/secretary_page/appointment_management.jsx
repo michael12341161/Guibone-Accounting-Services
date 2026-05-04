@@ -256,6 +256,20 @@ function statusPillClass(status) {
   return "bg-amber-50 text-amber-700 border-amber-200";
 }
 
+function paymentStatusPillClass(status) {
+  const value = normalizePaymentStatusKey(status);
+  if (value === "paid") {
+    return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  }
+  if (value === "processing") {
+    return "bg-sky-50 text-sky-700 border-sky-200";
+  }
+  if (value === "reject") {
+    return "bg-rose-50 text-rose-700 border-rose-200";
+  }
+  return "bg-amber-50 text-amber-700 border-amber-200";
+}
+
 function normalizePaymentStatusLabel(status, hasPayment = false) {
   const raw = String(status || "").trim();
   if (!raw) {
@@ -822,7 +836,7 @@ export default function AppointmentManagement() {
     {
       key: "status",
       header: "Status",
-      width: "10%",
+      width: "9%",
       render: (value) => (
         <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${statusPillClass(value)}`}>
           {value}
@@ -830,16 +844,31 @@ export default function AppointmentManagement() {
       ),
     },
     {
+      key: "paymentStatus",
+      header: "Payment Status",
+      width: "11%",
+      render: (value, row) => (
+        <span
+          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${paymentStatusPillClass(
+            value
+          )}`}
+          title={row.paymentExists ? "Client payment submission status" : "No submitted receipt yet"}
+        >
+          {value || "Pending"}
+        </span>
+      ),
+    },
+    {
       key: "actionBy",
       header: "Action By",
-      width: "11%",
+      width: "10%",
       render: (_, row) => <span className="break-words text-xs text-slate-700">{formatActionBy(row)}</span>,
     },
     {
       key: "actions",
       header: "Actions",
       align: "right",
-      width: "14%",
+      width: "15%",
       render: (_, row) => {
         const statusLower = normalizeAppointmentDecisionStatus(row.statusRaw || row.status);
         const paymentStatusKey = normalizePaymentStatusKey(row.paymentStatus);

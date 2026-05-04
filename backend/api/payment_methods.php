@@ -33,9 +33,10 @@ function normalizePaymentMethodRow(array $row, bool $disabled = false): ?array
 try {
     monitoring_require_auth();
     $sessionUser = monitoring_read_session_user(true);
-    $roleId = is_array($sessionUser) ? (int)($sessionUser['role_id'] ?? 0) : 0;
-    $includeDisabled = !empty($_GET['include_disabled']) && $roleId === MONITORING_ROLE_ADMIN;
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $canManagePaymentMethods = is_array($sessionUser)
+        && monitoring_user_has_role_or_any_module_access($conn, $sessionUser, [MONITORING_ROLE_ADMIN], ['payment-methods']);
+    $includeDisabled = !empty($_GET['include_disabled']) && $canManagePaymentMethods;
 
     monitoring_require_schema_columns(
         $conn,

@@ -16,8 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 try {
-    monitoring_require_roles([MONITORING_ROLE_ADMIN]);
+    $sessionUser = monitoring_require_auth();
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    monitoring_require_role_or_module_access($conn, [MONITORING_ROLE_ADMIN], 'payment-methods', $sessionUser);
 
     monitoring_require_schema_columns(
         $conn,

@@ -120,7 +120,7 @@ try {
         $conn,
         $sessionUser,
         [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY],
-        ['appointments', 'reports', ['module' => 'tasks', 'action' => 'client-appointments']]
+        ['payment', 'appointments', 'reports', ['module' => 'tasks', 'action' => 'client-appointments']]
     )) {
         monitoring_auth_respond(403, ['success' => false, 'message' => 'Access denied.']);
     }

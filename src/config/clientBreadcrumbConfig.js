@@ -43,7 +43,6 @@ export const clientBreadcrumbConfig = {
           label: "History",
           path: "/client/work-progress/history",
           icon: Clock3,
-          accessKey: "client-work-progress",
         },
       ],
     },

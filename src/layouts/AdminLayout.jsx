@@ -153,7 +153,7 @@ export const adminNavItems = [
         label: "Payment Methods",
         to: "/admin/payment/methods",
         icon: <PlusSquare {...sidebarIconProps} />,
-        accessKey: "payment",
+        accessKey: "payment-methods",
       },
     ],
   },

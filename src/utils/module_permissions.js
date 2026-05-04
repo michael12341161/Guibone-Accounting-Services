@@ -431,7 +431,13 @@ export const FEATURE_SECTIONS = [
       {
         key: "payment",
         label: "Payment",
-        description: "Review client payments and manage available payment methods.",
+        description: "Review client payment receipts.",
+        defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
+      },
+      {
+        key: "payment-methods",
+        label: "Payment Methods",
+        description: "Manage the payment methods clients can choose.",
         defaultAccess: { admin: true, secretary: false, accountant: false, client: false },
       },
     ],
