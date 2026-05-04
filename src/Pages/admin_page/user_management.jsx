@@ -1,4 +1,5 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -837,7 +838,7 @@ export default function UserManagement({
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
+    const loadSelectionOptions = async () => {
       try {
         const [specializationRes, rolesRes] = await Promise.allSettled([
           fetchSpecializationTypes({
@@ -872,10 +873,16 @@ export default function UserManagement({
       } catch (_) {
         // Keep the view usable even when the endpoints are unavailable.
       }
-    })();
+    };
+
+    void loadSelectionOptions();
+    const intervalId = window.setInterval(() => {
+      void loadSelectionOptions();
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -913,8 +920,10 @@ export default function UserManagement({
   }, []);
 
   const loadUsers = useCallback(
-    async ({ signal } = {}) => {
-      setTableLoading(true);
+    async ({ signal, silent = false } = {}) => {
+      if (!silent) {
+        setTableLoading(true);
+      }
       setError("");
 
       try {
@@ -956,16 +965,18 @@ export default function UserManagement({
           return;
         }
 
-        setUsers([]);
-        setTableMeta({
-          total: 0,
-          page: 1,
-          pageSize: PAGE_SIZE,
-          totalPages: 1,
-        });
+        if (!silent) {
+          setUsers([]);
+          setTableMeta({
+            total: 0,
+            page: 1,
+            pageSize: PAGE_SIZE,
+            totalPages: 1,
+          });
+        }
         setError(requestError?.response?.data?.message || requestError?.message || "Failed to load users.");
       } finally {
-        if (!signal?.aborted) {
+        if (!signal?.aborted && !silent) {
           setTableLoading(false);
         }
       }
@@ -976,10 +987,14 @@ export default function UserManagement({
   useEffect(() => {
     const controller = new AbortController();
 
-    void loadUsers({ signal: controller.signal });
+    void loadUsers({ signal: controller.signal, silent: false });
+    const intervalId = window.setInterval(() => {
+      void loadUsers({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       controller.abort();
+      window.clearInterval(intervalId);
     };
   }, [loadUsers]);
 

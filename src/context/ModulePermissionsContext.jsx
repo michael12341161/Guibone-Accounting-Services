@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../components/auto/autoRefreshConfig";
 import { fetchModulePermissions, saveModulePermissions } from "../services/api";
 import {
   MODULE_PERMISSION_CHANGE_EVENT,
@@ -207,7 +208,7 @@ export function ModulePermissionsProvider({ children }) {
       if (isAuthReady && user?.id) {
         void refreshPermissions({ silent: true });
       }
-    }, 12000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     window.addEventListener("storage", handleStorage);
     window.addEventListener(MODULE_PERMISSION_CHANGE_EVENT, handlePermissionChange);

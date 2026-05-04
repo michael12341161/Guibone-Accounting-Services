@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import {
   api,
   fetchSpecializationTypes,
@@ -1193,16 +1194,16 @@ export default function AdminAccountantTaskManagement() {
       }
     })();
 
-    const intv = setInterval(async () => {
+    const intv = window.setInterval(async () => {
       try {
         const t = await api.get("task_list.php");
         if (!stop && Array.isArray(t.data?.tasks)) setTasks(t.data.tasks);
       } catch (_) { }
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       stop = true;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
   }, []);
 

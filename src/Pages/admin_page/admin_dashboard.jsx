@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import AdminLayout, { adminNavItems } from "../../layouts/AdminLayout";
 import { resolveNavKey } from "../../components/layout/layout_utils";
@@ -157,16 +158,16 @@ export default function AdminDashboard({ user, onLogout }) {
       loadTotals({ silent: false });
     }
 
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (!mounted) return;
       if (location.pathname === "/admin" || location.pathname === "/admin/") {
         loadTotals({ silent: true });
       }
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);

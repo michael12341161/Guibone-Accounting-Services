@@ -3,6 +3,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { AUTO_REFRESH_INTERVAL_MS } from "../components/auto/autoRefreshConfig";
 import { api } from "../services/api";
 import { fetchPhilippinePublicHolidays, getCalendarYearsFromRange } from "../services/publicHolidays";
 import { normalizeTaskStatusLabel } from "../utils/task_deadline";
@@ -645,13 +646,13 @@ export default function Calendar() {
     };
 
     load();
-    const intv = setInterval(() => load(), 10000);
+    const intv = window.setInterval(() => load(), AUTO_REFRESH_INTERVAL_MS);
     const onSchedulingChanged = () => load();
     window.addEventListener(SCHEDULING_CHANGED_EVENT, onSchedulingChanged);
 
     return () => {
       alive = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
       window.removeEventListener(SCHEDULING_CHANGED_EVENT, onSchedulingChanged);
     };
   }, [canManageCalendar]);
@@ -679,11 +680,11 @@ export default function Calendar() {
     };
 
     load({ silent: false });
-    const intv = setInterval(() => load({ silent: true }), 15000);
+    const intv = window.setInterval(() => load({ silent: true }), AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       alive = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
   }, [canViewTaskCalendar]);
 

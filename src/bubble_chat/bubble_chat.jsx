@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircleMore, Search, SendHorizontal, X } from "lucide-react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../components/auto/autoRefreshConfig";
 import { IconButton } from "../components/UI/buttons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getHomePathForRole } from "../context/AuthContext";
@@ -10,7 +11,7 @@ import { api, resolveBackendAssetUrl } from "../services/api";
 import { useErrorToast } from "../utils/feedback";
 import { hasModuleAccess } from "../utils/module_permissions";
 
-const POLL_INTERVAL_MS = 15000;
+const POLL_INTERVAL_MS = AUTO_REFRESH_INTERVAL_MS;
 const CHAT_REQUEST_TIMEOUT_MS = 12000;
 const CHAT_USERS_CACHE_TTL_MS = 5000;
 const CHAT_CONVERSATION_PAGE_SIZE = 80;

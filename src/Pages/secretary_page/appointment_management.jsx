@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -472,13 +473,13 @@ export default function AppointmentManagement() {
       await refresh({ silent: false });
     })();
 
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (mounted) refresh({ silent: true });
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

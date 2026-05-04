@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock3, Eye, FileText, Search, Upload } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardHeader } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
@@ -275,7 +276,7 @@ export default function DocumentAdminPage() {
       if (active) {
         void Promise.all([loadClients({ silent: true }), loadWatchlistDocuments({ silent: true })]);
       }
-    }, 15000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;

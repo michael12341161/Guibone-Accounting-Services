@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -177,7 +178,7 @@ export default function NewClientManagement() {
     const interval = window.setInterval(() => {
       if (!active) return;
       loadClients({ silent: true });
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;

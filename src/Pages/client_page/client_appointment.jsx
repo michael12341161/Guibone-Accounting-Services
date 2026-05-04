@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button } from "../../components/UI/buttons";
 import { Modal } from "../../components/UI/modal";
 import {
@@ -780,10 +781,7 @@ export default function ClientAppointment() {
       }
     };
 
-    const intervalId = window.setInterval(
-      refreshServices,
-      isCreateOpen ? 5000 : 15000
-    );
+    const intervalId = window.setInterval(refreshServices, AUTO_REFRESH_INTERVAL_MS);
     window.addEventListener("focus", refreshServices);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -1197,15 +1195,15 @@ export default function ClientAppointment() {
     })();
 
     // Poll faster so approvals reflect almost immediately
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (mounted && !isCreateOpenRef.current && !isRescheduleOpenRef.current) {
         refreshAppointments({ silent: true });
       }
-    }, 2000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.client_id, user?.Client_ID, user?.username]);

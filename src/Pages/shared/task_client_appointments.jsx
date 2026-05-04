@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import ApprovedAppointmentsCard from "../../components/tasks/ApprovedAppointmentsCard";
 import { api } from "../../services/api";
 import { useErrorToast } from "../../utils/feedback";
@@ -77,7 +78,7 @@ export default function TaskClientAppointmentsPage() {
 
     const intervalId = window.setInterval(() => {
       void refresh();
-    }, 15000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;

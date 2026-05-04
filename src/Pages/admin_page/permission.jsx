@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { fetchRoles, updateRole } from "../../services/api";
@@ -415,9 +416,13 @@ export default function PermissionsPage() {
     };
 
     void loadRoles();
+    const intervalId = window.setInterval(() => {
+      void loadRoles();
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 

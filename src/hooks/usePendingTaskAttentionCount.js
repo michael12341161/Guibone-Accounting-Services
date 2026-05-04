@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../components/auto/autoRefreshConfig";
 import { useAuth } from "./useAuth";
 import { api } from "../services/api";
 import { ROLE_IDS } from "../utils/helpers";
 import { countOpenTasks } from "../utils/task_attention";
 
 const TASK_ATTENTION_ROLES = [ROLE_IDS.ADMIN, ROLE_IDS.SECRETARY, ROLE_IDS.ACCOUNTANT];
-const TASK_ATTENTION_REFRESH_MS = 60000;
+const TASK_ATTENTION_REFRESH_MS = AUTO_REFRESH_INTERVAL_MS;
 
 export function usePendingTaskAttentionCount() {
   const location = useLocation();

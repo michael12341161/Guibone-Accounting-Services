@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import PieChart from "../../components/charts/PieChart";
@@ -292,7 +293,7 @@ export default function SecretaryReports() {
 
     const intervalId = window.setInterval(() => {
       void loadReports({ silent: true });
-    }, 30000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);

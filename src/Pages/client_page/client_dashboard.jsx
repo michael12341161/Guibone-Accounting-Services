@@ -4,6 +4,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import { fetchPhilippinePublicHolidays, getCalendarYearsFromRange } from "../../services/publicHolidays";
 import ClientLayout from "../../layouts/ClientLayout";
@@ -569,11 +570,11 @@ export default function ClientDashboard({ user, onLogout }) {
     };
 
     tick();
-    const intv = setInterval(() => tick(), 10000);
+    const intv = window.setInterval(() => tick(), AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, canViewDashboard, isDashboardRoute]);
@@ -591,11 +592,11 @@ export default function ClientDashboard({ user, onLogout }) {
     };
 
     tick();
-    const intv = setInterval(() => tick(), 15000);
+    const intv = window.setInterval(() => tick(), AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewDashboard, isDashboardRoute]);
@@ -655,13 +656,13 @@ export default function ClientDashboard({ user, onLogout }) {
       await loadAppointments({ silent: false });
     })();
 
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (mounted) loadAppointments({ silent: true });
-    }, 3000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, canViewDashboard, isDashboardRoute]);
@@ -678,13 +679,13 @@ export default function ClientDashboard({ user, onLogout }) {
       await loadWorkProgress({ silent: false });
     })();
 
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (mounted) loadWorkProgress({ silent: true });
-    }, 8000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, canViewDashboard, isDashboardRoute]);
@@ -1188,4 +1189,3 @@ export default function ClientDashboard({ user, onLogout }) {
     </ClientLayout>
   );
 }
-

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
@@ -105,9 +106,11 @@ export default function NewRole() {
     }
   };
 
-  const loadSpecializationTypes = async () => {
+  const loadSpecializationTypes = async ({ silent } = { silent: false }) => {
     try {
-      setSpecializationLoading(true);
+      if (!silent) {
+        setSpecializationLoading(true);
+      }
       const response = await fetchSpecializationTypes({
         params: {
           include_disabled: 0,
@@ -118,16 +121,29 @@ export default function NewRole() {
         : [];
       setSpecializationTypes(nextSpecializations);
     } catch (requestError) {
-      setSpecializationTypes([]);
-      setError(requestError?.response?.data?.message || requestError?.message || "Unable to load specializations.");
+      if (!silent) {
+        setSpecializationTypes([]);
+        setError(requestError?.response?.data?.message || requestError?.message || "Unable to load specializations.");
+      }
     } finally {
-      setSpecializationLoading(false);
+      if (!silent) {
+        setSpecializationLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     loadRoles({ silent: false });
-    loadSpecializationTypes();
+    loadSpecializationTypes({ silent: false });
+    const intervalId = window.setInterval(() => {
+      loadRoles({ silent: true });
+      loadSpecializationTypes({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const roleRows = useMemo(() => {

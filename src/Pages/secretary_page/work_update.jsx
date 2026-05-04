@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { Link } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api, fetchAvailableServices } from "../../services/api";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
@@ -692,13 +693,13 @@ export default function WorkUpdate() {
     })();
 
     // Poll so this page updates as soon as secretary creates tasks.
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (mounted) refresh({ silent: true });
-    }, 3000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

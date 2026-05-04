@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import AccountantLayout, { accountantNavItems } from "../../layouts/AccountantLayout";
 import { ModuleAccessGate } from "../../components/layout/module_access_gate";
@@ -94,18 +95,18 @@ export default function AccountantDashboard({ user, onLogout }) {
       }
     })();
 
-    const intv = setInterval(async () => {
+    const intv = window.setInterval(async () => {
       try {
         const res = await api.get("task_list.php");
         const list = Array.isArray(res.data?.tasks) ? res.data.tasks : [];
         const mine = userId ? list.filter(isVisibleToCurrentAccountant) : list;
         setTasks(mine);
       } catch {}
-    }, 15000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       stop = true;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
   }, [canViewDashboard, userId]);
 

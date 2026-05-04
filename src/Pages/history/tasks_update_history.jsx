@@ -3,6 +3,7 @@ import Swal from "sweetalert2";
 import { useLocation } from "react-router-dom";
 import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
@@ -256,14 +257,14 @@ export default function TasksUpdateHistory() {
 
     void refresh({ silent: false });
 
-    const intervalId = setInterval(() => {
+    const intervalId = window.setInterval(() => {
       if (!mounted) return;
       void refresh({ silent: true });
-    }, 3000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intervalId);
+      window.clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

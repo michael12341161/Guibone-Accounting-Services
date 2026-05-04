@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../components/auto/autoRefreshConfig";
 import { api } from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -277,7 +278,7 @@ export function NotificationProvider({ children }) {
     const intervalId = window.setInterval(() => {
       if (!active) return;
       void refreshNotifications();
-    }, 5000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     const handleWindowFocus = () => {
       if (!active) return;

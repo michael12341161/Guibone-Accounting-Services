@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, ImageIcon, XCircle } from "lucide-react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api, resolveBackendAssetUrl, updatePaymentStatus } from "../../services/api";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
@@ -155,15 +156,15 @@ export default function AdminClientPaymentPage() {
 
     void loadClientPayments({ silent: false });
 
-    const intervalId = setInterval(() => {
+    const intervalId = window.setInterval(() => {
       if (mounted) {
         void loadClientPayments({ silent: true });
       }
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intervalId);
+      window.clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

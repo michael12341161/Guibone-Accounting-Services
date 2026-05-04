@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Swal from "sweetalert2";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import { fetchConsultationSlots, saveConsultationSlots } from "../../services/consultationSlots";
 import { Button, IconButton } from "../../components/UI/buttons";
@@ -19,7 +20,7 @@ import {
   toConsultationTimeLabel,
 } from "../../utils/consultationSlots";
 
-const POLL_MS = 10000;
+const POLL_MS = AUTO_REFRESH_INTERVAL_MS;
 const PAGE_SIZE = 10;
 
 const normalizeStatus = (status) => {
@@ -331,13 +332,13 @@ export default function SchedulingManagementAdmin() {
       await refresh({ silent: false });
     })();
 
-    const intv = setInterval(() => {
+    const intv = window.setInterval(() => {
       if (mounted) refresh({ silent: true });
     }, POLL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsConsultationSlots]);

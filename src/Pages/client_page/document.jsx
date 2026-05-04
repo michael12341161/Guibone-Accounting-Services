@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Download, Eye, FileText, ShieldCheck } from "lucide-react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Card, CardContent, CardDescription, CardHeader } from "../../components/UI/card";
 import { Button } from "../../components/UI/buttons";
 import { Modal } from "../../components/UI/modal";
@@ -123,7 +124,7 @@ export default function ClientDocumentsPage() {
       if (active) {
         void loadDocuments({ silent: true });
       }
-    }, 15000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;

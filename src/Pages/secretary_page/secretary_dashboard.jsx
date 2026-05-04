@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import SecretaryLayout, { secretaryNavItems } from "../../layouts/SecretaryLayout";
 import { ModuleAccessGate } from "../../components/layout/module_access_gate";
@@ -130,15 +131,15 @@ export default function SecretaryDashboard({ user, onLogout }) {
         }
       } catch (_) {}
     })();
-    const intv = setInterval(async () => {
+    const intv = window.setInterval(async () => {
       try {
         const t = await api.get("task_list.php");
         if (!stop && Array.isArray(t.data?.tasks)) setTasks(t.data.tasks);
       } catch (_) {}
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
     return () => {
       stop = true;
-      clearInterval(intv);
+      window.clearInterval(intv);
     };
   }, [canViewDashboard]);
 

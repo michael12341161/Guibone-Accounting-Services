@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardHeader } from "../../components/UI/card";
 import CertificateThemeLayers from "../../components/certificate/CertificateThemeLayers";
@@ -902,8 +903,10 @@ export default function CertificatePage() {
       setSavedTemplates(parsedState.savedTemplates);
     };
 
-    const hydrateTemplates = async () => {
-      setIsLoading(true);
+    const hydrateTemplates = async ({ silent } = { silent: false }) => {
+      if (!silent) {
+        setIsLoading(true);
+      }
 
       try {
         const response = await fetchCertificateTemplates();
@@ -911,18 +914,24 @@ export default function CertificatePage() {
         applyState(parsedState);
       } catch (_) {
         applyState(parseRemoteCertificateState(null));
-        showErrorToast("Certificate templates could not be loaded.");
+        if (!silent) {
+          showErrorToast("Certificate templates could not be loaded.");
+        }
       } finally {
-        if (!isCancelled) {
+        if (!isCancelled && !silent) {
           setIsLoading(false);
         }
       }
     };
 
-    hydrateTemplates();
+    hydrateTemplates({ silent: false });
+    const intervalId = window.setInterval(() => {
+      hydrateTemplates({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       isCancelled = true;
+      window.clearInterval(intervalId);
     };
   }, []);
 

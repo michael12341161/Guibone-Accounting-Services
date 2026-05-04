@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Eye, ImageIcon } from "lucide-react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button } from "../../components/UI/buttons";
 import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
@@ -232,15 +233,15 @@ export default function PaymentHistoryPage() {
     }
 
     void loadPaymentHistory({ silent: false });
-    const intervalId = setInterval(() => {
+    const intervalId = window.setInterval(() => {
       if (mounted) {
         void loadPaymentHistory({ silent: true });
       }
-    }, 10000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(intervalId);
+      window.clearInterval(intervalId);
     };
   }, [currentUser?.client_id, currentUser?.Client_ID, currentUser?.username]);
 

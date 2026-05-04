@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
 
@@ -167,9 +168,11 @@ export default function ClientScheduling() {
     }
   };
 
-  const loadAppointments = async () => {
+  const loadAppointments = async ({ silent } = { silent: false }) => {
     setError("");
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const res = await api.get("scheduling_list.php", { params: clientQueryParams });
       const list = Array.isArray(res.data?.rows)
@@ -181,14 +184,24 @@ export default function ClientScheduling() {
     } catch (e) {
       setError("Failed to load consultations.");
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (!sessionUser) return;
     loadTimeSlots();
-    loadAppointments();
+    loadAppointments({ silent: false });
+    const intervalId = window.setInterval(() => {
+      loadTimeSlots();
+      loadAppointments({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUser, clientId]);
 

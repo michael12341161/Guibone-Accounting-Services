@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
@@ -179,11 +180,11 @@ export default function WorkProgress() {
 
     // initial load + auto-refresh so accountant updates reflect without manual reload
     load({ silent: false });
-    const interval = setInterval(() => load({ silent: true }), 8000);
+    const interval = window.setInterval(() => load({ silent: true }), AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
-      clearInterval(interval);
+      window.clearInterval(interval);
     };
   }, [user?.client_id, user?.Client_ID, user?.first_name, user?.middle_name, user?.last_name]);
 

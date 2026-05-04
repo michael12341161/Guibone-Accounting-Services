@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Building2, CheckCircle2, Clock3, FileText, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader } from "../../components/UI/card";
 import { DataTable } from "../../components/UI/table";
@@ -83,7 +84,7 @@ export default function ClientBusinessStatusPage() {
       if (active) {
         void loadClients({ silent: true });
       }
-    }, 15000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;

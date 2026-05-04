@@ -5,6 +5,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button } from "../../components/UI/buttons";
 import { cn } from "../../lib/utils";
 import {
@@ -505,9 +506,11 @@ export default function PaymentPage() {
         return;
       }
 
-      setAppointments([]);
-      setPaymentMethods([]);
-      setSelectedMethodId("");
+      if (showLoader) {
+        setAppointments([]);
+        setPaymentMethods([]);
+        setSelectedMethodId("");
+      }
       setError(
         requestError?.response?.data?.message ||
           requestError?.message ||
@@ -529,6 +532,13 @@ export default function PaymentPage() {
 
   useEffect(() => {
     void loadPaymentPageData({ showLoader: true });
+    const intervalId = window.setInterval(() => {
+      void loadPaymentPageData({ showLoader: false });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionStorageKey, currentUser?.client_id, currentUser?.Client_ID, currentUser?.username]);
 

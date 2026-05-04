@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapPin } from "lucide-react";
 import Swal from "sweetalert2";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
@@ -770,7 +771,7 @@ export default function ClientManagement({
     void fetchClients();
     const interval = window.setInterval(() => {
       void fetchClients();
-    }, 5000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       window.clearInterval(interval);

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
@@ -66,6 +67,13 @@ export default function NewPaymentMethod() {
 
   useEffect(() => {
     void loadPaymentMethods({ silent: false });
+    const intervalId = window.setInterval(() => {
+      void loadPaymentMethods({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   const normalizedPaymentMethods = useMemo(

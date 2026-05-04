@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Building2, CalendarDays, Mail, MapPin, Phone, ReceiptText, ShieldCheck, Store } from "lucide-react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import BusinessLocationModal from "../../components/business/BusinessLocationModal";
 import { useAuth } from "../../hooks/useAuth";
@@ -102,7 +103,7 @@ export default function BusinessPage() {
   useEffect(() => {
     let mounted = true;
 
-    async function loadBusiness() {
+    async function loadBusiness({ silent } = { silent: false }) {
       if (!clientId) {
         if (!mounted) return;
         setBusiness(null);
@@ -113,7 +114,9 @@ export default function BusinessPage() {
       }
 
       try {
-        setLoading(true);
+        if (!silent) {
+          setLoading(true);
+        }
         setError("");
         const nextProfile = await fetchClientBusiness(clientId);
         if (!mounted) return;
@@ -121,19 +124,27 @@ export default function BusinessPage() {
         setBusinessStatus(nextProfile?.status || "Unregistered");
       } catch (err) {
         if (!mounted) return;
-        setBusiness(null);
-        setBusinessStatus("Unregistered");
+        if (!silent) {
+          setBusiness(null);
+          setBusinessStatus("Unregistered");
+        }
         setError(err?.response?.data?.message || err?.message || "Failed to load business details.");
       } finally {
         if (!mounted) return;
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
       }
     }
 
-    void loadBusiness();
+    void loadBusiness({ silent: false });
+    const intervalId = window.setInterval(() => {
+      void loadBusiness({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
+      window.clearInterval(intervalId);
     };
   }, [clientId]);
 

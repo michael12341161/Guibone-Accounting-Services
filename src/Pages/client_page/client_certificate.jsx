@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Download, Eye, Search } from "lucide-react";
+import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { Button, IconButton } from "../../components/UI/buttons";
 import { Card, CardContent, CardHeader } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
@@ -369,7 +370,7 @@ export default function ClientCertificatePage() {
     void loadCertificates({ silent: false });
     const intervalId = window.setInterval(() => {
       void loadCertificates({ silent: true });
-    }, 8000);
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       mounted = false;
