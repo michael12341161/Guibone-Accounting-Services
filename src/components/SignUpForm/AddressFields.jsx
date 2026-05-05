@@ -1,11 +1,12 @@
 import React, { memo } from "react";
 import Select from "react-select";
 
-const selectStyles = {
+function createSelectStyles(compact = false) {
+  return {
   control: (base, state) => ({
     ...base,
-    minHeight: "52px",
-    borderRadius: "1rem",
+    minHeight: compact ? "36px" : "52px",
+    borderRadius: compact ? "0.375rem" : "1rem",
     borderColor: state.isFocused ? "#10b981" : "var(--theme-border-strong)",
     boxShadow: state.isFocused ? "0 0 0 4px rgba(16, 185, 129, 0.15)" : "none",
     "&:hover": {
@@ -15,15 +16,24 @@ const selectStyles = {
   }),
   valueContainer: (base) => ({
     ...base,
-    padding: "0 16px",
+    padding: compact ? "0 10px" : "0 16px",
+    fontSize: compact ? "0.6875rem" : base.fontSize,
+  }),
+  input: (base) => ({
+    ...base,
+    margin: compact ? "0" : base.margin,
+    paddingBottom: compact ? "0" : base.paddingBottom,
+    paddingTop: compact ? "0" : base.paddingTop,
   }),
   placeholder: (base) => ({
     ...base,
     color: "var(--theme-text-muted)",
+    fontSize: compact ? "0.6875rem" : base.fontSize,
   }),
   singleValue: (base) => ({
     ...base,
     color: "var(--theme-text-primary)",
+    fontSize: compact ? "0.6875rem" : base.fontSize,
   }),
   menu: (base) => ({
     ...base,
@@ -48,6 +58,7 @@ const selectStyles = {
   }),
   dropdownIndicator: (base, state) => ({
     ...base,
+    padding: compact ? "6px" : base.padding,
     color: state.isFocused ? "#10b981" : "var(--theme-text-muted)",
     "&:hover": { color: "#10b981" },
   }),
@@ -55,7 +66,11 @@ const selectStyles = {
     ...base,
     zIndex: 9999,
   }),
-};
+  };
+}
+
+const selectStyles = createSelectStyles();
+const compactSelectStyles = createSelectStyles(true);
 
 function findOption(options, value) {
   if (!value) return null;
@@ -73,10 +88,11 @@ function SelectField({
   disabled = false,
   containerClassName = "",
   isSearchable = true,
+  compact = false,
 }) {
   return (
     <div className={containerClassName}>
-      <label htmlFor={name} className="mb-2 block text-sm font-medium text-slate-700">
+      <label htmlFor={name} className={compact ? "mb-1 block text-[11px] font-medium text-slate-700" : "mb-2 block text-sm font-medium text-slate-700"}>
         {label}
         {required ? <span className="ml-1 text-rose-500">*</span> : null}
       </label>
@@ -92,7 +108,7 @@ function SelectField({
         menuPlacement="bottom"
         menuPosition="fixed"
         menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-        styles={selectStyles}
+        styles={compact ? compactSelectStyles : selectStyles}
       />
     </div>
   );
@@ -111,6 +127,7 @@ function AddressFields({
   cityDisabled = false,
   barangayDisabled = false,
   required = false,
+  compact = false,
 }) {
   return (
     <>
@@ -122,6 +139,7 @@ function AddressFields({
         options={provinces}
         placeholder="Select province"
         required={required}
+        compact={compact}
       />
       <SelectField
         label="City / Municipality"
@@ -132,6 +150,7 @@ function AddressFields({
         placeholder={provinceValue ? "Select city or municipality" : "Select a province first"}
         required={required}
         disabled={cityDisabled}
+        compact={compact}
       />
       <SelectField
         label="Barangay"
@@ -142,6 +161,7 @@ function AddressFields({
         placeholder={cityValue ? "Select barangay" : "Select a city/municipality first"}
         required={required}
         disabled={barangayDisabled}
+        compact={compact}
       />
     </>
   );

@@ -496,7 +496,7 @@ export function AuthProvider({ children }) {
       if (normalizedUser) {
         recordUserInteraction();
         persistStoredAuth(normalizedUser);
-        startLoginSession(normalizedUser);
+        ensureLoginSession(normalizedUser);
         lastServerHeartbeatAtRef.current = Date.now();
       } else {
         clearStoredAuth();

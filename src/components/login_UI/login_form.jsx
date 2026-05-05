@@ -69,8 +69,12 @@ export default function LoginForm({
   onSumChange,
   onRefreshCaptcha,
   onOpenForgotPassword,
+  onCreateAccount,
   createAccountHref = "/sign-up",
 }) {
+  const createAccountClassName =
+    "inline-flex w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700";
+
   return (
     <div className="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_28px_90px_-60px_rgba(15,23,42,0.65)]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.14),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.10),_transparent_40%)]" />
@@ -156,12 +160,15 @@ export default function LoginForm({
           <div className="h-px flex-1 bg-slate-200" />
         </div>
 
-        <Link
-          to={createAccountHref}
-          className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
-        >
-          Create Account
-        </Link>
+        {onCreateAccount ? (
+          <button type="button" onClick={onCreateAccount} className={createAccountClassName}>
+            Create Account
+          </button>
+        ) : (
+          <Link to={createAccountHref} className={createAccountClassName}>
+            Create Account
+          </Link>
+        )}
       </form>
     </div>
   );

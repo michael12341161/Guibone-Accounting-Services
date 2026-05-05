@@ -10,6 +10,7 @@ import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { appLogo } from "../../assets/branding";
 import DarkModeToggle from "../../components/darkmode/DarkModeToggle";
+import SignUpModal from "../../components/auth/SignUpModal";
 import Footer from "../../components/footer/footer";
 import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
 import { getHomePathForRole } from "../../context/AuthContext";
@@ -536,6 +537,7 @@ export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState(sectionIds[0]);
   const [contactForm, setContactForm] = useState(initialContactForm);
+  const [signupModalOpen, setSignupModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { user, isAuthReady } = useAuth();
   const { isDarkMode } = useTheme();
@@ -543,6 +545,15 @@ export default function LandingPage() {
 
   const closeMenu = () => {
     setMenuOpen(false);
+  };
+
+  const openSignupModal = () => {
+    setSignupModalOpen(true);
+    closeMenu();
+  };
+
+  const closeSignupModal = () => {
+    setSignupModalOpen(false);
   };
 
   const handleAuthLinkClick = () => {
@@ -719,12 +730,13 @@ export default function LandingPage() {
                 >
                   Sign in
                 </Link>
-                <Link
-                  to="/sign-up"
+                <button
+                  type="button"
+                  onClick={openSignupModal}
                   className="inline-flex h-10 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all duration-300 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/35"
                 >
                   Sign up
-                </Link>
+                </button>
               </div>
             </div>
 
@@ -783,13 +795,13 @@ export default function LandingPage() {
                   >
                     Sign in
                   </Link>
-                  <Link
-                    to="/sign-up"
-                    onClick={closeMenu}
+                  <button
+                    type="button"
+                    onClick={openSignupModal}
                     className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-emerald-700"
                   >
                     Sign up
-                  </Link>
+                  </button>
                 </div>
               </div>
             </div>
@@ -849,8 +861,9 @@ export default function LandingPage() {
                   >
                     Go to Sign in
                   </Link>
-                  <Link
-                    to="/sign-up"
+                  <button
+                    type="button"
+                    onClick={openSignupModal}
                     className={cx(
                       "inline-flex items-center justify-center rounded-full border px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:scale-[1.03]",
                       isDarkMode
@@ -859,7 +872,7 @@ export default function LandingPage() {
                     )}
                   >
                     Create Client Account
-                  </Link>
+                  </button>
                   <a
                     href="#services"
                     onClick={() => handleNavClick("#services")}
@@ -1220,6 +1233,8 @@ export default function LandingPage() {
           </Container>
         </section>
       </main>
+
+      <SignUpModal open={signupModalOpen} onClose={closeSignupModal} />
 
       {/* Footer */}
       <Footer />

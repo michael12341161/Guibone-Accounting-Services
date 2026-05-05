@@ -16,6 +16,12 @@ import {
 
 const DEFAULT_CODE_EXPIRY_MINUTES = 5;
 const DEFAULT_RESET_WINDOW_MINUTES = 15;
+const FORGOT_PASSWORD_STEPS = [
+  { id: "email", label: "Email" },
+  { id: "code", label: "Code" },
+  { id: "reset", label: "Password" },
+  { id: "done", label: "Done" },
+];
 
 function normalizePositiveMinutes(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -51,7 +57,7 @@ export default function ForgotPasswordModal({
   securitySettingsOverride = null,
 }) {
   const { login } = useAuth();
-  const [step, setStep] = useState("email"); // email | code | reset
+  const [step, setStep] = useState("email"); // email | code | reset | done
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [resetToken, setResetToken] = useState("");
@@ -71,6 +77,11 @@ export default function ForgotPasswordModal({
   useErrorToast(error);
 
   const canClose = !loading;
+  const activeStepIndex = Math.max(
+    0,
+    FORGOT_PASSWORD_STEPS.findIndex((item) => item.id === step)
+  );
+  const progressPercent = Math.round(((activeStepIndex + 1) / FORGOT_PASSWORD_STEPS.length) * 100);
 
   useEffect(() => {
     if (!open) return;
@@ -128,6 +139,7 @@ export default function ForgotPasswordModal({
   const title = useMemo(() => {
     if (step === "email") return "Forgot password";
     if (step === "code") return "Verify code";
+    if (step === "done") return "Password updated";
     return "Reset password";
   }, [step]);
 
@@ -146,6 +158,9 @@ export default function ForgotPasswordModal({
     }
     if (step === "code") {
       return `Enter the code we sent to your email. It expires in ${formatMinutesLabel(codeExpiryMinutes)}.${passwordLifetimeText}`;
+    }
+    if (step === "done") {
+      return "Your password reset is complete. This card will close automatically.";
     }
     return `Create a new password for your account. Complete the change within ${formatMinutesLabel(resetWindowMinutes)}.${passwordLifetimeText}`;
   }, [codeExpiryMinutes, passwordExpiryDaysOverride, resetWindowMinutes, securitySettings, step]);
@@ -268,12 +283,13 @@ export default function ForgotPasswordModal({
             login(nextUser);
           }
         } catch (_) {}
+        setStep("done");
         setMessage(
           passwordExpiryDays > 0
             ? `${res.data?.message || "Password updated successfully."} Your new password will expire again in ${formatDaysLabel(passwordExpiryDays)}.`
             : `${res.data?.message || "Password updated successfully."} Password expiry is currently disabled.`
         );
-        setTimeout(() => close(), 800);
+        setTimeout(() => close(), 1200);
       } else {
         setError(res.data?.message || "Failed to update password.");
       }
@@ -290,11 +306,14 @@ export default function ForgotPasswordModal({
       onClose={close}
       title={title}
       description={description}
-      size="sm"
+      size="md"
       closeOnOverlayClick={canClose}
     >
       <ForgotPasswordForm
         step={step}
+        steps={FORGOT_PASSWORD_STEPS}
+        activeStepIndex={activeStepIndex}
+        progressPercent={progressPercent}
         email={email}
         code={code}
         newPassword={newPassword}

@@ -65,8 +65,68 @@ function formatDaysLabel(days) {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
+function ForgotPasswordProgress({ steps = [], activeStepIndex = 0, progressPercent = 25 }) {
+  const safeSteps = Array.isArray(steps) && steps.length ? steps : [];
+  const boundedIndex = Math.max(0, Math.min(activeStepIndex, safeSteps.length - 1));
+  const boundedProgress = Math.max(0, Math.min(100, Number(progressPercent) || 0));
+
+  if (!safeSteps.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+      <div className="flex items-center" aria-label="Password reset progress">
+        {safeSteps.map((item, index) => {
+          const complete = index < boundedIndex;
+          const active = index === boundedIndex;
+          const circleClassName = complete
+            ? "border-emerald-600 bg-emerald-600 text-white"
+            : active
+              ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+              : "border-slate-200 bg-white text-slate-500";
+          const lineClassName = index < boundedIndex ? "bg-emerald-500" : "bg-slate-200";
+
+          return (
+            <React.Fragment key={item.id || item.label}>
+              <div className="flex min-w-0 flex-col items-center gap-1">
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-semibold transition ${circleClassName}`}
+                  aria-current={active ? "step" : undefined}
+                >
+                  {index + 1}
+                </span>
+                <span className={active ? "text-[10px] font-semibold text-emerald-700" : "text-[10px] font-medium text-slate-500"}>
+                  {item.label}
+                </span>
+              </div>
+              {index < safeSteps.length - 1 ? <div className={`mx-2 h-0.5 flex-1 rounded-full ${lineClassName}`} /> : null}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
+        <span>
+          Step {boundedIndex + 1} of {safeSteps.length}
+        </span>
+        <span className="text-emerald-700">{boundedProgress}%</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="h-full rounded-full bg-emerald-600 transition-all duration-300"
+          style={{ width: `${boundedProgress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ForgotPasswordForm({
   step,
+  steps,
+  activeStepIndex,
+  progressPercent,
   email,
   code,
   newPassword,
@@ -97,6 +157,10 @@ export default function ForgotPasswordForm({
   const handleSubmit = (event) => {
     event.preventDefault();
 
+    if (step === "done") {
+      return;
+    }
+
     if (step === "email") {
       onSendCode();
       return;
@@ -112,6 +176,12 @@ export default function ForgotPasswordForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      <ForgotPasswordProgress
+        steps={steps}
+        activeStepIndex={activeStepIndex}
+        progressPercent={progressPercent}
+      />
+
       {message ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {message}
@@ -272,6 +342,12 @@ export default function ForgotPasswordForm({
             )}
           </Button>
         </>
+      ) : null}
+
+      {step === "done" ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+          Password reset finished.
+        </div>
       ) : null}
     </form>
   );

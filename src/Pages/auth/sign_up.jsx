@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { appLogo } from "../../assets/branding";
 import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
@@ -77,6 +78,25 @@ const REQUIRED_SIGNUP_DOCUMENT_KEYS = new Set([
 
 const DUPLICATE_EMAIL_MESSAGE =
   "This email already has an account. Please use a different email or login instead.";
+
+const SIGNUP_STEPS = [
+  {
+    title: "Personal",
+    heading: "Personal Information",
+    description: "Provide your basic client details and account credentials.",
+  },
+  {
+    title: "Business",
+    heading: "Business Details",
+    description: "Add the business information you want tracked in the system. This section is optional.",
+  },
+  {
+    title: "Documents",
+    heading: "Document Upload",
+    description:
+      "Upload the required documents to complete your registration. Marriage Contract, Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files can also be attached here when available, but they are optional.",
+  },
+];
 
 function createEmptyForm() {
   return {
@@ -207,7 +227,7 @@ function StatusMessage({ tone, children }) {
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : "border-emerald-200 bg-emerald-50 text-emerald-700";
 
-  return <div className={`whitespace-pre-line rounded-2xl border px-4 py-3 text-sm ${styles}`}>{children}</div>;
+  return <div className={`whitespace-pre-line rounded-md border px-3 py-2 text-xs ${styles}`}>{children}</div>;
 }
 
 function EyeIcon() {
@@ -227,16 +247,16 @@ function EyeOffIcon() {
   );
 }
 
-function SectionPanel({ title, description, children }) {
+function SectionPanel({ title, description, children, compact = false }) {
   return (
-    <section className="rounded-[1.75rem] border border-slate-200 bg-white/80 p-6 shadow-[0_24px_70px_-55px_rgba(15,23,42,0.55)] backdrop-blur sm:p-7">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <section className={`${compact ? "rounded-md p-3 sm:p-4" : "rounded-lg p-4 sm:p-5"} border border-slate-200 bg-white shadow-sm`}>
+      <div className={`${compact ? "mb-3 gap-2 pb-3" : "mb-5 gap-3 pb-4"} flex flex-wrap items-start justify-between border-b border-slate-100`}>
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
+          <h2 className={compact ? "text-sm font-semibold text-slate-900" : "text-lg font-semibold text-slate-900"}>{title}</h2>
+          <p className={compact ? "mt-0.5 text-[11px] leading-4 text-slate-600" : "mt-1 text-sm leading-6 text-slate-600"}>{description}</p>
         </div>
-        <div className="hidden h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 sm:flex">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5">
+        <div className={`${compact ? "h-7 w-7" : "h-9 w-9"} hidden items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 sm:flex`}>
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={compact ? "h-4 w-4" : "h-5 w-5"}>
             <path d="M9 12l2 2 4-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.35" />
           </svg>
@@ -247,10 +267,10 @@ function SectionPanel({ title, description, children }) {
   );
 }
 
-function SelectField({ label, name, value, onChange, options, placeholder, required = false }) {
+function SelectField({ label, name, value, onChange, options, placeholder, required = false, compact = false }) {
   return (
     <div>
-      <label htmlFor={name} className="mb-2 block text-sm font-medium text-slate-700">
+      <label htmlFor={name} className={compact ? "mb-1 block text-[11px] font-medium text-slate-700" : "mb-2 block text-sm font-medium text-slate-700"}>
         {label}
         {required ? <span className="ml-1 text-rose-500">*</span> : null}
       </label>
@@ -260,7 +280,7 @@ function SelectField({ label, name, value, onChange, options, placeholder, requi
         value={value}
         onChange={onChange}
         required={required}
-        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
+        className={`${compact ? "px-3 py-2 text-[11px]" : "px-4 py-3.5 text-sm"} w-full rounded-md border border-slate-300 bg-white text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15`}
       >
         <option value="">{placeholder}</option>
         {options.map((option) => (
@@ -273,12 +293,12 @@ function SelectField({ label, name, value, onChange, options, placeholder, requi
   );
 }
 
-function DocumentUploadField({ document, selectedFile, onFileChange, required = false }) {
+function DocumentUploadField({ document, selectedFile, onFileChange, required = false, compact = false }) {
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor={`document-${document.id}`}>
+    <div className={`${compact ? "rounded-md p-3" : "rounded-lg p-4"} flex h-full min-w-0 flex-col border border-slate-200 bg-white shadow-sm`}>
+      <label className={compact ? "mb-1 block text-[11px] font-medium text-slate-700" : "mb-2 block text-sm font-medium text-slate-700"} htmlFor={`document-${document.id}`}>
         {formatDocumentTypeLabel(document.name)}
-        {required ? <span className="ml-1 text-rose-500">*</span> : <span className="ml-2 text-xs font-medium text-slate-400">Optional</span>}
+        {required ? <span className="ml-1 text-rose-500">*</span> : <span className={compact ? "ml-2 text-[10px] font-medium text-slate-400" : "ml-2 text-xs font-medium text-slate-400"}>Optional</span>}
       </label>
       <input
         id={`document-${document.id}`}
@@ -286,9 +306,47 @@ function DocumentUploadField({ document, selectedFile, onFileChange, required = 
         accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp"
         onChange={(event) => onFileChange(document.id, event.target.files?.[0] || null)}
         required={required}
-        className="block w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-emerald-700"
+        className={`${compact ? "px-2.5 py-2 text-[11px] file:px-2.5 file:py-1.5 file:text-[10px]" : "px-3 py-2.5 text-sm file:px-3 file:py-2 file:text-xs"} block w-full min-w-0 rounded-md border border-slate-300 bg-white text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:font-semibold file:text-emerald-700`}
       />
-      <p className="mt-3 text-xs text-slate-500">{selectedFile?.name || "No file selected"}</p>
+      <p className={`${compact ? "mt-2 text-[11px]" : "mt-3 text-xs"} truncate text-slate-500`}>{selectedFile?.name || "No file selected"}</p>
+    </div>
+  );
+}
+
+function SignUpStepper({ steps, activeIndex, onStepChange, compact = false }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-3" aria-label="Registration steps">
+      {steps.map((step, index) => {
+        const active = index === activeIndex;
+        const complete = index < activeIndex;
+
+        return (
+          <button
+            key={step.title}
+            type="button"
+            onClick={() => onStepChange(index)}
+            className={`${compact ? "gap-2 px-2.5 py-2" : "gap-3 px-3 py-3"} flex min-w-0 items-center rounded-md border text-left transition ${
+              active
+                ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-sm"
+                : complete
+                  ? "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <span
+              className={`${compact ? "h-6 w-6 text-[11px]" : "h-7 w-7 text-xs"} flex shrink-0 items-center justify-center rounded-md font-semibold ${
+                active || complete ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {index + 1}
+            </span>
+            <span className="min-w-0">
+              <span className={compact ? "block truncate text-[11px] font-semibold" : "block truncate text-sm font-semibold"}>{step.title}</span>
+              {!compact ? <span className="block truncate text-xs text-slate-500">{step.description}</span> : null}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -343,9 +401,10 @@ function buildPayload(form, businessTypes, addressParts, businessAddressParts) {
   };
 }
 
-export default function SignUpPage() {
+export default function SignUpPage({ embedded = false, onClose }) {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [form, setForm] = useState(createEmptyForm);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [systemConfig, setSystemConfig] = useState(DEFAULT_SYSTEM_CONFIGURATION);
@@ -423,6 +482,17 @@ export default function SignUpPage() {
   const signupDisabledMessage = systemConfig.allowClientSelfSignup
     ? ""
     : `Client sign-up is currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`;
+  const activeStep = SIGNUP_STEPS[activeStepIndex] || SIGNUP_STEPS[0];
+  const isFirstStep = activeStepIndex === 0;
+  const isLastStep = activeStepIndex === SIGNUP_STEPS.length - 1;
+  const gridClassName = embedded ? "grid gap-3 md:grid-cols-2" : "grid gap-5 md:grid-cols-2";
+  const nestedSectionClassName = embedded ? "md:col-span-2 space-y-3" : "md:col-span-2 space-y-4";
+  const passwordToggleClassName = embedded
+    ? "rounded-md px-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+    : "rounded-lg px-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600";
+  const goToStep = (index) => {
+    setActiveStepIndex(Math.max(0, Math.min(SIGNUP_STEPS.length - 1, index)));
+  };
 
   useEffect(() => {
     let active = true;
@@ -837,6 +907,10 @@ export default function SignUpPage() {
         ? `Account created successfully. Your account is pending admin approval. Some optional documents could not be uploaded: ${uploadResult.failed.join(" | ")}`
         : "Account created successfully. Your account is pending admin approval. Use your email address as your username once your registration is approved. After approval, only Processing will be available until your Business Permit is uploaded.";
 
+      if (embedded) {
+        onClose?.();
+      }
+
       navigate("/login", {
         replace: true,
         state: {
@@ -857,77 +931,117 @@ export default function SignUpPage() {
 
   return (
     <div
-      className={`min-h-screen transition-colors duration-300 ${
-        isDarkMode
-          ? "bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.16),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#0f172a_100%)]"
-          : "bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_22%),linear-gradient(180deg,_#f8fafc_0%,_#eff6ff_100%)]"
-      }`}
+      className={
+        embedded
+          ? "h-full bg-transparent"
+          : `min-h-screen transition-colors duration-300 ${
+              isDarkMode
+                ? "bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.16),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#0f172a_100%)]"
+                : "bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_22%),linear-gradient(180deg,_#f8fafc_0%,_#eff6ff_100%)]"
+            }`
+      }
     >
-      <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-        <div className="w-full max-w-5xl">
-          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white/70 p-5 shadow-[0_38px_110px_-80px_rgba(15,23,42,0.65)] backdrop-blur sm:p-8 lg:p-10">
+      <div
+        className={
+          embedded
+            ? "flex h-full min-h-0 w-full"
+            : "mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8 lg:py-12"
+        }
+      >
+        <div className={embedded ? "flex h-full min-h-0 w-full" : "w-full max-w-5xl"}>
+          <div
+            className={
+              embedded
+                ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg bg-white"
+                : "relative overflow-hidden rounded-lg border border-slate-200 bg-white/70 p-5 shadow-[0_38px_110px_-80px_rgba(15,23,42,0.65)] backdrop-blur sm:p-8 lg:p-10"
+            }
+          >
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.10),_transparent_40%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.10),_transparent_40%)]" />
 
-            <div className="relative mx-auto max-w-4xl">
-              <div className="border-b border-slate-200/70 pb-6">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="max-w-2xl">
-                    <div className="flex items-center gap-3">
+            <div className={embedded ? "relative flex h-full min-h-0 flex-col" : "relative mx-auto max-w-4xl"}>
+              <div className={embedded ? "shrink-0 border-b border-slate-200/70 px-4 py-3 sm:px-5" : "border-b border-slate-200/70 pb-6"}>
+                <div className={embedded ? "flex items-start justify-between gap-4" : "flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between"}>
+                  <div className={embedded ? "min-w-0 flex-1" : "max-w-2xl"}>
+                    <div className={embedded ? "flex items-center gap-2.5" : "flex items-center gap-3"}>
                       <img
                         src={appLogo}
                         alt={companyName}
-                        className="h-11 w-11 rounded-2xl border border-emerald-100 bg-emerald-50 object-contain p-1.5"
+                        className={embedded ? "h-9 w-9 rounded-md border border-emerald-100 bg-emerald-50 object-contain p-1" : "h-11 w-11 rounded-2xl border border-emerald-100 bg-emerald-50 object-contain p-1.5"}
                       />
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
+                        <p className={embedded ? "text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700" : "text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700"}>
                           Client Sign Up
                         </p>
-                        <p className="text-sm font-semibold text-slate-900">{companyName}</p>
+                        <p className={embedded ? "truncate text-[11px] font-semibold text-slate-900" : "text-sm font-semibold text-slate-900"}>{companyName}</p>
                       </div>
                     </div>
 
-                    <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                    <h1
+                      id={embedded ? "signup-modal-title" : undefined}
+                      className={embedded ? "mt-2.5 text-base font-semibold tracking-tight text-slate-900 sm:text-lg" : "mt-5 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl"}
+                    >
                       Create your client account
                     </h1>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-                      Fill in your personal information, add optional business details, and upload requirements so your requests can be tracked clearly.
+                    <p className={embedded ? "mt-1 max-w-2xl text-[11px] leading-4 text-slate-600" : "mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base"}>
+                      {embedded
+                        ? "Enter client details, optional business info, and required documents."
+                        : "Fill in your personal information, add optional business details, and upload requirements so your requests can be tracked clearly."}
                     </p>
 
-                    <div className="mt-5 flex flex-wrap gap-2 text-xs font-medium">
-                      <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">Email becomes your username</span>
-                      <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sky-700">Business details are optional</span>
-                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-600">Submit everything in one form</span>
+                    <div className={embedded ? "mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium" : "mt-5 flex flex-wrap gap-2 text-xs font-medium"}>
+                      <span className={embedded ? "rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700" : "rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700"}>Email becomes your username</span>
+                      <span className={embedded ? "rounded-full bg-sky-50 px-2.5 py-1 text-sky-700" : "rounded-full bg-sky-50 px-3 py-1.5 text-sky-700"}>Business details optional</span>
+                      {!embedded ? <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-600">Submit everything in one form</span> : null}
                     </div>
                   </div>
 
-                  <div className="flex w-full flex-col gap-3 sm:max-w-xs lg:pt-1">
-                    <Link
-                      to="/"
-                      className="inline-flex w-full items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
-                    >
-                      Back to Landing Page
-                    </Link>
-                    <Link
-                      to="/login"
-                      className="inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
-                    >
-                      Already registered? Sign in
-                    </Link>
+                  <div className={embedded ? "flex shrink-0" : "flex w-full flex-col gap-3 sm:max-w-xs lg:pt-1"}>
+                    {embedded ? (
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+                      >
+                        Close
+                      </button>
+                    ) : null}
+                    {!embedded ? (
+                      <Link
+                        to="/"
+                        className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+                      >
+                        Back to Landing Page
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               </div>
 
-              <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-              <StatusMessage tone="error">{error}</StatusMessage>
-              <StatusMessage tone="warning">{signupDisabledMessage}</StatusMessage>
-              <StatusMessage tone="warning">{warning}</StatusMessage>
-              <StatusMessage tone="warning">{systemNotice}</StatusMessage>
+              <form onSubmit={handleSubmit} className={embedded ? "flex min-h-0 flex-1 flex-col" : "mt-8 space-y-6"}>
+                <div className={embedded ? "shrink-0 space-y-2 border-b border-slate-200/70 px-4 py-3 sm:px-5" : "space-y-3"}>
+                  <StatusMessage tone="error">{error}</StatusMessage>
+                  <StatusMessage tone="warning">{signupDisabledMessage}</StatusMessage>
+                  <StatusMessage tone="warning">{warning}</StatusMessage>
+                  <StatusMessage tone="warning">{systemNotice}</StatusMessage>
+                  <SignUpStepper steps={SIGNUP_STEPS} activeIndex={activeStepIndex} onStepChange={goToStep} compact={embedded} />
+                </div>
 
+                <div className={embedded ? "min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5" : "space-y-6"}>
+                  <AnimatePresence mode="wait">
+                    {activeStepIndex === 0 ? (
+                      <motion.div
+                        key="signup-personal"
+                        initial={{ opacity: 0, x: 16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -16 }}
+                        transition={{ duration: 0.2 }}
+                      >
               <SectionPanel
                 title="Personal Information"
-                description="Provide your basic client details and account credentials."
+                description={embedded ? "Basic client and account details." : "Provide your basic client details and account credentials."}
+                compact={embedded}
               >
-                <div className="grid gap-5 md:grid-cols-2">
+                <div className={gridClassName}>
                   <InputField
                     label="First Name"
                     name="first_name"
@@ -935,6 +1049,7 @@ export default function SignUpPage() {
                     onChange={handleChange}
                     required
                     autoComplete="given-name"
+                    compact={embedded}
                   />
                   <InputField
                     label="Middle Name"
@@ -942,6 +1057,7 @@ export default function SignUpPage() {
                     value={form.middle_name}
                     onChange={handleChange}
                     autoComplete="additional-name"
+                    compact={embedded}
                   />
                   <InputField
                     label="Last Name"
@@ -950,6 +1066,7 @@ export default function SignUpPage() {
                     onChange={handleChange}
                     required
                     autoComplete="family-name"
+                    compact={embedded}
                   />
                   <InputField
                     label="Email Address"
@@ -962,6 +1079,7 @@ export default function SignUpPage() {
                     autoComplete="email"
                     placeholder="you@example.com"
                     error={emailError}
+                    compact={embedded}
                   />
                   <InputField
                     label="Password"
@@ -972,11 +1090,12 @@ export default function SignUpPage() {
                     required
                     autoComplete="new-password"
                     maxLength={securitySettings.maxPasswordLength}
+                    compact={embedded}
                     rightAdornment={
                       <button
                         type="button"
                         onClick={() => setShowPassword((prev) => !prev)}
-                        className="rounded-lg px-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        className={passwordToggleClassName}
                         aria-label={showPassword ? "Hide password" : "Show password"}
                       >
                         {showPassword ? <EyeIcon /> : <EyeOffIcon />}
@@ -992,11 +1111,12 @@ export default function SignUpPage() {
                     required
                     autoComplete="new-password"
                     maxLength={securitySettings.maxPasswordLength}
+                    compact={embedded}
                     rightAdornment={
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword((prev) => !prev)}
-                        className="rounded-lg px-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        className={passwordToggleClassName}
                         aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                       >
                         {showConfirmPassword ? <EyeIcon /> : <EyeOffIcon />}
@@ -1010,6 +1130,7 @@ export default function SignUpPage() {
                       maxPasswordLength={securitySettings.maxPasswordLength}
                       showConfirmation
                       active={Boolean(form.user_password) || Boolean(form.confirm_password)}
+                      compact={embedded}
                     />
                   </div>
                   <InputField
@@ -1019,6 +1140,7 @@ export default function SignUpPage() {
                     onChange={handleChange}
                     autoComplete="tel"
                     placeholder="+63 900 000 0000"
+                    compact={embedded}
                   />
                   <InputField
                     label="Date of Birth"
@@ -1026,6 +1148,7 @@ export default function SignUpPage() {
                     type="date"
                     value={form.date_of_birth}
                     onChange={handleChange}
+                    compact={embedded}
                   />
                   <SelectField
                     label="Civil Status"
@@ -1034,6 +1157,7 @@ export default function SignUpPage() {
                     onChange={handleChange}
                     options={civilStatusTypes}
                     placeholder="Select civil status"
+                    compact={embedded}
                   />
                   <InputField
                     label="TIN Number"
@@ -1041,15 +1165,16 @@ export default function SignUpPage() {
                     value={form.tin_no}
                     onChange={handleChange}
                     placeholder="Optional"
+                    compact={embedded}
                   />
-                  <div className="md:col-span-2 space-y-4">
+                  <div className={nestedSectionClassName}>
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-800">Address Details</h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Select from the dropdowns to prevent typing errors.
+                      <h3 className={embedded ? "text-[11px] font-semibold text-slate-800" : "text-sm font-semibold text-slate-800"}>Address Details</h3>
+                      <p className={embedded ? "mt-0.5 text-[10px] text-slate-500" : "mt-1 text-xs text-slate-500"}>
+                        Select from the dropdowns.
                       </p>
                     </div>
-                    <div className="grid gap-5 md:grid-cols-2">
+                    <div className={gridClassName}>
                       <InputField
                         label="Street Address / House No."
                         name="street"
@@ -1059,6 +1184,7 @@ export default function SignUpPage() {
                         autoComplete="address-line1"
                         required
                         containerClassName="md:col-span-2"
+                        compact={embedded}
                       />
                       <AddressFields
                         provinceValue={form.address.province}
@@ -1073,6 +1199,7 @@ export default function SignUpPage() {
                         cityDisabled={isCityDisabled}
                         barangayDisabled={isBarangayDisabled}
                         required
+                        compact={embedded}
                       />
                       <InputField
                         label="Postal Code / ZIP Code"
@@ -1082,6 +1209,7 @@ export default function SignUpPage() {
                         helperText={postalHelperText}
                         autoComplete="postal-code"
                         containerClassName="md:col-span-1"
+                        compact={embedded}
                       />
                       <InputField
                         label="Country"
@@ -1091,22 +1219,35 @@ export default function SignUpPage() {
                         helperText="Currently limited to Philippine addresses."
                         autoComplete="country-name"
                         containerClassName="md:col-span-2"
+                        compact={embedded}
                       />
                     </div>
                   </div>
                 </div>
               </SectionPanel>
+                      </motion.div>
+                    ) : null}
 
+                    {activeStepIndex === 1 ? (
+                      <motion.div
+                        key="signup-business"
+                        initial={{ opacity: 0, x: 16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -16 }}
+                        transition={{ duration: 0.2 }}
+                      >
               <SectionPanel
                 title="Business Details"
-                description="Add the business information you want tracked in the system. This section is optional."
+                description={embedded ? "Optional business information." : "Add the business information you want tracked in the system. This section is optional."}
+                compact={embedded}
               >
-                <div className="grid gap-5 md:grid-cols-2">
+                <div className={gridClassName}>
                   <InputField
                     label="Trade Name"
                     name="trade_name"
                     value={form.business.trade_name}
                     onChange={handleBusinessChange}
+                    compact={embedded}
                   />
                   <SelectField
                     label="Type of Business"
@@ -1115,6 +1256,7 @@ export default function SignUpPage() {
                     onChange={handleBusinessChange}
                     options={businessTypes}
                     placeholder="Select business type"
+                    compact={embedded}
                   />
                   <InputField
                     label="Business Email"
@@ -1123,12 +1265,14 @@ export default function SignUpPage() {
                     value={form.business.email_address}
                     onChange={handleBusinessChange}
                     placeholder="business@example.com"
+                    compact={embedded}
                   />
                   <InputField
                     label="Business TIN"
                     name="tin_number"
                     value={form.business.tin_number}
                     onChange={handleBusinessChange}
+                    compact={embedded}
                   />
                   <InputField
                     label="Business Contact Number"
@@ -1136,8 +1280,9 @@ export default function SignUpPage() {
                     value={form.business.contact_number}
                     onChange={handleBusinessChange}
                     placeholder="+63 900 000 0000"
+                    compact={embedded}
                   />
-                  <div className="md:col-span-2 space-y-4">
+                  <div className={nestedSectionClassName}>
                     <BusinessAddressMapSelector
                       value={{
                         street: form.business.business_address,
@@ -1148,16 +1293,28 @@ export default function SignUpPage() {
                         country: form.business.business_country,
                       }}
                       onChange={handleBusinessLocationChange}
+                      compact={embedded}
                     />
                   </div>
                 </div>
               </SectionPanel>
+                      </motion.div>
+                    ) : null}
 
+                    {activeStepIndex === 2 ? (
+                      <motion.div
+                        key="signup-documents"
+                        initial={{ opacity: 0, x: 16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -16 }}
+                        transition={{ duration: 0.2 }}
+                      >
               <SectionPanel
                 title="Document Upload"
-                description="Upload the required documents to complete your registration. Marriage Contract, Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files can also be attached here when available, but they are optional."
+                description={embedded ? "Required files and optional attachments." : "Upload the required documents to complete your registration. Marriage Contract, Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files can also be attached here when available, but they are optional."}
+                compact={embedded}
               >
-                <div className="grid gap-5 md:grid-cols-2">
+                <div className={gridClassName}>
                   {signupDocumentTypes.map((document) => (
                     <DocumentUploadField
                       key={document.id}
@@ -1165,56 +1322,98 @@ export default function SignUpPage() {
                       selectedFile={documentFiles[String(document.id)]}
                       onFileChange={handleDocumentFileChange}
                       required={requiredDocumentIds.includes(String(document.id))}
+                      compact={embedded}
                     />
                   ))}
                 </div>
 
-                <p className="mt-4 text-xs leading-5 text-slate-500">
+                <p className={embedded ? "mt-3 text-[10px] leading-4 text-slate-500" : "mt-4 text-xs leading-5 text-slate-500"}>
                   Accepted file types: PDF, DOC, DOCX, XLS, XLSX, CSV, JPG, JPEG, PNG, GIF, and WEBP. Maximum file
                   size is 10MB per upload.
                 </p>
-                <p className="mt-2 text-xs leading-5 text-slate-500">
+                <p className={embedded ? "mt-1 text-[10px] leading-4 text-slate-500" : "mt-2 text-xs leading-5 text-slate-500"}>
                   Required: {requiredDocumentLabels.length ? requiredDocumentLabels.join(", ") : "PSA Birth Certificate, Valid ID"}.
                 </p>
-                <p className="mt-2 text-xs leading-5 text-slate-500">
+                <p className={embedded ? "mt-1 text-[10px] leading-4 text-slate-500" : "mt-2 text-xs leading-5 text-slate-500"}>
                   Optional: Marriage Contract (if applicable), Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS.
                 </p>
-                <p className="mt-2 text-xs leading-5 text-slate-500">
+                <p className={embedded ? "mt-1 text-[10px] leading-4 text-slate-500" : "mt-2 text-xs leading-5 text-slate-500"}>
                   If you sign up without a Business Permit, Create Appointment will show only Processing until the admin uploads your permit and your business becomes registered.
                 </p>
 
-                <label className="mt-6 flex items-start gap-3 rounded-2xl border border-slate-200 bg-emerald-50/70 px-4 py-4 text-sm text-slate-700">
+                <label className={`${embedded ? "mt-4 gap-2 rounded-md px-3 py-3 text-[11px]" : "mt-6 gap-3 rounded-2xl px-4 py-4 text-sm"} flex items-start border border-slate-200 bg-emerald-50/70 text-slate-700`}>
                   <input
                     type="checkbox"
                     name="agreement"
                     checked={form.agreement}
                     onChange={handleChange}
                     required
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    className={`${embedded ? "h-3.5 w-3.5" : "h-4 w-4"} mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500`}
                   />
                   <span>I confirm that all the information I have provided is accurate and complete.</span>
                 </label>
               </SectionPanel>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
 
-              <div className="mx-auto max-w-xl space-y-3 pt-1">
-                <p className="text-center text-sm leading-6 text-slate-500">
-                  By creating an account, you allow the system to track your client records, appointments, and service
-                  requests.
-                </p>
-                <button
-                  type="submit"
-                  disabled={submitting || checkingEmail || !systemConfig.allowClientSelfSignup}
-                  className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                <div
+                  className={
+                    embedded
+                      ? "shrink-0 border-t border-slate-200/70 px-4 py-3 sm:px-5"
+                      : "mx-auto max-w-2xl space-y-4 pt-1"
+                  }
                 >
-                  {submitting
-                    ? "Creating account..."
-                    : checkingEmail
-                      ? "Checking email..."
-                      : systemConfig.allowClientSelfSignup
-                        ? "Sign Up"
-                        : "Sign-up Paused"}
-                </button>
-              </div>
+                  {!embedded ? (
+                    <p className="text-center text-sm leading-6 text-slate-500">
+                      By creating an account, you allow the system to track your client records, appointments, and service
+                      requests.
+                    </p>
+                  ) : null}
+                  <div className={embedded ? "flex items-center justify-between gap-3" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"}>
+                    <div className="min-w-0 text-center sm:text-left">
+                      <p className={embedded ? "text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400" : "text-xs font-semibold uppercase tracking-[0.18em] text-slate-400"}>
+                        Step {activeStepIndex + 1} of {SIGNUP_STEPS.length}
+                      </p>
+                      <p className={embedded ? "truncate text-[11px] font-semibold text-slate-700" : "truncate text-sm font-semibold text-slate-700"}>{activeStep.title}</p>
+                    </div>
+                    <div className={embedded ? "flex shrink-0 gap-2" : "flex flex-col gap-3 sm:flex-row"}>
+                      <button
+                        type="button"
+                        onClick={() => goToStep(activeStepIndex - 1)}
+                        disabled={isFirstStep || submitting || checkingEmail}
+                        className={`${embedded ? "px-4 py-2 text-[11px]" : "px-5 py-3 text-sm"} inline-flex items-center justify-center rounded-md border border-slate-300 bg-white font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        Previous
+                      </button>
+                      {!isLastStep ? (
+                        <button
+                          type="button"
+                          onClick={() => goToStep(activeStepIndex + 1)}
+                          disabled={submitting || checkingEmail}
+                          className={`${embedded ? "px-5 py-2 text-[11px]" : "px-6 py-3 text-sm"} inline-flex items-center justify-center rounded-md bg-emerald-600 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70`}
+                        >
+                          Next
+                        </button>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={submitting || checkingEmail || !systemConfig.allowClientSelfSignup}
+                          className={`${embedded ? "px-5 py-2 text-[11px]" : "px-6 py-3 text-sm"} inline-flex items-center justify-center rounded-md bg-emerald-600 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70`}
+                        >
+                          {submitting
+                            ? "Creating account..."
+                            : checkingEmail
+                              ? "Checking email..."
+                              : systemConfig.allowClientSelfSignup
+                                ? "Sign Up"
+                                : "Sign-up Paused"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
             </form>
             </div>
           </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { Link } from "react-router-dom";
 import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
+import TaskStepActivityControls from "../../components/tasks/TaskStepActivityControls";
 import { api, fetchAvailableServices } from "../../services/api";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
@@ -12,13 +13,25 @@ import { getTaskDeadlineState } from "../../utils/task_deadline";
 import {
   createLocalStepTimestamp,
   formatStepDateTime,
+  parseStepActivities,
   parseStepCompletionTimestamps,
+  parseStepContinueTimestamps,
+  parseStepReadTimestamps,
   parseStepRemarks,
   parseStepRemarkTimestamps,
   setStepCompletionTimestamp,
   setStepRemark,
   setStepRemarkTimestamp,
 } from "../../utils/task_step_metadata";
+import {
+  getUpdatedTaskDescription,
+  replaceTaskDescription,
+  saveTaskStepActivity,
+  stepActionKey,
+  stepDraftKey,
+  toDateTimeLocalInput,
+  uploadTaskStepFile,
+} from "../../utils/task_step_activity";
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
 const STEP_DONE_RE = /^\s*\[StepDone\]\s*([^\r\n]*)\s*$/i;
@@ -208,15 +221,20 @@ const roleCanCompleteStep = (stepAssignee, actorRole) => {
 const getAssignedStepsForRole = (steps, actorRole) =>
   (Array.isArray(steps) ? steps : []).filter((step) => roleCanCompleteStep(step?.assignee, actorRole));
 
-const getNextOpenStepIndex = (steps, doneSet, pendingSet) => {
+const getNextOpenStepIndex = (steps, doneSet, pendingSet, remarkSet) => {
   const taskSteps = Array.isArray(steps) ? steps : [];
   const completedSteps = doneSet instanceof Set ? doneSet : new Set(doneSet || []);
   const pendingSteps = pendingSet instanceof Set ? pendingSet : new Set(pendingSet || []);
+  const remarkedSteps =
+    remarkSet instanceof Set
+      ? remarkSet
+      : new Set(Object.keys(remarkSet || {}).map((stepNumber) => Number.parseInt(stepNumber, 10)).filter(Boolean));
 
   for (let i = 0; i < taskSteps.length; i++) {
     const stepNumber = i + 1;
     if (completedSteps.has(stepNumber)) continue;
     if (pendingSteps.has(stepNumber)) continue;
+    if (remarkedSteps.has(stepNumber)) continue;
     return i;
   }
 
@@ -386,7 +404,7 @@ const cleanDescription = (desc) => {
   // [Priority] Medium
   // [Deadline] 25/02/2026
   d = d.replace(/^\s*\[(Progress|Priority|Deadline|Done|StepDone|StepPending|Archived|SecretaryArchived|CreatedAt|Appointment_ID)\]\s*.*$/gim, "");
-  d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*.*$/gim, "");
+  d = d.replace(/^\s*\[(StepCompletedAt|StepRemark|StepRemarkAt|StepReadAt|StepContinueAt|StepActivity)\s+\d+\]\s*.*$/gim, "");
   d = d.replace(/\s*\[Done\]\s*/gi, " ");
 
   // Remove step-by-step lines from the CARD description preview.
@@ -482,6 +500,10 @@ export default function WorkUpdate() {
   const [stepsTask, setStepsTask] = useState(null);
   const [stepRemarkEditor, setStepRemarkEditor] = useState(null);
   const [stepRemarkSaving, setStepRemarkSaving] = useState(false);
+  const [stepActionSaving, setStepActionSaving] = useState("");
+  const [stepContinueDrafts, setStepContinueDrafts] = useState({});
+  const [stepFileSelections, setStepFileSelections] = useState({});
+  const [stepResponseDrafts, setStepResponseDrafts] = useState({});
 
   // Edit modal state
   const [editOpen, setEditOpen] = useState(false);
@@ -525,6 +547,31 @@ export default function WorkUpdate() {
     String(stepRemarkEditor?.taskId || "") === String(taskId || "") &&
     Number(stepRemarkEditor?.stepNumber) === Number(stepNumber);
 
+  const updateLocalTaskDescription = (taskId, description) => {
+    const nextDescription = String(description ?? "");
+    setTasks((current) => replaceTaskDescription(current, taskId, nextDescription));
+    setStepsTask((current) =>
+      String(current?.id || "") === String(taskId || "")
+        ? { ...current, description: nextDescription }
+        : current
+    );
+  };
+
+  const setStepResponseDraft = (taskId, stepNumber, value) => {
+    const key = stepDraftKey(taskId, stepNumber);
+    setStepResponseDrafts((current) => ({ ...current, [key]: value }));
+  };
+
+  const setStepContinueDraft = (taskId, stepNumber, value) => {
+    const key = stepDraftKey(taskId, stepNumber);
+    setStepContinueDrafts((current) => ({ ...current, [key]: value }));
+  };
+
+  const setStepFileSelection = (taskId, stepNumber, file) => {
+    const key = stepDraftKey(taskId, stepNumber);
+    setStepFileSelections((current) => ({ ...current, [key]: file }));
+  };
+
   const saveStepRemark = async (task, stepNumber) => {
     if (!canManageStepRemarks) return;
     const taskId = Number(task?.id || 0);
@@ -558,6 +605,87 @@ export default function WorkUpdate() {
     }
   };
 
+  const markStepRead = async (task, stepNumber) => {
+    const taskId = task?.id;
+    if (!taskId) return;
+
+    const actionKey = stepActionKey(taskId, stepNumber, "read");
+    const draftKey = stepDraftKey(taskId, stepNumber);
+
+    try {
+      setStepActionSaving(actionKey);
+      setError("");
+      const response = await saveTaskStepActivity({
+        taskId,
+        stepNumber,
+        action: "mark_read",
+        continueAt: stepContinueDrafts[draftKey] || "",
+      });
+      updateLocalTaskDescription(taskId, getUpdatedTaskDescription(response, task?.description));
+      void refresh({ silent: true });
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to mark step as read.");
+      await refresh({ silent: true });
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
+    }
+  };
+
+  const sendStepResponse = async (task, stepNumber) => {
+    const taskId = task?.id;
+    if (!taskId) return;
+
+    const draftKey = stepDraftKey(taskId, stepNumber);
+    const responseText = String(stepResponseDrafts[draftKey] || "").trim();
+    if (!responseText) return;
+
+    const actionKey = stepActionKey(taskId, stepNumber, "response");
+
+    try {
+      setStepActionSaving(actionKey);
+      setError("");
+      const response = await saveTaskStepActivity({
+        taskId,
+        stepNumber,
+        action: "response",
+        responseText,
+      });
+      updateLocalTaskDescription(taskId, getUpdatedTaskDescription(response, task?.description));
+      setStepResponseDraft(taskId, stepNumber, "");
+      void refresh({ silent: true });
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to send response.");
+      await refresh({ silent: true });
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
+    }
+  };
+
+  const uploadStepFile = async (task, stepNumber) => {
+    const taskId = task?.id;
+    if (!taskId) return;
+
+    const draftKey = stepDraftKey(taskId, stepNumber);
+    const file = stepFileSelections[draftKey];
+    if (!file) return;
+
+    const actionKey = stepActionKey(taskId, stepNumber, "upload");
+
+    try {
+      setStepActionSaving(actionKey);
+      setError("");
+      const response = await uploadTaskStepFile({ taskId, stepNumber, file });
+      updateLocalTaskDescription(taskId, getUpdatedTaskDescription(response, task?.description));
+      setStepFileSelection(taskId, stepNumber, null);
+      void refresh({ silent: true });
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to upload file.");
+      await refresh({ silent: true });
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
+    }
+  };
+
   const updateStep = async (task, index, value) => {
     if (!canCheckTaskSteps) return;
     if (value !== "done") return;
@@ -569,9 +697,10 @@ export default function WorkUpdate() {
 
     const doneSet = parseCompletedStepNumbers(task?.description);
     const pendingSet = parsePendingStepNumbers(task?.description);
-    const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingSet);
+    const remarkSet = parseStepRemarks(task?.description);
+    const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingSet, remarkSet);
 
-    if (index !== nextRequiredIndex) return;
+    if (index !== nextRequiredIndex && !String(remarkSet[index + 1] || "").trim()) return;
 
     const step = steps[index];
     if (!step) return;
@@ -597,13 +726,18 @@ export default function WorkUpdate() {
     let updatedDesc = setPendingStepNumbers(String(task?.description || ""), nextPending);
     const nextProgress = Math.round((doneSet.size / steps.length) * 100);
     updatedDesc = setProgress(updatedDesc, nextProgress);
+    const actionKey = stepActionKey(id, index + 1, "submit");
 
     try {
+      setStepActionSaving(actionKey);
+      updateLocalTaskDescription(id, updatedDesc);
       await api.post("task_update_status.php", { task_id: id, description: updatedDesc });
-      await refresh({ silent: true });
+      void refresh({ silent: true });
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Failed to update progress.");
       await refresh({ silent: true });
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
     }
   };
 
@@ -645,13 +779,18 @@ export default function WorkUpdate() {
     updatedDesc = setStepCompletionTimestamp(updatedDesc, index + 1, createLocalStepTimestamp());
     const nextProgress = Math.round((nextDone.size / steps.length) * 100);
     updatedDesc = setProgress(updatedDesc, nextProgress);
+    const actionKey = stepActionKey(id, index + 1, "approve");
 
     try {
+      setStepActionSaving(actionKey);
+      updateLocalTaskDescription(id, updatedDesc);
       await api.post("task_update_status.php", { task_id: id, description: updatedDesc });
-      await refresh({ silent: true });
+      void refresh({ silent: true });
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Failed to approve step.");
       await refresh({ silent: true });
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
     }
   };
 
@@ -1097,7 +1236,9 @@ export default function WorkUpdate() {
               const meta = extractMetaFromDescription(t.description);
               const steps = parseTaskSteps(t.description);
               const doneSet = parseCompletedStepNumbers(t.description);
-              const pendingReviewCount = parsePendingStepNumbers(t.description).size;
+              const pendingReviewSet = parsePendingStepNumbers(t.description);
+              const stepRemarks = parseStepRemarks(t.description);
+              const pendingReviewCount = pendingReviewSet.size;
               const taskStatus = String(t.status || "").toLowerCase();
               const isTaskDone = ["done", "completed"].includes(taskStatus);
               const isTaskDeclined = taskStatus === "declined";
@@ -1105,12 +1246,8 @@ export default function WorkUpdate() {
               const isOverdue = taskStatus === "overdue" || deadlineState.isOverdue;
               const secretarySteps = getAssignedStepsForRole(steps, "secretary");
               const pendingSecretarySteps = secretarySteps.filter((step) => !doneSet.has(step.number));
-              const nextRequiredStepNumber = (() => {
-                for (let i = 0; i < steps.length; i++) {
-                  if (!doneSet.has(i + 1)) return i + 1;
-                }
-                return null;
-              })();
+              const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingReviewSet, stepRemarks);
+              const nextRequiredStepNumber = nextRequiredIndex < steps.length ? nextRequiredIndex + 1 : null;
               const hasCurrentSecretaryStep = pendingSecretarySteps.some((step) => step.number === nextRequiredStepNumber);
               const deadline = getDeadline(t);
               const descriptionPreview = cleanDescription(t.description);
@@ -1419,7 +1556,10 @@ export default function WorkUpdate() {
                         const completionTimestamps = parseStepCompletionTimestamps(liveTask?.description);
                         const stepRemarks = parseStepRemarks(liveTask?.description);
                         const stepRemarkTimestamps = parseStepRemarkTimestamps(liveTask?.description);
-                        const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingReviewSet);
+                        const stepReadTimestamps = parseStepReadTimestamps(liveTask?.description);
+                        const stepContinueTimestamps = parseStepContinueTimestamps(liveTask?.description);
+                        const stepActivities = parseStepActivities(liveTask?.description);
+                        const nextRequiredIndex = getNextOpenStepIndex(steps, doneSet, pendingReviewSet, stepRemarks);
                         const taskLocked = ["done", "completed"].includes(String(liveTask?.status || "").toLowerCase());
 
                         return (
@@ -1433,7 +1573,9 @@ export default function WorkUpdate() {
                               const stepNumber = i + 1;
                               const done = doneSet.has(stepNumber);
                               const pendingReview = pendingReviewSet.has(stepNumber) && !done;
-                              const canCompleteByOrder = i === nextRequiredIndex;
+                              const stepRemark = canViewTaskUpdateHistory ? String(stepRemarks[stepNumber] || "").trim() : "";
+                              const hasStepEmergencyRemark = Boolean(stepRemark);
+                              const canCompleteByOrder = i === nextRequiredIndex || hasStepEmergencyRemark;
                               const isAssignedToSecretary = roleCanCompleteStep(step.assignee, "secretary");
                               const canComplete =
                                 canCheckTaskSteps &&
@@ -1445,7 +1587,6 @@ export default function WorkUpdate() {
                               const canApprove = canApproveSubmittedSteps && !taskLocked && !done && pendingReview;
                               const canEditRemark =
                                 canManageStepRemarks && !taskLocked && !done && !pendingReview && isAssignedToSecretary;
-                              const stepRemark = canViewTaskUpdateHistory ? String(stepRemarks[stepNumber] || "").trim() : "";
                               const completionLabel = canViewTaskUpdateHistory
                                 ? formatStepDateTime(completionTimestamps[stepNumber])
                                 : "";
@@ -1453,6 +1594,16 @@ export default function WorkUpdate() {
                                 ? formatStepDateTime(stepRemarkTimestamps[stepNumber])
                                 : "";
                               const remarkEditorOpen = isEditingStepRemark(liveTask?.id, stepNumber);
+                              const draftKey = stepDraftKey(liveTask?.id, stepNumber);
+                              const submitSaving = stepActionSaving === stepActionKey(liveTask?.id, stepNumber, "submit");
+                              const approveSaving = stepActionSaving === stepActionKey(liveTask?.id, stepNumber, "approve");
+                              const markReadSaving = stepActionSaving === stepActionKey(liveTask?.id, stepNumber, "read");
+                              const responseSaving = stepActionSaving === stepActionKey(liveTask?.id, stepNumber, "response");
+                              const uploadSaving = stepActionSaving === stepActionKey(liveTask?.id, stepNumber, "upload");
+                              const canUseStepActivity =
+                                !taskLocked &&
+                                isAssignedToSecretary &&
+                                (canCheckTaskSteps || canApproveSubmittedSteps || canManageStepRemarks);
                               return (
                                 <div
                                   key={`step-${stepsTask.id}-${i}`}
@@ -1465,29 +1616,33 @@ export default function WorkUpdate() {
                                   }`}
                                 >
                                   <div className="pt-0.5">
-                                    <input
-                                      type="checkbox"
-                                      checked={done}
-                                      disabled={!canComplete}
-                                      onChange={(e) => {
-                                        if (e.target.checked) updateStep(liveTask, i, "done");
-                                      }}
-                                      className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 ${done ? "opacity-60" : "opacity-100"}`}
-                                      aria-label={`Step ${stepNumber}`}
-                                      title={
-                                        !canCheckTaskSteps
-                                          ? "Step completion is disabled for your role"
-                                          : done
-                                            ? "Step already completed"
-                                            : pendingReview
-                                              ? "Submitted and waiting for approval"
-                                            : canComplete
-                                              ? `Submit Step ${stepNumber} for approval`
-                                              : !isAssignedToSecretary
-                                                ? "Only secretary-assigned steps can be completed"
-                                                : "This step will unlock after earlier steps are done"
-                                      }
-                                    />
+                                    {submitSaving ? (
+                                      <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-r-transparent" />
+                                    ) : (
+                                      <input
+                                        type="checkbox"
+                                        checked={done}
+                                        disabled={!canComplete}
+                                        onChange={(e) => {
+                                          if (e.target.checked) updateStep(liveTask, i, "done");
+                                        }}
+                                        className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 ${done ? "opacity-60" : "opacity-100"}`}
+                                        aria-label={`Step ${stepNumber}`}
+                                        title={
+                                          !canCheckTaskSteps
+                                            ? "Step completion is disabled for your role"
+                                            : done
+                                              ? "Step already completed"
+                                              : pendingReview
+                                                ? "Submitted and waiting for approval"
+                                              : canComplete
+                                                ? `Submit Step ${stepNumber} for approval`
+                                                : !isAssignedToSecretary
+                                                  ? "Only secretary-assigned steps can be completed"
+                                                  : "This step will unlock after earlier steps are done"
+                                        }
+                                      />
+                                    )}
                                   </div>
 
                                   <div className="min-w-0 flex-1">
@@ -1533,16 +1688,20 @@ export default function WorkUpdate() {
                                       <div className="mt-2 flex items-center justify-end">
                                         <button
                                           type="button"
+                                          disabled={approveSaving}
                                           onClick={() => approveStep(liveTask, i)}
-                                          className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                          className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
                                         >
+                                          {approveSaving ? (
+                                            <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" />
+                                          ) : null}
                                           Approve
                                         </button>
                                       </div>
                                     ) : null}
 
                                     {stepRemark ? (
-                                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                      <div className="mt-2 max-w-full overflow-hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                                         <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                                           Emergency remark
                                         </div>
@@ -1551,7 +1710,7 @@ export default function WorkUpdate() {
                                             Updated on {stepRemarkTimeLabel}
                                           </div>
                                         ) : null}
-                                        <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">
+                                        <div className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-words pr-1 text-xs leading-5 text-amber-900">
                                           {stepRemark}
                                         </div>
                                       </div>
@@ -1587,7 +1746,7 @@ export default function WorkUpdate() {
                                     ) : null}
 
                                     {remarkEditorOpen ? (
-                                      <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                      <div className="mt-2 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3">
                                         <div className="text-[11px] font-semibold text-slate-700">Emergency remark</div>
                                         <textarea
                                           value={stepRemarkEditor?.value || ""}
@@ -1602,7 +1761,7 @@ export default function WorkUpdate() {
                                           }
                                           rows={3}
                                           placeholder="Example: BIR is closed today, continue processing tomorrow."
-                                          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                          className="mt-2 max-h-28 w-full min-w-0 resize-none overflow-y-auto rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
                                         />
                                         <div className="mt-2 flex items-center justify-end gap-2">
                                           <button
@@ -1631,6 +1790,33 @@ export default function WorkUpdate() {
                                           </button>
                                         </div>
                                       </div>
+                                    ) : null}
+
+                                    {hasStepEmergencyRemark ? (
+                                      <TaskStepActivityControls
+                                        activities={stepActivities[stepNumber] || []}
+                                        canMarkRead={canUseStepActivity}
+                                        canRespond={canUseStepActivity}
+                                        canUpload={canUseStepActivity}
+                                        continueAt={stepContinueTimestamps[stepNumber] || ""}
+                                        continueValue={
+                                          stepContinueDrafts[draftKey] ??
+                                          toDateTimeLocalInput(stepContinueTimestamps[stepNumber])
+                                        }
+                                        disabled={Boolean(stepActionSaving)}
+                                        file={stepFileSelections[draftKey] || null}
+                                        markReadSaving={markReadSaving}
+                                        onContinueChange={(value) => setStepContinueDraft(liveTask?.id, stepNumber, value)}
+                                        onFileChange={(file) => setStepFileSelection(liveTask?.id, stepNumber, file)}
+                                        onMarkRead={() => markStepRead(liveTask, stepNumber)}
+                                        onResponseChange={(value) => setStepResponseDraft(liveTask?.id, stepNumber, value)}
+                                        onSendResponse={() => sendStepResponse(liveTask, stepNumber)}
+                                        onUploadFile={() => uploadStepFile(liveTask, stepNumber)}
+                                        readAt={stepReadTimestamps[stepNumber] || ""}
+                                        responseSaving={responseSaving}
+                                        responseValue={stepResponseDrafts[draftKey] || ""}
+                                        uploadSaving={uploadSaving}
+                                      />
                                     ) : null}
                                   </div>
                                 </div>

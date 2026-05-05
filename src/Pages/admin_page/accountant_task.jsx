@@ -467,7 +467,7 @@ const cleanDescription = (desc) => {
       if (/^\[(?:SecretaryArchived|Archived)\]\s*/i.test(l)) return false;
       if (/^\[StepDone\]\s*/i.test(l)) return false;
       if (/^\[StepPending\]\s*/i.test(l)) return false;
-      if (/^\[(?:StepCompletedAt|StepRemark|StepRemarkAt)\s+\d+\]\s*/i.test(l)) return false;
+      if (/^\[(?:StepCompletedAt|StepRemark|StepRemarkAt|StepReadAt|StepContinueAt|StepActivity)\s+\d+\]\s*/i.test(l)) return false;
       if (/^Step\s+\d+(?:\s*\((?:Owner|Accountant|Secretary)\))?\s*:/i.test(l)) return false;
       return true;
     })

@@ -22,12 +22,14 @@ try {
 
     $auditContext = monitoring_prepare_audit_log_context($data['audit_context'] ?? null);
 
-    $username = isset($data['username']) ? trim($data['username']) : '';
+    $email = isset($data['email'])
+        ? trim((string)$data['email'])
+        : (isset($data['username']) ? trim((string)$data['username']) : '');
     $password = isset($data['password']) ? (string)$data['password'] : '';
 
-    if ($username === '' || $password === '') {
+    if ($email === '' || $password === '') {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Username and password are required']);
+        echo json_encode(['success' => false, 'message' => 'Email and password are required']);
         exit;
     }
 
@@ -78,10 +80,10 @@ try {
          LEFT JOIN role r ON r.Role_id = u.Role_id
          LEFT JOIN status es ON es.Status_id = u.Employment_status_id
          LEFT JOIN status s ON s.Status_id = c.Status_id
-         WHERE u.Username = :u
+         WHERE u.Email = :email
          LIMIT 1'
     );
-    $stmt->execute([':u' => $username]);
+    $stmt->execute([':email' => $email]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$user) {

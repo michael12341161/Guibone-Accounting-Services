@@ -1,6 +1,9 @@
 const STEP_COMPLETED_AT_RE = /^\s*\[StepCompletedAt\s+(\d+)\]\s*([^\r\n]+)\s*$/i;
 const STEP_REMARK_RE = /^\s*\[StepRemark\s+(\d+)\]\s*(.*)$/i;
 const STEP_REMARK_AT_RE = /^\s*\[StepRemarkAt\s+(\d+)\]\s*([^\r\n]+)\s*$/i;
+const STEP_READ_AT_RE = /^\s*\[StepReadAt\s+(\d+)\]\s*([^\r\n]+)\s*$/i;
+const STEP_CONTINUE_AT_RE = /^\s*\[StepContinueAt\s+(\d+)\]\s*([^\r\n]+)\s*$/i;
+const STEP_ACTIVITY_RE = /^\s*\[StepActivity\s+(\d+)\]\s*([^\r\n]+)\s*$/i;
 
 const padNumber = (value) => String(Math.trunc(Math.abs(Number(value) || 0))).padStart(2, "0");
 
@@ -68,13 +71,19 @@ const parseIndexedStepMeta = (descriptionRaw, matcher) => {
 export const isIndexedStepMetaLine = (line) =>
   STEP_COMPLETED_AT_RE.test(String(line || "")) ||
   STEP_REMARK_RE.test(String(line || "")) ||
-  STEP_REMARK_AT_RE.test(String(line || ""));
+  STEP_REMARK_AT_RE.test(String(line || "")) ||
+  STEP_READ_AT_RE.test(String(line || "")) ||
+  STEP_CONTINUE_AT_RE.test(String(line || "")) ||
+  STEP_ACTIVITY_RE.test(String(line || ""));
 
 export const parseStepCompletionTimestamps = (descriptionRaw) =>
   parseIndexedStepMeta(descriptionRaw, STEP_COMPLETED_AT_RE);
 
 export const parseStepRemarks = (descriptionRaw) => parseIndexedStepMeta(descriptionRaw, STEP_REMARK_RE);
 export const parseStepRemarkTimestamps = (descriptionRaw) => parseIndexedStepMeta(descriptionRaw, STEP_REMARK_AT_RE);
+export const parseStepReadTimestamps = (descriptionRaw) => parseIndexedStepMeta(descriptionRaw, STEP_READ_AT_RE);
+export const parseStepContinueTimestamps = (descriptionRaw) =>
+  parseIndexedStepMeta(descriptionRaw, STEP_CONTINUE_AT_RE);
 
 export const setStepCompletionTimestamp = (descriptionRaw, stepNumber, timestamp) =>
   updateIndexedStepMeta(descriptionRaw, "StepCompletedAt", stepNumber, timestamp);
@@ -84,6 +93,63 @@ export const setStepRemark = (descriptionRaw, stepNumber, remark) =>
 
 export const setStepRemarkTimestamp = (descriptionRaw, stepNumber, timestamp) =>
   updateIndexedStepMeta(descriptionRaw, "StepRemarkAt", stepNumber, timestamp);
+export const setStepReadTimestamp = (descriptionRaw, stepNumber, timestamp) =>
+  updateIndexedStepMeta(descriptionRaw, "StepReadAt", stepNumber, timestamp);
+export const setStepContinueTimestamp = (descriptionRaw, stepNumber, timestamp) =>
+  updateIndexedStepMeta(descriptionRaw, "StepContinueAt", stepNumber, timestamp);
+
+const encodeActivityPayload = (activity) => {
+  try {
+    const json = JSON.stringify(activity || {});
+    return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  } catch (_) {
+    return "";
+  }
+};
+
+const decodeActivityPayload = (value) => {
+  try {
+    const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    return JSON.parse(decodeURIComponent(escape(atob(padded))));
+  } catch (_) {
+    return null;
+  }
+};
+
+export const appendStepActivity = (descriptionRaw, stepNumberRaw, activity) => {
+  const stepNumber = normalizeStepNumber(stepNumberRaw);
+  const payload = encodeActivityPayload(activity);
+  if (!stepNumber || !payload) {
+    return String(descriptionRaw || "").trim();
+  }
+
+  const lines = String(descriptionRaw || "").split(/\r?\n/);
+  while (lines.length && !String(lines[lines.length - 1] || "").trim()) {
+    lines.pop();
+  }
+  lines.push(`[StepActivity ${stepNumber}] ${payload}`);
+  return lines.join("\n").trim();
+};
+
+export const parseStepActivities = (descriptionRaw) => {
+  const activities = {};
+
+  for (const line of String(descriptionRaw || "").split(/\r?\n/)) {
+    const match = String(line || "").match(STEP_ACTIVITY_RE);
+    if (!match) continue;
+
+    const stepNumber = normalizeStepNumber(match[1]);
+    if (!stepNumber) continue;
+
+    const activity = decodeActivityPayload(match[2]);
+    if (!activity || typeof activity !== "object") continue;
+
+    activities[stepNumber] = [...(activities[stepNumber] || []), activity];
+  }
+
+  return activities;
+};
 
 export const remapIndexedStepMeta = (descriptionRaw, mapStepNumber) => {
   if (typeof mapStepNumber !== "function") {
@@ -116,6 +182,33 @@ export const remapIndexedStepMeta = (descriptionRaw, mapStepNumber) => {
       const nextStepNumber = normalizeStepNumber(mapStepNumber(normalizeStepNumber(remarkAtMatch[1])));
       if (nextStepNumber) {
         nextLines.push(buildIndexedMetaLabel("StepRemarkAt", nextStepNumber, remarkAtMatch[2]));
+      }
+      continue;
+    }
+
+    const readAtMatch = String(line || "").match(STEP_READ_AT_RE);
+    if (readAtMatch) {
+      const nextStepNumber = normalizeStepNumber(mapStepNumber(normalizeStepNumber(readAtMatch[1])));
+      if (nextStepNumber) {
+        nextLines.push(buildIndexedMetaLabel("StepReadAt", nextStepNumber, readAtMatch[2]));
+      }
+      continue;
+    }
+
+    const continueAtMatch = String(line || "").match(STEP_CONTINUE_AT_RE);
+    if (continueAtMatch) {
+      const nextStepNumber = normalizeStepNumber(mapStepNumber(normalizeStepNumber(continueAtMatch[1])));
+      if (nextStepNumber) {
+        nextLines.push(buildIndexedMetaLabel("StepContinueAt", nextStepNumber, continueAtMatch[2]));
+      }
+      continue;
+    }
+
+    const activityMatch = String(line || "").match(STEP_ACTIVITY_RE);
+    if (activityMatch) {
+      const nextStepNumber = normalizeStepNumber(mapStepNumber(normalizeStepNumber(activityMatch[1])));
+      if (nextStepNumber) {
+        nextLines.push(buildIndexedMetaLabel("StepActivity", nextStepNumber, activityMatch[2]));
       }
       continue;
     }

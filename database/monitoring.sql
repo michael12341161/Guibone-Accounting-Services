@@ -987,8 +987,6 @@ INSERT INTO `user` (`User_id`, `Username`, `Password`, `Password_changed_at`, `F
 (35, 'dong', '$2y$10$aGPL1eUp8Qa8zt0mEnzuvOafz5bg3/BOue8yrMCpGu1NXhE0VY8bW', '2026-04-25 06:49:07', 0, NULL, 2, NULL, 'wintaxpaasa@gmail.com', 'Domingo', 'E.', 'Ancog', NULL, '2004-02-01', '09354786152', 4, NULL, '1234567890', NULL, '2026-04-24 22:49:07', '2026-04-24 22:49:07'),
 (36, 'roberth', '$2y$10$gXgVnMgqOurf5iYkoF7yjOATOjBjxHWgMOw3FxpJ5XFc7oN83.1oi', '2026-04-25 06:49:50', 0, NULL, 3, NULL, 'roberth@gmail.com', 'Roberth', NULL, 'Namoc', NULL, '2004-02-22', NULL, 2, NULL, '1234567890', NULL, '2026-04-24 22:49:50', '2026-04-24 22:49:50');
 
--- --------------------------------------------------------
-
 --
 -- Table structure for table `user_specialization`
 --

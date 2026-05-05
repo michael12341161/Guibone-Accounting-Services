@@ -43,6 +43,42 @@ function FlyToSelection({ position }) {
   return null;
 }
 
+function MapInteractionController({ interactive }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const toggleHandler = (handlerName) => {
+      const handler = map?.[handlerName];
+      if (!handler) {
+        return;
+      }
+
+      if (interactive) {
+        handler.enable();
+      } else {
+        handler.disable();
+      }
+    };
+
+    toggleHandler("dragging");
+    toggleHandler("scrollWheelZoom");
+    toggleHandler("doubleClickZoom");
+    toggleHandler("touchZoom");
+    toggleHandler("boxZoom");
+    toggleHandler("keyboard");
+
+    if (map?.tap) {
+      if (interactive) {
+        map.tap.enable();
+      } else {
+        map.tap.disable();
+      }
+    }
+  }, [interactive, map]);
+
+  return null;
+}
+
 function ClickToSelectLocation({ disabled, onSelect }) {
   useMapEvents({
     click(event) {
@@ -69,10 +105,11 @@ function TextInput({
   readOnly = false,
   required = false,
   containerClassName = "",
+  compact = false,
 }) {
   return (
     <div className={containerClassName}>
-      <label className="mb-2 block text-sm font-medium text-slate-700">
+      <label className={compact ? "mb-1 block text-[11px] font-medium text-slate-700" : "mb-2 block text-sm font-medium text-slate-700"}>
         {label}
         {required ? <span className="ml-1 text-rose-500">*</span> : null}
       </label>
@@ -82,13 +119,13 @@ function TextInput({
         onChange={onChange}
         readOnly={readOnly}
         placeholder={placeholder}
-        className={`w-full rounded-2xl border px-4 py-3.5 text-sm shadow-sm outline-none transition ${
+        className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-2xl px-4 py-3.5 text-sm"} w-full border shadow-sm outline-none transition ${
           readOnly
             ? "border-slate-300 bg-slate-100 text-slate-500"
             : "border-slate-300 bg-white text-slate-900 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
         }`}
       />
-      {helperText ? <p className="mt-2 text-xs text-slate-500">{helperText}</p> : null}
+      {helperText ? <p className={compact ? "mt-1 text-[10px] leading-4 text-slate-500" : "mt-2 text-xs text-slate-500"}>{helperText}</p> : null}
     </div>
   );
 }
@@ -99,9 +136,11 @@ function BusinessAddressMapSelector({
   title = "Business Address Details",
   description = "Search a location or click on the map to auto-fill the business address.",
   required = false,
+  compact = false,
 }) {
   const [searchValue, setSearchValue] = useState("");
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [mapInteractionEnabled, setMapInteractionEnabled] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -214,6 +253,7 @@ function BusinessAddressMapSelector({
       setNoResultsMessage("");
       setError("");
       setLoadingMessage("");
+      setMapInteractionEnabled(false);
       activeControllerRef.current?.abort();
       activeControllerRef.current = null;
       return;
@@ -345,6 +385,12 @@ function BusinessAddressMapSelector({
     };
   }, []);
 
+  useEffect(() => {
+    if (loadingMessage) {
+      setMapInteractionEnabled(false);
+    }
+  }, [loadingMessage]);
+
   const handleMapSelection = useCallback(
     async ({ lat, lng }) => {
       requestIdRef.current += 1;
@@ -398,20 +444,20 @@ function BusinessAddressMapSelector({
   );
 
   return (
-    <div className="space-y-4">
+    <div className={compact ? "space-y-3" : "space-y-4"}>
       <div>
-        <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
-        <p className="mt-1 text-xs text-slate-500">{description}</p>
+        <h4 className={compact ? "text-[11px] font-semibold text-slate-800" : "text-sm font-semibold text-slate-800"}>{title}</h4>
+        <p className={compact ? "mt-0.5 text-[10px] text-slate-500" : "mt-1 text-xs text-slate-500"}>{description}</p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-        <label className="mb-2 block text-sm font-medium text-slate-700">
+      <div className={`${compact ? "rounded-md p-3" : "rounded-2xl p-4"} border border-slate-200 bg-slate-50/70`}>
+        <label className={compact ? "mb-1 block text-[11px] font-medium text-slate-700" : "mb-2 block text-sm font-medium text-slate-700"}>
           Search Business Location
           {required ? <span className="ml-1 text-rose-500">*</span> : null}
         </label>
         <div ref={searchContainerRef} className="relative">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.9} />
+            <Search className={`${compact ? "left-3 h-3.5 w-3.5" : "left-4 h-4 w-4"} pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400`} strokeWidth={1.9} />
             <input
               type="text"
               value={searchValue}
@@ -439,13 +485,13 @@ function BusinessAddressMapSelector({
                 }
               }}
               placeholder="Type street, barangay, city, or province"
-              className="w-full rounded-2xl border border-slate-300 bg-white py-3.5 pl-11 pr-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
+              className={`${compact ? "rounded-md py-2 pl-9 pr-3 text-[11px]" : "rounded-2xl py-3.5 pl-11 pr-4 text-sm"} w-full border border-slate-300 bg-white text-slate-900 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15`}
             />
           </div>
           {suggestionsOpen && (suggestionsLoading || suggestions.length || noResultsMessage) ? (
             <div className="absolute z-[1200] mt-2 max-h-72 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_-24px_rgba(15,23,42,0.45)]">
               {suggestionsLoading ? (
-                <div className="px-4 py-3 text-sm text-slate-600">Loading location choices...</div>
+                <div className={compact ? "px-3 py-2 text-[11px] text-slate-600" : "px-4 py-3 text-sm text-slate-600"}>Loading location choices...</div>
               ) : suggestions.length ? (
                 <div className="max-h-72 overflow-y-auto py-2">
                   {suggestions.map((location) => {
@@ -462,38 +508,38 @@ function BusinessAddressMapSelector({
                           event.preventDefault();
                           handleSuggestionSelect(location);
                         }}
-                        className="block w-full px-4 py-3 text-left transition hover:bg-emerald-50"
+                        className={compact ? "block w-full px-3 py-2 text-left transition hover:bg-emerald-50" : "block w-full px-4 py-3 text-left transition hover:bg-emerald-50"}
                       >
-                        <div className="text-sm font-medium text-slate-900">{location.displayName}</div>
-                        {details ? <div className="mt-1 text-xs text-slate-500">{details}</div> : null}
+                        <div className={compact ? "text-[11px] font-medium text-slate-900" : "text-sm font-medium text-slate-900"}>{location.displayName}</div>
+                        {details ? <div className={compact ? "mt-1 text-[10px] text-slate-500" : "mt-1 text-xs text-slate-500"}>{details}</div> : null}
                       </button>
                     );
                   })}
                 </div>
               ) : (
-                <div className="px-4 py-3 text-sm text-slate-600">{noResultsMessage}</div>
+                <div className={compact ? "px-3 py-2 text-[11px] text-slate-600" : "px-4 py-3 text-sm text-slate-600"}>{noResultsMessage}</div>
               )}
             </div>
           ) : null}
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className={compact ? "mt-2 text-[10px] leading-4 text-slate-500" : "mt-2 text-xs text-slate-500"}>
           Matching locations will appear as choices while you type. The marker will show only after you pick one of those choices or click directly on the map.
         </p>
       </div>
 
       {loadingMessage ? (
-        <div className="flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+        <div className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-2xl px-4 py-3 text-sm"} flex items-center gap-2 border border-sky-200 bg-sky-50 text-sky-700`}>
           <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} />
           <span>{loadingMessage}</span>
         </div>
       ) : null}
 
       {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+        <div className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-2xl px-4 py-3 text-sm"} border border-rose-200 bg-rose-50 text-rose-700`}>{error}</div>
       ) : null}
 
       {selectedLocation?.displayName ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-slate-700">
+        <div className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-2xl px-4 py-3 text-sm"} border border-emerald-200 bg-emerald-50/70 text-slate-700`}>
           <div className="flex items-center gap-2 font-medium text-emerald-700">
             <MapPin className="h-4 w-4" strokeWidth={1.9} />
             <span>Selected location</span>
@@ -502,17 +548,48 @@ function BusinessAddressMapSelector({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200">
+      <div
+        className={`${compact ? "rounded-md" : "rounded-2xl"} relative overflow-hidden border border-slate-200`}
+        onMouseLeave={() => setMapInteractionEnabled(false)}
+      >
+        {!mapInteractionEnabled ? (
+          <button
+            type="button"
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMapInteractionEnabled(true);
+            }}
+            className="absolute inset-0 z-[900] flex items-center justify-center bg-slate-950/10 px-4 text-center backdrop-blur-[1px]"
+            aria-label="Double-click to interact with the map"
+          >
+            <span className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-xl px-4 py-3 text-sm"} border border-white/70 bg-white/90 font-medium text-slate-700 shadow-sm`}>
+              Double-click to interact with the map
+            </span>
+          </button>
+        ) : (
+          <div className="pointer-events-none absolute right-3 top-3 z-[900]">
+            <span className={`${compact ? "rounded-md px-2.5 py-1 text-[10px]" : "rounded-lg px-3 py-1.5 text-xs"} border border-emerald-200 bg-white/95 font-semibold text-emerald-700 shadow-sm`}>
+              Map active
+            </span>
+          </div>
+        )}
         <MapContainer
           center={PHILIPPINES_MAP_CENTER}
           zoom={PHILIPPINES_DEFAULT_MAP_ZOOM}
-          scrollWheelZoom
-          className="h-[22rem] w-full"
+          scrollWheelZoom={false}
+          dragging={false}
+          doubleClickZoom={false}
+          touchZoom={false}
+          boxZoom={false}
+          keyboard={false}
+          className={compact ? "h-56 w-full" : "h-[22rem] w-full"}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <MapInteractionController interactive={mapInteractionEnabled} />
           <ClickToSelectLocation disabled={Boolean(loadingMessage)} onSelect={handleMapSelection} />
           <FlyToSelection position={currentPosition} />
           {currentPosition ? (
@@ -530,13 +607,14 @@ function BusinessAddressMapSelector({
         </MapContainer>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className={`${compact ? "gap-3" : "gap-5"} grid md:grid-cols-2`}>
         <TextInput
           label="Business Street Address / House No."
           value={streetValue}
           onChange={handleFieldChange("street")}
           placeholder="House no., street, subdivision"
           containerClassName="md:col-span-2"
+          compact={compact}
         />
         <TextInput
           label="Barangay"
@@ -544,6 +622,7 @@ function BusinessAddressMapSelector({
           onChange={handleFieldChange("barangay")}
           placeholder="Auto-filled from the selected location"
           required={required}
+          compact={compact}
         />
         <TextInput
           label="City / Municipality"
@@ -551,6 +630,7 @@ function BusinessAddressMapSelector({
           onChange={handleFieldChange("city")}
           placeholder="Auto-filled from the selected location"
           required={required}
+          compact={compact}
         />
         <TextInput
           label="Province"
@@ -558,6 +638,7 @@ function BusinessAddressMapSelector({
           onChange={handleFieldChange("province")}
           placeholder="Auto-filled from the selected location"
           required={required}
+          compact={compact}
         />
         <TextInput
           label="Postal Code / ZIP Code"
@@ -565,6 +646,7 @@ function BusinessAddressMapSelector({
           onChange={handleFieldChange("postalCode")}
           placeholder="Auto-filled from Nominatim or local postal mapping"
           helperText="When Nominatim has no ZIP code, the city and province are matched against the local Philippine postal dataset."
+          compact={compact}
         />
         <TextInput
           label="Country"
@@ -572,6 +654,7 @@ function BusinessAddressMapSelector({
           readOnly
           helperText="Currently limited to Philippine addresses."
           containerClassName="md:col-span-2"
+          compact={compact}
         />
       </div>
     </div>

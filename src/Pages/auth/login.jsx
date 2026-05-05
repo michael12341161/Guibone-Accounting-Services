@@ -5,6 +5,7 @@ import { api, DEFAULT_SECURITY_SETTINGS, fetchSecuritySettings } from "../../ser
 import { consumeAuthNotice, getHomePathForRole } from "../../context/AuthContext";
 import { useAuth } from "../../hooks/useAuth";
 import ForgotPasswordModal from "./forgot_password";
+import SignUpModal from "../../components/auth/SignUpModal";
 import LoginForm from "../../components/login_UI/login_form";
 import { loginAnimStyles } from "../../components/login_UI/login_styles";
 import LoginVisualPanel from "../../components/login_UI/login_visual_panel";
@@ -39,6 +40,7 @@ export default function LoginPage() {
   const [captchaError, setCaptchaError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
   const [forgotDefaultEmail, setForgotDefaultEmail] = useState("");
   const [forgotPasswordExpiryDaysOverride, setForgotPasswordExpiryDaysOverride] = useState(null);
   const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
@@ -216,6 +218,7 @@ export default function LoginPage() {
     try {
       const auditContext = await captureAuditContext().catch(() => null);
       const res = await api.post("login.php", {
+        email: username,
         username,
         password,
         audit_context: auditContext,
@@ -323,7 +326,7 @@ export default function LoginPage() {
                 setForgotPasswordExpiryDaysOverride(securitySettings?.passwordExpiryDays ?? null);
                 setForgotOpen(true);
               }}
-              createAccountHref="/sign-up"
+              onCreateAccount={() => setSignupOpen(true)}
             />
 
             <ForgotPasswordModal
@@ -336,6 +339,7 @@ export default function LoginPage() {
               passwordExpiryDaysOverride={forgotPasswordExpiryDaysOverride}
               securitySettingsOverride={securitySettings}
             />
+            <SignUpModal open={signupOpen} onClose={() => setSignupOpen(false)} />
 
             <p className="mt-6 text-center text-xs text-slate-500">
               By continuing, you agree to our <span className="text-slate-600">Terms</span> and{" "}

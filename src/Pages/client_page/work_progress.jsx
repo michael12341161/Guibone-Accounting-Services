@@ -1,16 +1,28 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
+import TaskStepActivityControls from "../../components/tasks/TaskStepActivityControls";
 import { api } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
 import { useErrorToast } from "../../utils/feedback";
 import {
   formatStepDateTime,
+  parseStepActivities,
   parseStepCompletionTimestamps,
+  parseStepContinueTimestamps,
+  parseStepReadTimestamps,
   parseStepRemarks,
   parseStepRemarkTimestamps,
 } from "../../utils/task_step_metadata";
+import {
+  getUpdatedTaskDescription,
+  replaceTaskDescription,
+  saveTaskStepActivity,
+  stepActionKey,
+  stepDraftKey,
+  uploadTaskStepFile,
+} from "../../utils/task_step_activity";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
 
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
@@ -109,6 +121,9 @@ export default function WorkProgress() {
   useErrorToast(error);
   const [tasks, setTasks] = useState([]);
   const [stepsTaskId, setStepsTaskId] = useState(null);
+  const [stepActionSaving, setStepActionSaving] = useState("");
+  const [stepFileSelections, setStepFileSelections] = useState({});
+  const [stepResponseDrafts, setStepResponseDrafts] = useState({});
 
   const user = useMemo(() => {
     try {
@@ -198,6 +213,7 @@ export default function WorkProgress() {
       const meta = statusMeta(t.status, progress, { isOverdue });
       return {
         id: t.id,
+        description: t.description,
         serviceName: t.name || "(Unnamed service)",
         serviceType: t.status || "",
         accountantName: t.accountant_name || "Unassigned",
@@ -210,6 +226,9 @@ export default function WorkProgress() {
         steps,
         completedSteps: parseCompletedStepNumbers(t.description),
         stepCompletionTimestamps: parseStepCompletionTimestamps(t.description),
+        stepReadTimestamps: parseStepReadTimestamps(t.description),
+        stepContinueTimestamps: parseStepContinueTimestamps(t.description),
+        stepActivities: parseStepActivities(t.description),
         stepRemarks: parseStepRemarks(t.description),
         stepRemarkTimestamps: parseStepRemarkTimestamps(t.description),
       };
@@ -241,6 +260,71 @@ export default function WorkProgress() {
 
   const closeSteps = () => {
     setStepsTaskId(null);
+  };
+
+  const updateLocalTaskDescription = (taskId, description) => {
+    setTasks((current) => replaceTaskDescription(current, taskId, String(description ?? "")));
+  };
+
+  const setStepResponseDraft = (taskId, stepNumber, value) => {
+    const key = stepDraftKey(taskId, stepNumber);
+    setStepResponseDrafts((current) => ({ ...current, [key]: value }));
+  };
+
+  const setStepFileSelection = (taskId, stepNumber, file) => {
+    const key = stepDraftKey(taskId, stepNumber);
+    setStepFileSelections((current) => ({ ...current, [key]: file }));
+  };
+
+  const sendStepResponse = async (task, stepNumber) => {
+    const taskId = task?.id;
+    if (!taskId) return;
+
+    const draftKey = stepDraftKey(taskId, stepNumber);
+    const responseText = String(stepResponseDrafts[draftKey] || "").trim();
+    if (!responseText) return;
+
+    const actionKey = stepActionKey(taskId, stepNumber, "response");
+
+    try {
+      setStepActionSaving(actionKey);
+      setError("");
+      const response = await saveTaskStepActivity({
+        taskId,
+        stepNumber,
+        action: "response",
+        responseText,
+      });
+      updateLocalTaskDescription(taskId, getUpdatedTaskDescription(response, task?.description));
+      setStepResponseDraft(taskId, stepNumber, "");
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to send response.");
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
+    }
+  };
+
+  const uploadStepFile = async (task, stepNumber) => {
+    const taskId = task?.id;
+    if (!taskId) return;
+
+    const draftKey = stepDraftKey(taskId, stepNumber);
+    const file = stepFileSelections[draftKey];
+    if (!file) return;
+
+    const actionKey = stepActionKey(taskId, stepNumber, "upload");
+
+    try {
+      setStepActionSaving(actionKey);
+      setError("");
+      const response = await uploadTaskStepFile({ taskId, stepNumber, file });
+      updateLocalTaskDescription(taskId, getUpdatedTaskDescription(response, task?.description));
+      setStepFileSelection(taskId, stepNumber, null);
+    } catch (e) {
+      setError(e?.response?.data?.message || e?.message || "Failed to upload file.");
+    } finally {
+      setStepActionSaving((current) => (current === actionKey ? "" : current));
+    }
   };
 
   return (
@@ -420,6 +504,14 @@ export default function WorkProgress() {
                 const completionLabel = formatStepDateTime(selectedStepsTask.stepCompletionTimestamps?.[step.number]);
                 const stepRemark = String(selectedStepsTask.stepRemarks?.[step.number] || "").trim();
                 const stepRemarkTimeLabel = formatStepDateTime(selectedStepsTask.stepRemarkTimestamps?.[step.number]);
+                const readAt = selectedStepsTask.stepReadTimestamps?.[step.number] || "";
+                const continueAt = selectedStepsTask.stepContinueTimestamps?.[step.number] || "";
+                const activities = selectedStepsTask.stepActivities?.[step.number] || [];
+                const draftKey = stepDraftKey(selectedStepsTask.id, step.number);
+                const canClientUseStepActivity = Boolean(readAt);
+                const responseSaving =
+                  stepActionSaving === stepActionKey(selectedStepsTask.id, step.number, "response");
+                const uploadSaving = stepActionSaving === stepActionKey(selectedStepsTask.id, step.number, "upload");
 
                 return (
                   <div
@@ -481,6 +573,25 @@ export default function WorkProgress() {
                         </div>
                       </div>
                     ) : null}
+
+                    <TaskStepActivityControls
+                      activities={activities}
+                      canMarkRead={false}
+                      canRespond={canClientUseStepActivity}
+                      canUpload={canClientUseStepActivity}
+                      clientResponseBlocked={!canClientUseStepActivity}
+                      continueAt={continueAt}
+                      disabled={Boolean(stepActionSaving)}
+                      file={stepFileSelections[draftKey] || null}
+                      onFileChange={(file) => setStepFileSelection(selectedStepsTask.id, step.number, file)}
+                      onResponseChange={(value) => setStepResponseDraft(selectedStepsTask.id, step.number, value)}
+                      onSendResponse={() => sendStepResponse(selectedStepsTask, step.number)}
+                      onUploadFile={() => uploadStepFile(selectedStepsTask, step.number)}
+                      readAt={readAt}
+                      responseSaving={responseSaving}
+                      responseValue={stepResponseDrafts[draftKey] || ""}
+                      uploadSaving={uploadSaving}
+                    />
                   </div>
                 );
               })}

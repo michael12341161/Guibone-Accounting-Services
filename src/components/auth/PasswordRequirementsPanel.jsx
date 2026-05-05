@@ -9,6 +9,7 @@ export default function PasswordRequirementsPanel({
   showConfirmation = false,
   active = false,
   title = "Your password must contain:",
+  compact = false,
 }) {
   const hasPasswordInput = String(password || "").length > 0;
   const requirements = useMemo(
@@ -25,5 +26,5 @@ export default function PasswordRequirementsPanel({
     return null;
   }
 
-  return <PasswordRequirementsCard title={title} requirements={requirements} active={active} />;
+  return <PasswordRequirementsCard title={title} requirements={requirements} active={active} compact={compact} />;
 }
