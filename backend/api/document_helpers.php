@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
 
 function monitoring_document_known_types(): array
 {

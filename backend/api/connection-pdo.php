@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
     $servername = getenv('DB_HOST') ?: "localhost";
     $dbusername = getenv('DB_USER') ?: "root";
     $dbpassword = getenv('DB_PASS') ?: "";

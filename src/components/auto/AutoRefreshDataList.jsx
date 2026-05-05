@@ -42,6 +42,20 @@ function readArrayFromPayload(payload, dataKey) {
   return [];
 }
 
+async function readErrorMessage(response) {
+  const fallback =
+    response.status === 429
+      ? "Too many requests. Please wait a moment and try again."
+      : `Request failed with status ${response.status}.`;
+
+  try {
+    const payload = await response.clone().json();
+    return String(payload?.message || fallback).trim();
+  } catch (_) {
+    return fallback;
+  }
+}
+
 function firstPresent(values) {
   return values.map((value) => String(value ?? "").trim()).find(Boolean) || "";
 }
@@ -128,12 +142,13 @@ export default function AutoRefreshDataList({
           credentials: "include",
           headers: {
             Accept: "application/json",
+            "X-Monitoring-Activity": "passive",
           },
           signal: controller.signal,
         });
 
         if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}.`);
+          throw new Error(await readErrorMessage(response));
         }
 
         const payload = await response.json();

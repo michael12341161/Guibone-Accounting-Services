@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
 
 function monitoring_ensure_client_service_steps_column_supports_long_text(PDO $conn): void {
     static $checked = false;

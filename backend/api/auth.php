@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
 
 const MONITORING_ROLE_ADMIN = 1;
 const MONITORING_ROLE_SECRETARY = 2;

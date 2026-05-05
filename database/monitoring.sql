@@ -859,6 +859,14 @@ INSERT INTO `settings` (`Settings_ID`, `setting_key`, `setting_value`) VALUES
 (1055, 'system_notice', ''),
 (1130, 'task_reminder_interval_hours', '4'),
 (1131, 'task_reminder_interval_minutes', '0'),
+(1132, 'rate_limit_enabled', '1'),
+(1133, 'rate_limit_max_requests', '100'),
+(1134, 'rate_limit_window_seconds', '60'),
+(1135, 'rate_limit_login_max_requests', '5'),
+(1136, 'rate_limit_login_window_seconds', '60'),
+(1137, 'rate_limit_message', 'Too many requests. Please wait a moment and try again.'),
+(1138, 'rate_limit_login_message', 'Too many login attempts. Please wait a moment and try again.'),
+(1139, 'feature_options', '[]'),
 (2779, 'user_specialization_assignments', '{\"users\":{\"35\":[4],\"36\":[2]}}');
 
 -- --------------------------------------------------------

@@ -44,7 +44,7 @@ import TasksUpdateHistory from "../Pages/history/tasks_update_history";
 import MyTasks from "../Pages/accountant_page/my_tasks";
 import MessagingPage from "../Pages/messaging_page/messaging_page";
 import Calendar from "../calendar/calendary";
-import AdminSettings from "../settings/admin_settings";
+import AdminSettings from "../settings/System_Configuration";
 import SchedulingManagementAdmin from "../Pages/admin_page/scheduling_management_admin";
 import CertificatePage from "../Pages/certificate/certificate";
 import EditCertificate from "../Pages/certificate/Edit_certificate";
@@ -53,8 +53,19 @@ import { ModuleAccessGate } from "../components/layout/module_access_gate";
 import TaskClientAppointmentsPage from "../Pages/shared/task_client_appointments";
 import { RouteLoadingPanel } from "../components/layout/route_loading_panel";
 import { ROLE_IDS } from "../utils/helpers";
+import handleAccountantLogout from "../logout/accountant_logout";
+import handleAdminLogout from "../logout/admin_logout";
+import handleClientLogout from "../logout/client_logout";
+import handleSecretaryLogout from "../logout/secretary_logout";
+import handleWorkspaceLogout from "../logout/workspace_logout";
 
 const BUILTIN_ROLE_IDS = new Set(Object.values(ROLE_IDS));
+const ROLE_LOGOUT_HANDLERS = {
+  [ROLE_IDS.ADMIN]: handleAdminLogout,
+  [ROLE_IDS.SECRETARY]: handleSecretaryLogout,
+  [ROLE_IDS.ACCOUNTANT]: handleAccountantLogout,
+  [ROLE_IDS.CLIENT]: handleClientLogout,
+};
 
 function normalizeRoutePath(pathname) {
   const raw = String(pathname || "").trim();
@@ -86,15 +97,6 @@ function RoleProtectedRoute({ allowedRoleId, allowRole, LayoutComponent }) {
   const { user, role, logout, isAuthReady } = useAuth();
   const hasResolvedUser = Boolean(user?.id || user?.username);
 
-  const onLogout = async () => {
-    const didLogout = await logout();
-    if (!didLogout) {
-      return;
-    }
-
-    navigate("/login", { replace: true });
-  };
-
   if (!isAuthReady && !hasResolvedUser) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
@@ -117,6 +119,11 @@ function RoleProtectedRoute({ allowedRoleId, allowRole, LayoutComponent }) {
   const expectedHomePath = getHomePathForRole(user);
   const currentBasePath = getTopLevelRoutePath(location.pathname);
   const isCustomRoleUser = Number.isInteger(role) && role > 0 && !BUILTIN_ROLE_IDS.has(role);
+  const roleLogoutHandler = isCustomRoleUser
+    ? handleWorkspaceLogout
+    : ROLE_LOGOUT_HANDLERS[role] || ROLE_LOGOUT_HANDLERS[allowedRoleId] || handleWorkspaceLogout;
+  const onLogout = () => roleLogoutHandler({ logout, navigate });
+
   if (
     isCustomRoleUser &&
     normalizeRoutePath(currentBasePath) !== normalizeRoutePath(expectedHomePath)

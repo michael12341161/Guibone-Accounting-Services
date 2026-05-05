@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
 
 const MONITORING_TASK_WORKLOAD_SETTINGS_KEY = 'task_workload_settings';
 const MONITORING_TASK_WORKLOAD_DEFAULT_LIMIT = 5;

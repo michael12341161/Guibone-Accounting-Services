@@ -10,12 +10,14 @@ const JWT_REFRESH_HEADER = "x-monitoring-jwt";
 const SESSION_ACTIVITY_HEADER = "X-Monitoring-Activity";
 // Keep this short so background polling does not extend inactivity timeouts.
 const RECENT_ACTIVITY_WINDOW_MS = 5 * 1000;
+const PASSIVE_METHODS = new Set(["get", "head", "options"]);
 export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
 export const MONITORING_AUTH_USER_SYNC_EVENT = "monitoring:auth-user-sync";
 export const MONITORING_SYSTEM_CONFIG_UPDATED_EVENT = "monitoring:system-config-updated";
 export const MONITORING_SCHEDULED_BACKUP_EVENT = "monitoring:scheduled-backup";
 export const MONITORING_AUTH_REQUIRED_MESSAGE = "Authentication is required.";
 export const MONITORING_SESSION_EXPIRED_MESSAGE = "Session expired. Please log in again.";
+export const MONITORING_RATE_LIMITED_MESSAGE = "Too many requests. Please wait a moment and try again.";
 
 let lastUserInteractionAt = 0;
 
@@ -69,6 +71,11 @@ function resolveMonitoringActivityMode(config = {}) {
     return explicitMode;
   }
 
+  const method = String(config?.method || "get").trim().toLowerCase();
+  if (PASSIVE_METHODS.has(method)) {
+    return "passive";
+  }
+
   return Date.now() - lastUserInteractionAt <= RECENT_ACTIVITY_WINDOW_MS ? "active" : "passive";
 }
 
@@ -116,6 +123,39 @@ function normalizeAuthenticationError(error) {
   return error;
 }
 
+export function isRateLimitError(error) {
+  return error?.response?.status === 429;
+}
+
+function normalizeRateLimitError(error) {
+  if (!isRateLimitError(error)) {
+    return error;
+  }
+
+  const responseData = error?.response?.data;
+  const nextMessage = String(responseData?.message || error?.message || MONITORING_RATE_LIMITED_MESSAGE).trim();
+
+  if (error?.response) {
+    error.response.data =
+      responseData && typeof responseData === "object"
+        ? {
+            ...responseData,
+            rate_limited: true,
+            message: nextMessage,
+          }
+        : {
+            success: false,
+            rate_limited: true,
+            message: nextMessage,
+          };
+  }
+
+  error.monitoringRateLimited = true;
+  error.monitoringUserMessage = nextMessage;
+  error.message = nextMessage;
+  return error;
+}
+
 export function clearStoredAuthToken() {
   // Handled by HTTP-only cookie
 }
@@ -150,6 +190,9 @@ api.interceptors.response.use(
   },
   (error) => {
     syncUserFromResponse(error?.response);
+    if (error?.response?.status === 429) {
+      normalizeRateLimitError(error);
+    }
     if (error?.response?.status === 401) {
       clearStoredAuthToken();
       normalizeAuthenticationError(error);
@@ -166,6 +209,9 @@ apiSession.interceptors.response.use(
   },
   (error) => {
     syncUserFromResponse(error?.response);
+    if (error?.response?.status === 429) {
+      normalizeRateLimitError(error);
+    }
     if (error?.response?.status === 401) {
       clearStoredAuthToken();
       normalizeAuthenticationError(error);
@@ -466,6 +512,14 @@ export const DEFAULT_SYSTEM_CONFIGURATION = Object.freeze({
   taskReminderIntervalHours: 4,
   taskReminderIntervalMinutes: 0,
   sendClientStatusEmails: false,
+  rateLimitEnabled: true,
+  rateLimitMaxRequests: 100,
+  rateLimitWindowSeconds: 60,
+  rateLimitLoginMaxRequests: 5,
+  rateLimitLoginWindowSeconds: 60,
+  rateLimitMessage: MONITORING_RATE_LIMITED_MESSAGE,
+  rateLimitLoginMessage: "Too many login attempts. Please wait a moment and try again.",
+  featureOptions: [],
   smtpHost: "smtp.gmail.com",
   smtpPort: 587,
   smtpUsername: "",
@@ -521,6 +575,47 @@ function parseBooleanSetting(value, fallback) {
   }
 
   return fallback;
+}
+
+function humanizeFeatureOptionKey(key) {
+  const normalized = String(key ?? "").trim().replace(/[_-]+/g, " ");
+  return normalized
+    ? normalized.replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "Feature option";
+}
+
+export function normalizeFeatureOptions(input) {
+  const source =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? Object.entries(input).map(([key, value]) =>
+          value && typeof value === "object"
+            ? { key, ...value }
+            : { key, enabled: value }
+        )
+      : Array.isArray(input)
+        ? input
+        : [];
+  const seen = new Set();
+
+  return source.reduce((options, item) => {
+    if (!item || typeof item !== "object") {
+      return options;
+    }
+
+    const key = String(item.key ?? "").trim().toLowerCase();
+    if (!/^[a-z][a-z0-9_]{1,63}$/.test(key) || seen.has(key)) {
+      return options;
+    }
+
+    seen.add(key);
+    options.push({
+      key,
+      label: parseStringSetting(item.label, humanizeFeatureOptionKey(key)).slice(0, 80),
+      description: String(item.description ?? "").trim().slice(0, 200),
+      enabled: parseBooleanSetting(item.enabled, false),
+    });
+    return options;
+  }, []);
 }
 
 function parseBackupScheduleFrequency(value) {
@@ -584,6 +679,35 @@ export function normalizeSystemConfiguration(input) {
       source.sendClientStatusEmails,
       DEFAULT_SYSTEM_CONFIGURATION.sendClientStatusEmails
     ),
+    rateLimitEnabled: parseBooleanSetting(
+      source.rateLimitEnabled,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitEnabled
+    ),
+    rateLimitMaxRequests: parseIntegerSetting(
+      source.rateLimitMaxRequests,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitMaxRequests
+    ),
+    rateLimitWindowSeconds: parseIntegerSetting(
+      source.rateLimitWindowSeconds,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitWindowSeconds
+    ),
+    rateLimitLoginMaxRequests: parseIntegerSetting(
+      source.rateLimitLoginMaxRequests,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitLoginMaxRequests
+    ),
+    rateLimitLoginWindowSeconds: parseIntegerSetting(
+      source.rateLimitLoginWindowSeconds,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitLoginWindowSeconds
+    ),
+    rateLimitMessage: parseStringSetting(
+      source.rateLimitMessage,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitMessage
+    ),
+    rateLimitLoginMessage: parseStringSetting(
+      source.rateLimitLoginMessage,
+      DEFAULT_SYSTEM_CONFIGURATION.rateLimitLoginMessage
+    ),
+    featureOptions: normalizeFeatureOptions(source.featureOptions),
     smtpHost: parseStringSetting(source.smtpHost, DEFAULT_SYSTEM_CONFIGURATION.smtpHost),
     smtpPort: parseIntegerSetting(source.smtpPort, DEFAULT_SYSTEM_CONFIGURATION.smtpPort),
     smtpUsername: String(source.smtpUsername ?? "").trim(),

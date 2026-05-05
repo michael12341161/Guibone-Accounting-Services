@@ -1,0 +1,6 @@
+{
+    "name": "micha/monitoring",
+    "require": {
+        "predis/predis": "^3.4"
+    }
+}

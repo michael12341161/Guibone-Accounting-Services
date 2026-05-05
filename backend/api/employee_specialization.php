@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
 
 require_once __DIR__ . '/service_type_helpers.php';
 
@@ -447,6 +449,115 @@ if (!function_exists('monitoring_setting_length')) {
     }
 }
 
+if (!function_exists('monitoring_humanize_feature_option_key')) {
+    function monitoring_humanize_feature_option_key(string $key): string {
+        $label = preg_replace('/[_-]+/', ' ', trim($key));
+        $label = trim((string)$label);
+        return $label !== '' ? ucwords($label) : 'Feature option';
+    }
+}
+
+if (!function_exists('monitoring_feature_options_from_value')) {
+    function monitoring_feature_options_from_value($value): array {
+        if (is_string($value)) {
+            $raw = trim($value);
+            if ($raw === '') {
+                return [];
+            }
+
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($value) ? $value : [];
+    }
+}
+
+if (!function_exists('monitoring_validate_feature_options')) {
+    function monitoring_validate_feature_options($value): array {
+        $source = monitoring_feature_options_from_value($value);
+        $items = [];
+        $errors = [];
+
+        if (array_keys($source) !== range(0, count($source) - 1)) {
+            foreach ($source as $key => $enabled) {
+                if (is_array($enabled)) {
+                    $items[] = array_merge(['key' => $key], $enabled);
+                    continue;
+                }
+
+                $items[] = [
+                    'key' => $key,
+                    'label' => monitoring_humanize_feature_option_key((string)$key),
+                    'description' => '',
+                    'enabled' => $enabled,
+                ];
+            }
+        } else {
+            $items = $source;
+        }
+
+        if (count($items) > 25) {
+            $errors[] = 'Feature options cannot exceed 25 items.';
+        }
+
+        $seenKeys = [];
+        $options = [];
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                $errors[] = 'Feature option ' . ($index + 1) . ' must be a valid object.';
+                continue;
+            }
+
+            $key = strtolower(trim((string)($item['key'] ?? '')));
+            $label = trim((string)($item['label'] ?? ''));
+            $description = trim((string)($item['description'] ?? ''));
+            $enabled = monitoring_parse_bool_setting($item['enabled'] ?? false);
+
+            if ($key === '') {
+                $errors[] = 'Feature option ' . ($index + 1) . ' needs a key.';
+                continue;
+            }
+            if (!preg_match('/^[a-z][a-z0-9_]{1,63}$/', $key)) {
+                $errors[] = 'Feature option keys must start with a letter and use lowercase letters, numbers, or underscores.';
+                continue;
+            }
+            if (isset($seenKeys[$key])) {
+                $errors[] = 'Feature option keys must be unique.';
+                continue;
+            }
+            if ($label === '') {
+                $label = monitoring_humanize_feature_option_key($key);
+            }
+            if (monitoring_setting_length($label) > 80) {
+                $errors[] = 'Feature option labels must be 80 characters or fewer.';
+                continue;
+            }
+            if (monitoring_setting_length($description) > 200) {
+                $errors[] = 'Feature option descriptions must be 200 characters or fewer.';
+                continue;
+            }
+            if ($enabled === null) {
+                $errors[] = 'Feature option enabled values must be valid toggles.';
+                continue;
+            }
+
+            $seenKeys[$key] = true;
+            $options[] = [
+                'key' => $key,
+                'label' => $label,
+                'description' => $description,
+                'enabled' => $enabled,
+            ];
+        }
+
+        return [
+            'settings' => $options,
+            'errors' => $errors,
+        ];
+    }
+}
+
 if (!function_exists('monitoring_load_local_api_config')) {
     function monitoring_load_local_api_config(): array {
         static $config = null;
@@ -594,6 +705,38 @@ if (!function_exists('monitoring_system_configuration_definitions')) {
                 'db_key' => 'send_client_status_emails',
                 'type' => 'bool',
             ],
+            'rateLimitEnabled' => [
+                'db_key' => 'rate_limit_enabled',
+                'type' => 'bool',
+            ],
+            'rateLimitMaxRequests' => [
+                'db_key' => 'rate_limit_max_requests',
+                'type' => 'int',
+            ],
+            'rateLimitWindowSeconds' => [
+                'db_key' => 'rate_limit_window_seconds',
+                'type' => 'int',
+            ],
+            'rateLimitLoginMaxRequests' => [
+                'db_key' => 'rate_limit_login_max_requests',
+                'type' => 'int',
+            ],
+            'rateLimitLoginWindowSeconds' => [
+                'db_key' => 'rate_limit_login_window_seconds',
+                'type' => 'int',
+            ],
+            'rateLimitMessage' => [
+                'db_key' => 'rate_limit_message',
+                'type' => 'string',
+            ],
+            'rateLimitLoginMessage' => [
+                'db_key' => 'rate_limit_login_message',
+                'type' => 'string',
+            ],
+            'featureOptions' => [
+                'db_key' => 'feature_options',
+                'type' => 'feature_options',
+            ],
             'smtpHost' => [
                 'db_key' => 'smtp_host',
                 'type' => 'string',
@@ -624,6 +767,17 @@ if (!function_exists('monitoring_default_system_configuration')) {
             'APP_COMPANY_NAME',
             monitoring_read_api_config_value('COMPANY_NAME', 'Guibone Accounting Services (GAS)')
         ));
+        $rateLimitDefaults = function_exists('monitoring_rate_limit_default_settings')
+            ? monitoring_rate_limit_default_settings()
+            : [
+                'enabled' => true,
+                'default_max_requests' => 100,
+                'default_window_seconds' => 60,
+                'default_message' => 'Too many requests. Please wait a moment and try again.',
+                'login_max_requests' => 5,
+                'login_window_seconds' => 60,
+                'login_message' => 'Too many login attempts. Please wait a moment and try again.',
+            ];
 
         return [
             'companyName' => $companyName !== '' ? $companyName : 'Guibone Accounting Services (GAS)',
@@ -636,6 +790,14 @@ if (!function_exists('monitoring_default_system_configuration')) {
             'taskReminderIntervalHours' => 4,
             'taskReminderIntervalMinutes' => 0,
             'sendClientStatusEmails' => ($smtpUsername !== '' && $smtpPassword !== ''),
+            'rateLimitEnabled' => !empty($rateLimitDefaults['enabled']),
+            'rateLimitMaxRequests' => max(1, (int)($rateLimitDefaults['default_max_requests'] ?? 100)),
+            'rateLimitWindowSeconds' => max(1, (int)($rateLimitDefaults['default_window_seconds'] ?? 60)),
+            'rateLimitLoginMaxRequests' => max(1, (int)($rateLimitDefaults['login_max_requests'] ?? 5)),
+            'rateLimitLoginWindowSeconds' => max(1, (int)($rateLimitDefaults['login_window_seconds'] ?? 60)),
+            'rateLimitMessage' => trim((string)($rateLimitDefaults['default_message'] ?? 'Too many requests. Please wait a moment and try again.')),
+            'rateLimitLoginMessage' => trim((string)($rateLimitDefaults['login_message'] ?? 'Too many login attempts. Please wait a moment and try again.')),
+            'featureOptions' => [],
             'smtpHost' => $smtpHost !== '' ? $smtpHost : 'smtp.gmail.com',
             'smtpPort' => ($smtpPort !== null && $smtpPort > 0) ? $smtpPort : 587,
             'smtpUsername' => $smtpUsername,
@@ -655,6 +817,17 @@ if (!function_exists('monitoring_validate_system_configuration')) {
             $candidate = array_key_exists($frontendKey, $payload)
                 ? $payload[$frontendKey]
                 : ($payload[$dbKey] ?? $settings[$frontendKey]);
+
+            if ($definition['type'] === 'feature_options') {
+                $validatedOptions = monitoring_validate_feature_options($candidate);
+                if (!empty($validatedOptions['errors'])) {
+                    $errors[$frontendKey] = implode(' ', $validatedOptions['errors']);
+                    continue;
+                }
+
+                $settings[$frontendKey] = $validatedOptions['settings'];
+                continue;
+            }
 
             if ($definition['type'] === 'int') {
                 $value = monitoring_parse_int_setting($candidate);
@@ -720,6 +893,34 @@ if (!function_exists('monitoring_validate_system_configuration')) {
             $errors['taskReminderIntervalMinutes'] = 'Task reminder interval cannot exceed 24 hours.';
         }
 
+        if ($settings['rateLimitMaxRequests'] < 1 || $settings['rateLimitMaxRequests'] > 10000) {
+            $errors['rateLimitMaxRequests'] = 'Default rate limit must be between 1 and 10000 requests.';
+        }
+
+        if ($settings['rateLimitWindowSeconds'] < 1 || $settings['rateLimitWindowSeconds'] > 86400) {
+            $errors['rateLimitWindowSeconds'] = 'Default rate limit window must be between 1 and 86400 seconds.';
+        }
+
+        if ($settings['rateLimitLoginMaxRequests'] < 1 || $settings['rateLimitLoginMaxRequests'] > 1000) {
+            $errors['rateLimitLoginMaxRequests'] = 'Login rate limit must be between 1 and 1000 attempts.';
+        }
+
+        if ($settings['rateLimitLoginWindowSeconds'] < 1 || $settings['rateLimitLoginWindowSeconds'] > 86400) {
+            $errors['rateLimitLoginWindowSeconds'] = 'Login rate limit window must be between 1 and 86400 seconds.';
+        }
+
+        if ($settings['rateLimitMessage'] === '') {
+            $errors['rateLimitMessage'] = 'Default rate limit message is required.';
+        } elseif (monitoring_setting_length($settings['rateLimitMessage']) > 240) {
+            $errors['rateLimitMessage'] = 'Default rate limit message must be 240 characters or fewer.';
+        }
+
+        if ($settings['rateLimitLoginMessage'] === '') {
+            $errors['rateLimitLoginMessage'] = 'Login rate limit message is required.';
+        } elseif (monitoring_setting_length($settings['rateLimitLoginMessage']) > 240) {
+            $errors['rateLimitLoginMessage'] = 'Login rate limit message must be 240 characters or fewer.';
+        }
+
         if ($settings['smtpHost'] === '') {
             $errors['smtpHost'] = 'SMTP host is required.';
         } elseif (preg_match('/\s/', $settings['smtpHost'])) {
@@ -777,7 +978,17 @@ if (!function_exists('monitoring_upsert_system_configuration')) {
                 continue;
             }
 
-            $storedValue = is_bool($value) ? ($value ? '1' : '0') : (string)$value;
+            if (is_bool($value)) {
+                $storedValue = $value ? '1' : '0';
+            } elseif (is_array($value)) {
+                $storedValue = json_encode($value, JSON_UNESCAPED_SLASHES);
+                if ($storedValue === false) {
+                    $storedValue = '[]';
+                }
+            } else {
+                $storedValue = (string)$value;
+            }
+
             $statement->execute([
                 ':setting_key' => $definitions[$frontendKey]['db_key'],
                 ':setting_value' => $storedValue,
@@ -823,6 +1034,14 @@ if (!function_exists('monitoring_get_system_configuration')) {
                 }
 
                 $rawValue = $rowsByKey[$definition['db_key']];
+                if ($definition['type'] === 'feature_options') {
+                    $validatedOptions = monitoring_validate_feature_options($rawValue);
+                    if (empty($validatedOptions['errors'])) {
+                        $settings[$frontendKey] = $validatedOptions['settings'];
+                    }
+                    continue;
+                }
+
                 if ($definition['type'] === 'int') {
                     $parsed = monitoring_parse_int_setting($rawValue);
                     if ($parsed === null) {
@@ -838,6 +1057,27 @@ if (!function_exists('monitoring_get_system_configuration')) {
 
                     if ($frontendKey === 'taskReminderIntervalMinutes') {
                         if ($parsed >= 0 && $parsed <= 59) {
+                            $settings[$frontendKey] = $parsed;
+                        }
+                        continue;
+                    }
+
+                    if ($frontendKey === 'rateLimitMaxRequests') {
+                        if ($parsed >= 1 && $parsed <= 10000) {
+                            $settings[$frontendKey] = $parsed;
+                        }
+                        continue;
+                    }
+
+                    if ($frontendKey === 'rateLimitLoginMaxRequests') {
+                        if ($parsed >= 1 && $parsed <= 1000) {
+                            $settings[$frontendKey] = $parsed;
+                        }
+                        continue;
+                    }
+
+                    if ($frontendKey === 'rateLimitWindowSeconds' || $frontendKey === 'rateLimitLoginWindowSeconds') {
+                        if ($parsed >= 1 && $parsed <= 86400) {
                             $settings[$frontendKey] = $parsed;
                         }
                         continue;

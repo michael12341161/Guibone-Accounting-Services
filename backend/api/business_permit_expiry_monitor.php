@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../rate_limit.php';
+monitoring_enforce_rate_limit();
 require_once __DIR__ . '/document_helpers.php';
 
 function monitoring_business_permit_expiry_notification_type(int $clientId, string $expirationDate): string
