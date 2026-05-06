@@ -12,6 +12,10 @@ class ComposerStaticInit9b44ae82026663ac19ee93eee61bf78b
             'Psr\\Http\\Message\\' => 17,
             'Predis\\' => 7,
         ),
+        'F' =>
+        array (
+            'Fgribreau\\' => 10,
+        ),
     );
 
     public static $prefixDirsPsr4 = array (
@@ -22,6 +26,10 @@ class ComposerStaticInit9b44ae82026663ac19ee93eee61bf78b
         'Predis\\' =>
         array (
             0 => __DIR__ . '/..' . '/predis/predis/src',
+        ),
+        'Fgribreau\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/fgribreau/mailchecker/platform/php',
         ),
     );
 

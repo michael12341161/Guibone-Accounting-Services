@@ -3,6 +3,8 @@ import AuditLogsSection from "./Audit_Logs";
 import BackupSection, { formatBytes, getBackupScheduleFrequencyLabel } from "./Backup";
 import RateLimitingSection from "./Rate_Limiting";
 import SecuritySettingsSection from "./Security_Settings";
+import TempMailBlockerSection from "./Tempmail_blocker";
+import { Ban } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import {
   cleanupDatabaseBackups,
@@ -937,6 +939,7 @@ export default function AdminSettings() {
   const showSystem = activeTab === "system";
   const showRateLimit = activeTab === "rate-limit";
   const showSystemSettings = showSystem || showRateLimit;
+  const showTempMail = activeTab === "temp-mail";
   const showAudit = activeTab === "audit";
   const [security, setSecurity] = React.useState(() => ({
     ...DEFAULT_SECURITY_SETTINGS,
@@ -2007,6 +2010,15 @@ export default function AdminSettings() {
       onClick: () => setActiveTab("rate-limit"),
     },
     {
+      key: "temp-mail",
+      title: "Temp Mail Blocker",
+      desc: "Block disposable email domains and exact email addresses.",
+      iconBg: "bg-rose-50 text-rose-600",
+      icon: <Ban className="h-5 w-5" aria-hidden />,
+      action: "Manage",
+      onClick: () => setActiveTab("temp-mail"),
+    },
+    {
       key: "audit",
       title: "Audit Logs",
       desc: "Track user activity, changes and system events.",
@@ -2139,6 +2151,8 @@ export default function AdminSettings() {
         {showSystem ? <SystemConfigurationSection {...sectionProps} /> : null}
 
         {showRateLimit ? <RateLimitingSection {...sectionProps} /> : null}
+
+        {showTempMail ? <TempMailBlockerSection /> : null}
 
         {showAudit ? <AuditLogsSection {...sectionProps} /> : null}
       </div>

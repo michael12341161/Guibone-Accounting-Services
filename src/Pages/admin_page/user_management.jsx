@@ -9,6 +9,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import {
   api,
+  checkRegistrationEmailAvailability,
   DEFAULT_SECURITY_SETTINGS,
   fetchRoles,
   fetchSecuritySettings,
@@ -30,6 +31,7 @@ import {
 
 const PAGE_SIZE = 10;
 const TABLE_SEARCH_DEBOUNCE_MS = 250;
+const EMAIL_CHECK_DEBOUNCE_MS = 400;
 const ACCOUNT_TYPE_SSS = 1;
 const ACCOUNT_TYPE_PAGIBIG = 2;
 const ACCOUNT_TYPE_PHILHEALTH = 3;
@@ -40,6 +42,10 @@ const DEFAULT_SPECIALIZATION_TYPES = [
   { id: 3, name: "Book Keeping Operations" },
   { id: 4, name: "Accounting Operations" },
 ];
+
+function isValidEmailCandidate(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim());
+}
 
 function normalizeSelectValue(value) {
   const raw = String(value ?? "").trim();
@@ -414,6 +420,9 @@ const UserFormModal = React.memo(function UserFormModal({
   mode = "create",
 }) {
   const [form, setForm] = useState(() => prepareUserFormState(initialForm, roleChoices, specializationTypes));
+  const [emailCheckError, setEmailCheckError] = useState("");
+  const [emailChecking, setEmailChecking] = useState(false);
+  const emailCheckRequestRef = useRef(0);
   const previousOpenRef = useRef(open);
   const previousInitialFormRef = useRef(initialForm);
   const isCreateMode = mode === "create";
@@ -441,6 +450,8 @@ const UserFormModal = React.memo(function UserFormModal({
 
     if (isOpening || initialFormChanged) {
       setForm(prepareUserFormState(initialForm, roleChoices, specializationTypes));
+      setEmailCheckError("");
+      setEmailChecking(false);
     }
 
     previousOpenRef.current = open;
@@ -462,6 +473,51 @@ const UserFormModal = React.memo(function UserFormModal({
       };
     });
   }, [open, roleChoices, specializationTypes]);
+
+  useEffect(() => {
+    if (!open || !isCreateMode) {
+      setEmailCheckError("");
+      setEmailChecking(false);
+      return undefined;
+    }
+
+    const email = String(form.email || "").trim().toLowerCase();
+    if (!email || !isValidEmailCandidate(email)) {
+      setEmailCheckError("");
+      setEmailChecking(false);
+      return undefined;
+    }
+
+    const requestId = emailCheckRequestRef.current + 1;
+    emailCheckRequestRef.current = requestId;
+    const controller = new AbortController();
+    setEmailChecking(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        await checkRegistrationEmailAvailability(email, { signal: controller.signal });
+        if (emailCheckRequestRef.current === requestId) {
+          setEmailCheckError("");
+        }
+      } catch (error) {
+        if (controller.signal.aborted || emailCheckRequestRef.current !== requestId) {
+          return;
+        }
+
+        const status = error?.response?.status;
+        const message = error?.response?.data?.message || "";
+        setEmailCheckError(status === 422 || status === 409 ? message : "");
+      } finally {
+        if (!controller.signal.aborted && emailCheckRequestRef.current === requestId) {
+          setEmailChecking(false);
+        }
+      }
+    }, EMAIL_CHECK_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.email, isCreateMode, open]);
 
   const handleChange = useCallback(
     (event) => {
@@ -528,10 +584,17 @@ const UserFormModal = React.memo(function UserFormModal({
   const handleSubmit = useCallback(
     (event) => {
       event.preventDefault();
+      if (isCreateMode && (emailCheckError || emailChecking)) {
+        return;
+      }
       void onSubmit(form);
     },
-    [form, onSubmit]
+    [emailCheckError, emailChecking, form, isCreateMode, onSubmit]
   );
+
+  const emailFieldClassName = emailCheckError
+    ? fieldClassName.replace("border-slate-300", "border-rose-300")
+    : fieldClassName;
 
   return (
     <Modal
@@ -545,7 +608,7 @@ const UserFormModal = React.memo(function UserFormModal({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form={formId} variant="success" disabled={loading}>
+          <Button type="submit" form={formId} variant="success" disabled={loading || (isCreateMode && (emailChecking || Boolean(emailCheckError)))}>
             {loading ? loadingLabel : submitLabel}
           </Button>
         </>
@@ -574,25 +637,27 @@ const UserFormModal = React.memo(function UserFormModal({
                 name="email"
                 value={form.email}
                 onChange={handleChange}
-                className={fieldClassName}
+                className={emailFieldClassName}
                 placeholder="e.g., john@example.com"
               />
+              {emailChecking ? <p className="mt-1 text-xs text-slate-500">Checking email...</p> : null}
+              {emailCheckError ? <p className="mt-1 text-xs text-rose-600">{emailCheckError}</p> : null}
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">
-                {isCreateMode ? "Password" : "New Password (optional)"}
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                maxLength={maxPasswordLength}
-                className={fieldClassName}
-                placeholder={isCreateMode ? "Enter password" : "Leave blank to keep current password"}
-              />
-            </div>
+            {!isCreateMode ? (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">New Password (optional)</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  maxLength={maxPasswordLength}
+                  className={fieldClassName}
+                  placeholder="Leave blank to keep current password"
+                />
+              </div>
+            ) : null}
 
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
@@ -606,13 +671,15 @@ const UserFormModal = React.memo(function UserFormModal({
               </select>
             </div>
 
-            <div className="sm:col-span-2">
-              <PasswordRequirementsPanel
-                password={form.password}
-                maxPasswordLength={maxPasswordLength}
-                active={Boolean(form.password)}
-              />
-            </div>
+            {!isCreateMode ? (
+              <div className="sm:col-span-2">
+                <PasswordRequirementsPanel
+                  password={form.password}
+                  maxPasswordLength={maxPasswordLength}
+                  active={Boolean(form.password)}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1058,8 +1125,8 @@ export default function UserManagement({
       return;
     }
 
-    if (!submittedForm.username || !submittedForm.email || !submittedForm.password || !submittedForm.role) {
-      reportError("All fields are required.");
+    if (!submittedForm.username || !submittedForm.email || !submittedForm.role) {
+      reportError("Username, email, and role are required.");
       return;
     }
     if (!String(submittedForm?.employee?.first_name || "").trim() || !String(submittedForm?.employee?.last_name || "").trim()) {
@@ -1072,21 +1139,12 @@ export default function UserManagement({
       return;
     }
 
-    const passwordValidationError = validatePasswordValue(submittedForm.password, {
-      maxPasswordLength: securitySettings.maxPasswordLength,
-    });
-    if (passwordValidationError) {
-      reportError(passwordValidationError);
-      return;
-    }
-
     try {
       setLoading(true);
 
       const res = await api.post("user_create.php", {
         username: submittedForm.username,
         email: submittedForm.email,
-        password: submittedForm.password,
         role: submittedForm.role,
         employee_details: {
           first_name: normalizePersonName(submittedForm.employee?.first_name),
@@ -1110,13 +1168,13 @@ export default function UserManagement({
       setAddOpen(false);
       setEditingUser(null);
       await loadUsers();
-      setSuccess("User created successfully.");
+      setSuccess(res.data?.message || "User created successfully.");
     } catch (err) {
       reportError(err?.response?.data?.message || err?.message || "Request failed.");
     } finally {
       setLoading(false);
     }
-  }, [canAddUsers, clearFeedback, loadUsers, reportError, securitySettings.maxPasswordLength]);
+  }, [canAddUsers, clearFeedback, loadUsers, reportError]);
 
   const handleUpdate = useCallback(async (submittedForm) => {
     clearFeedback();

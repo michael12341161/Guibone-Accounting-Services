@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MapPin } from "lucide-react";
 import Swal from "sweetalert2";
 import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
-import PasswordRequirementsPanel from "../../components/auth/PasswordRequirementsPanel";
 import BusinessAddressMapSelector from "../../components/business/BusinessAddressMapSelector";
 import AddressFields from "../../components/SignUpForm/AddressFields";
 import BusinessLocationModal from "../../components/business/BusinessLocationModal";
@@ -20,12 +19,10 @@ import {
 } from "../../hooks/useAddress";
 import {
   api,
-  DEFAULT_SECURITY_SETTINGS,
-  fetchSecuritySettings,
+  checkRegistrationEmailAvailability,
   requestModuleAccess,
 } from "../../services/api";
 import { buildBusinessAddress } from "../../utils/business_location";
-import { validatePasswordValue } from "../../utils/passwordValidation";
 import {
   joinPersonName,
   normalizeMiddleName,
@@ -36,6 +33,7 @@ import { showConfirmDialog, showDangerConfirmDialog, showErrorToast, showSuccess
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 
 const PAGE_SIZE = 10;
+const EMAIL_CHECK_DEBOUNCE_MS = 400;
 const FALLBACK_BUSINESS_TYPES = [
   { id: 1, name: "Sole Proprietor" },
   { id: 2, name: "Partnership" },
@@ -62,6 +60,10 @@ const FALLBACK_DOCUMENT_TYPES = [
   { id: 8, name: "sss" },
 ];
 const CLIENT_LIST_PARAMS = { exclude_unapproved_self_signup: 1 };
+
+function isValidEmailCandidate(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim());
+}
 
 function createEmptyForm() {
   return {
@@ -289,12 +291,14 @@ function AddClientModal({
   documentTypes,
   businessTypes,
   civilStatusTypes,
-  securitySettings,
 }) {
   const [documentFiles, setDocumentFiles] = useState({});
   const [addressSelection, setAddressSelection] = useState(createEmptyAddressSelection);
   const [businessAddress, setBusinessAddress] = useState(createEmptyBusinessAddress);
-  const [passwordPreview, setPasswordPreview] = useState("");
+  const [emailValue, setEmailValue] = useState("");
+  const [emailCheckError, setEmailCheckError] = useState("");
+  const [emailChecking, setEmailChecking] = useState(false);
+  const emailCheckRequestRef = useRef(0);
   const {
     provinceOptions,
     cityOptions,
@@ -343,8 +347,55 @@ function AddClientModal({
     setDocumentFiles({});
     setAddressSelection(createEmptyAddressSelection());
     setBusinessAddress(createEmptyBusinessAddress());
-    setPasswordPreview("");
+    setEmailValue("");
+    setEmailCheckError("");
+    setEmailChecking(false);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setEmailCheckError("");
+      setEmailChecking(false);
+      return undefined;
+    }
+
+    const email = String(emailValue || "").trim().toLowerCase();
+    if (!email || !isValidEmailCandidate(email)) {
+      setEmailCheckError("");
+      setEmailChecking(false);
+      return undefined;
+    }
+
+    const requestId = emailCheckRequestRef.current + 1;
+    emailCheckRequestRef.current = requestId;
+    const controller = new AbortController();
+    setEmailChecking(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        await checkRegistrationEmailAvailability(email, { signal: controller.signal });
+        if (emailCheckRequestRef.current === requestId) {
+          setEmailCheckError("");
+        }
+      } catch (checkError) {
+        if (controller.signal.aborted || emailCheckRequestRef.current !== requestId) {
+          return;
+        }
+
+        const status = checkError?.response?.status;
+        const message = checkError?.response?.data?.message || "";
+        setEmailCheckError(status === 422 || status === 409 ? message : "");
+      } finally {
+        if (!controller.signal.aborted && emailCheckRequestRef.current === requestId) {
+          setEmailChecking(false);
+        }
+      }
+    }, EMAIL_CHECK_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [emailValue, open]);
 
   const handleDocumentFileChange = useCallback((documentId, file) => {
     setDocumentFiles((prev) => ({
@@ -353,13 +404,16 @@ function AddClientModal({
     }));
   }, []);
 
-  const handlePasswordChange = useCallback((event) => {
-    setPasswordPreview(event.target.value);
+  const handleEmailChange = useCallback((event) => {
+    setEmailValue(event.target.value);
   }, []);
 
   const handleSubmit = useCallback(
     (event) => {
       event.preventDefault();
+      if (emailCheckError || emailChecking) {
+        return;
+      }
       const formData = new FormData(event.currentTarget);
 
       onSubmit({
@@ -378,7 +432,6 @@ function AddClientModal({
           street_address: String(formData.get("street_address") ?? ""),
           tin_no: String(formData.get("tin_no") ?? ""),
           status_id: "1",
-          user_password: String(formData.get("user_password") ?? ""),
           business: {
             trade_name: String(formData.get("trade_name") ?? ""),
             business_name: "",
@@ -411,22 +464,28 @@ function AddClientModal({
       selectedBarangayName,
       selectedMunicipalityName,
       selectedProvinceName,
+      emailCheckError,
+      emailChecking,
     ]
   );
+
+  const emailInputClassName = emailCheckError
+    ? "w-full rounded-lg border border-rose-300 px-3 py-2 text-sm outline-none focus:border-rose-500/50 focus:ring-2 focus:ring-rose-500/30"
+    : "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30";
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Add New Client"
-      description="Create a client profile and optional business details."
+      description="Create a client profile and optional business details. The temporary password uses the client's last name."
       size="lg"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="secretary-add-client-form" variant="success" disabled={loading}>
+          <Button type="submit" form="secretary-add-client-form" variant="success" disabled={loading || emailChecking || Boolean(emailCheckError)}>
             {loading ? "Creating..." : "Create Client"}
           </Button>
         </>
@@ -450,18 +509,9 @@ function AddClientModal({
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
-            <input type="email" name="email" defaultValue="" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="e.g., john@example.com" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Account Password</label>
-            <input type="password" name="user_password" defaultValue="" onChange={handlePasswordChange} maxLength={securitySettings.maxPasswordLength} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/30" placeholder="Enter initial client password" />
-          </div>
-          <div className="sm:col-span-2">
-            <PasswordRequirementsPanel
-              password={passwordPreview}
-              maxPasswordLength={securitySettings.maxPasswordLength}
-              active={Boolean(passwordPreview)}
-            />
+            <input type="email" name="email" value={emailValue} onChange={handleEmailChange} className={emailInputClassName} placeholder="e.g., john@example.com" required />
+            {emailChecking ? <p className="mt-1 text-xs text-slate-500">Checking email...</p> : null}
+            {emailCheckError ? <p className="mt-1 text-xs text-rose-600">{emailCheckError}</p> : null}
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
@@ -658,7 +708,6 @@ export default function ClientManagementSecretary() {
   useErrorToast(error);
   useErrorToast(locationError);
   const [editDocuments, setEditDocuments] = useState([]);
-  const [securitySettings, setSecuritySettings] = useState(DEFAULT_SECURITY_SETTINGS);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [statusActionClientId, setStatusActionClientId] = useState(null);
   const locationRequestIdRef = useRef(0);
@@ -811,29 +860,6 @@ export default function ClientManagementSecretary() {
       active = false;
     };
   }, [fetchFormOptions]);
-
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-
-    const loadSecuritySettings = async () => {
-      try {
-        const response = await fetchSecuritySettings({ signal: controller.signal });
-        if (!active) return;
-        setSecuritySettings(response?.data?.settings || DEFAULT_SECURITY_SETTINGS);
-      } catch (_) {
-        if (!active) return;
-        setSecuritySettings(DEFAULT_SECURITY_SETTINGS);
-      }
-    };
-
-    loadSecuritySettings();
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, []);
 
   const resetForm = useCallback(({ clearMessages = true } = { clearMessages: true }) => {
     setForm(createEmptyForm());
@@ -1013,24 +1039,9 @@ export default function ClientManagementSecretary() {
       return;
     }
 
-    if (email && !values.user_password) {
-      setError("Account password is required when email is provided.");
+    if (!email) {
+      setError("Client email is required.");
       return;
-    }
-
-    if (!email && values.user_password) {
-      setError("Email is required when setting an account password.");
-      return;
-    }
-
-    if (values.user_password) {
-      const passwordValidationError = validatePasswordValue(values.user_password, {
-        maxPasswordLength: securitySettings.maxPasswordLength,
-      });
-      if (passwordValidationError) {
-        setError(passwordValidationError);
-        return;
-      }
     }
 
     const businessTypeId = normalizeIdValue(values.business?.business_type_id);
@@ -1066,10 +1077,11 @@ export default function ClientManagementSecretary() {
           showErrorToast(`Client created, but some documents failed to upload: ${uploadSummary.failed.join(" | ")}`);
         }
 
+        const successMessage = res?.data?.message || "Client created successfully.";
         if (uploadSummary.uploaded.length) {
-          showSuccessToast(`Client created successfully. Uploaded: ${uploadSummary.uploaded.join(", ")}`);
+          showSuccessToast(`${successMessage} Uploaded: ${uploadSummary.uploaded.join(", ")}`);
         } else {
-          showSuccessToast("Client created successfully.");
+          showSuccessToast(successMessage);
         }
       } else {
         setError(res?.data?.message || "Failed to create client.");
@@ -1084,7 +1096,6 @@ export default function ClientManagementSecretary() {
     canAddNewClient,
     clients,
     fetchClients,
-    securitySettings.maxPasswordLength,
     uploadClientDocuments,
   ]);
 
@@ -1748,7 +1759,6 @@ export default function ClientManagementSecretary() {
         documentTypes={documentTypes}
         businessTypes={businessTypes}
         civilStatusTypes={civilStatusTypes}
-        securitySettings={securitySettings}
       />
 
       <Modal

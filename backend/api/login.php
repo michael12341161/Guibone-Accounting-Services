@@ -7,6 +7,7 @@ require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/status_helpers.php';
 require_once __DIR__ . '/account_status_helpers.php';
 require_once __DIR__ . '/audit_logs_helper.php';
+require_once __DIR__ . '/disposable_email_helpers.php';
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -33,6 +34,13 @@ try {
         exit;
     }
 
+    if (monitoring_email_is_blocked_by_temp_mail_rules($email)) {
+        http_response_code(422);
+        monitoring_write_audit_log($conn, null, 'Blocked login attempt: email not allowed', $auditContext);
+        echo json_encode(['success' => false, 'message' => monitoring_temp_mail_blocked_message()]);
+        exit;
+    }
+
     monitoring_ensure_user_security_columns($conn);
     monitoring_ensure_user_employment_status_column($conn);
     $securitySettings = monitoring_get_security_settings($conn);
@@ -52,6 +60,7 @@ try {
                 u.Password_changed_at AS Password_changed_at,
                 u.Failed_login_attempts AS Failed_login_attempts,
                 u.Locked_until AS Locked_until,
+                u.Force_password_reset AS Force_password_reset,
                 u.Role_id AS Role_ID,
                 u.Employment_status_id AS Employment_Status_ID,
                 es.Status_name AS Employment_Status_Name,
@@ -243,6 +252,18 @@ try {
         $user['Password_changed_at'] ?? null,
         $user['Created_at'] ?? null
     );
+
+    if (!empty($user['Force_password_reset'])) {
+        monitoring_write_audit_log($conn, $userId, 'Blocked login pending first password reset', $auditContext);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Reset your temporary password to continue.',
+            'password_reset_required' => true,
+            'password_expiry_days' => $passwordExpiryDays,
+            'email' => $user['Email'] ?? null,
+        ]);
+        exit;
+    }
 
     if ($passwordExpiryDays > 0 && !empty($passwordExpiryInfo['password_expired'])) {
         monitoring_write_audit_log($conn, $userId, 'Blocked login due to expired password', $auditContext);

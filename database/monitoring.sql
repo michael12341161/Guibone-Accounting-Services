@@ -949,6 +949,7 @@ CREATE TABLE `user` (
   `Password_changed_at` datetime DEFAULT current_timestamp(),
   `Failed_login_attempts` int(11) NOT NULL DEFAULT 0,
   `Locked_until` datetime DEFAULT NULL,
+  `Force_password_reset` tinyint(1) NOT NULL DEFAULT 0,
   `Role_id` int(11) DEFAULT NULL,
   `Employment_status_id` int(11) DEFAULT NULL,
   `Email` varchar(150) DEFAULT NULL,

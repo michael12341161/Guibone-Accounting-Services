@@ -242,10 +242,23 @@ if (!function_exists('monitoring_ensure_settings_table')) {
 
 if (!function_exists('monitoring_ensure_user_security_columns')) {
     function monitoring_ensure_user_security_columns(PDO $conn): void {
+        if (
+            function_exists('monitoring_schema_column_exists')
+            && !monitoring_schema_column_exists($conn, 'user', 'Force_password_reset')
+        ) {
+            try {
+                $conn->exec(
+                    'ALTER TABLE `user`
+                     ADD COLUMN `Force_password_reset` TINYINT(1) NOT NULL DEFAULT 0 AFTER `Locked_until`'
+                );
+            } catch (Throwable $__) {
+            }
+        }
+
         monitoring_require_schema_columns(
             $conn,
             'user',
-            ['Password_changed_at', 'Failed_login_attempts', 'Locked_until'],
+            ['Password_changed_at', 'Failed_login_attempts', 'Locked_until', 'Force_password_reset'],
             'authentication security'
         );
 

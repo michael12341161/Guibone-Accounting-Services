@@ -6,6 +6,12 @@ require_once __DIR__ . '/connection-pdo.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/account_status_helpers.php';
 require_once __DIR__ . '/management_catalog_settings_helper.php';
+require_once __DIR__ . '/disposable_email_helpers.php';
+require_once __DIR__ . '/../../PHPMailer-master/src/Exception.php';
+require_once __DIR__ . '/../../PHPMailer-master/src/PHPMailer.php';
+require_once __DIR__ . '/../../PHPMailer-master/src/SMTP.php';
+
+use PHPMailer\PHPMailer\PHPMailer;
 
 monitoring_bootstrap_api(['POST', 'OPTIONS']);
 
@@ -149,6 +155,120 @@ function normalizeOptionalDate($value): ?string {
     return date('Y-m-d', $ts);
 }
 
+function sendUserAccountCreatedEmail(PDO $conn, string $recipientEmail, array $options = []): array {
+    $email = trim($recipientEmail);
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return [
+            'attempted' => false,
+            'sent' => false,
+            'message' => 'No valid employee email was found, so no account email was sent.',
+        ];
+    }
+
+    $smtp = monitoring_get_system_smtp_settings($conn);
+    $smtpUser = trim((string)($smtp['user'] ?? ''));
+    $smtpPass = trim((string)($smtp['pass'] ?? ''));
+    if ($smtpUser === '' || $smtpPass === '') {
+        return [
+            'attempted' => false,
+            'sent' => false,
+            'message' => 'The user was created, but the email service is not configured.',
+        ];
+    }
+
+    $smtpHost = trim((string)($smtp['host'] ?? 'smtp.gmail.com'));
+    $smtpPort = (int)($smtp['port'] ?? 587);
+    $companyName = monitoring_get_system_company_name($conn);
+    $supportEmail = monitoring_get_system_support_email($conn);
+    $loginUrl = monitoring_build_login_url($conn);
+    $recipientName = trim((string)($options['name'] ?? ''));
+    $loginEmail = trim((string)($options['login_email'] ?? $email));
+    $temporaryPassword = (string)($options['temporary_password'] ?? '');
+
+    $safeCompanyName = htmlspecialchars($companyName, ENT_QUOTES, 'UTF-8');
+    $safeLoginUrl = htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8');
+    $safeRecipientName = htmlspecialchars($recipientName !== '' ? $recipientName : 'there', ENT_QUOTES, 'UTF-8');
+    $safeLoginEmail = htmlspecialchars($loginEmail, ENT_QUOTES, 'UTF-8');
+    $safeTemporaryPassword = htmlspecialchars($temporaryPassword, ENT_QUOTES, 'UTF-8');
+
+    $mail = new PHPMailer(true);
+
+    try {
+        $mail->isSMTP();
+        $mail->Host = $smtpHost;
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtpUser;
+        $mail->Password = $smtpPass;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port = $smtpPort;
+
+        $mail->setFrom($smtpUser, $companyName);
+        if ($supportEmail !== '') {
+            $mail->addReplyTo($supportEmail, $companyName . ' Support');
+        }
+        $mail->addAddress($email);
+        $mail->Subject = $companyName . ' Account Created';
+        $mail->isHTML(true);
+
+        $mail->Body = '<!doctype html>'
+            . '<html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>'
+            . '<body style="margin:0;padding:0;background:#f8fafc;">'
+            . '  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f8fafc;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">'
+            . '    <tr>'
+            . '      <td align="center">'
+            . '        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #dbeafe;border-radius:16px;overflow:hidden;">'
+            . '          <tr>'
+            . '            <td style="padding:18px 20px;background:#0f766e;color:#ffffff;">'
+            . '              <div style="font-size:14px;opacity:0.9;">' . $safeCompanyName . '</div>'
+            . '              <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;">Account Created</div>'
+            . '            </td>'
+            . '          </tr>'
+            . '          <tr>'
+            . '            <td style="padding:24px 20px;color:#0f172a;font-size:14px;line-height:1.7;">'
+            . '              <p style="margin:0 0 14px;">Hello ' . $safeRecipientName . ',</p>'
+            . '              <p style="margin:0 0 14px;">Your account has been created.</p>'
+            . '              <div style="margin:0 0 18px;padding:16px;border:1px solid #99f6e4;border-radius:12px;background:#f0fdfa;">'
+            . '                <div style="margin:0 0 10px;font-size:13px;font-weight:700;color:#0f766e;">Your Login Credentials</div>'
+            . '                <p style="margin:0 0 8px;"><strong>Email:</strong> ' . $safeLoginEmail . '</p>'
+            . '                <p style="margin:0;"><strong>Temporary password:</strong> ' . $safeTemporaryPassword . '</p>'
+            . '              </div>'
+            . '              <p style="margin:0 0 14px;">For security, reset your password before opening your dashboard.</p>'
+            . '              <p style="margin:0 0 10px;">Login here:</p>'
+            . '              <p style="margin:0 0 18px;"><a href="' . $safeLoginUrl . '" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;">Open Login Page</a></p>'
+            . '              <p style="margin:0;">Thank you,<br />' . $safeCompanyName . '</p>'
+            . '            </td>'
+            . '          </tr>'
+            . '        </table>'
+            . '      </td>'
+            . '    </tr>'
+            . '  </table>'
+            . '</body></html>';
+
+        $mail->AltBody = "Hello " . ($recipientName !== '' ? $recipientName : 'there') . ",\n\n"
+            . "Your account has been created.\n\n"
+            . "Your login credentials:\n"
+            . "Email: {$loginEmail}\n"
+            . "Temporary password: {$temporaryPassword}\n\n"
+            . "For security, reset your password before opening your dashboard.\n\n"
+            . "Login here:\n{$loginUrl}\n\n"
+            . "Thank you,\n{$companyName}";
+
+        $mail->send();
+
+        return [
+            'attempted' => true,
+            'sent' => true,
+            'message' => 'Account email sent to ' . $email . '.',
+        ];
+    } catch (Throwable $__) {
+        return [
+            'attempted' => true,
+            'sent' => false,
+            'message' => 'The user was created, but the account email could not be sent.',
+        ];
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(405, ['success' => false, 'message' => 'Method not allowed']);
 }
@@ -166,20 +286,16 @@ try {
 
     $username = isset($data['username']) ? trim((string)$data['username']) : '';
     $email = isset($data['email']) ? trim((string)$data['email']) : '';
-    $password = isset($data['password']) ? (string)$data['password'] : '';
     $roleInput = isset($data['role']) ? trim((string)$data['role']) : '';
     $employeeDetails = (isset($data['employee_details']) && is_array($data['employee_details'])) ? $data['employee_details'] : [];
     $clientId = isset($data['client_id']) ? (int)$data['client_id'] : 0;
-    $securitySettings = monitoring_get_security_settings($conn);
-    $maxPasswordLength = (int)$securitySettings['maxPasswordLength'];
-    $passwordValidationMessage = monitoring_validate_password_value($password, $maxPasswordLength);
 
-    if ($username === '' || $email === '' || $password === '' || $roleInput === '') {
-        respond(422, ['success' => false, 'message' => 'username, email, password, and role are required']);
+    if ($username === '' || $email === '' || $roleInput === '') {
+        respond(422, ['success' => false, 'message' => 'username, email, and role are required']);
     }
 
-    if ($passwordValidationMessage !== null) {
-        respond(422, ['success' => false, 'message' => $passwordValidationMessage]);
+    if (monitoring_email_is_disposable_for_registration($email)) {
+        respond(422, ['success' => false, 'message' => monitoring_disposable_email_registration_message()]);
     }
 
     [$roleId, $roleName] = resolveRole($conn, $roleInput);
@@ -238,14 +354,15 @@ try {
     $conn->beginTransaction();
 
     $employmentStatusId = null;
+    $temporaryPassword = $username;
 
     $ins = $conn->prepare(
-        'INSERT INTO user (Username, Password, Role_id, Employment_status_id, Email)
-         VALUES (:u, :p, :r, :employment_status_id, :e)'
+        'INSERT INTO user (Username, Password, Role_id, Employment_status_id, Email, Force_password_reset)
+         VALUES (:u, :p, :r, :employment_status_id, :e, 1)'
     );
     $ins->execute([
         ':u' => $username,
-        ':p' => password_hash($password, PASSWORD_DEFAULT),
+        ':p' => password_hash($temporaryPassword, PASSWORD_DEFAULT),
         ':r' => $roleId,
         ':employment_status_id' => $employmentStatusId,
         ':e' => $email,
@@ -362,11 +479,22 @@ try {
 
     $conn->commit();
 
+    $emailNotification = sendUserAccountCreatedEmail($conn, $email, [
+        'name' => trim($first . ' ' . $last),
+        'login_email' => $email,
+        'temporary_password' => $temporaryPassword,
+    ]);
+    $message = 'User created successfully.';
+    if ($emailNotification['message'] !== '') {
+        $message .= ' ' . $emailNotification['message'];
+    }
+
     respond(201, [
         'success' => true,
         'id' => $newId,
         'user' => $userPayload,
-        'message' => 'User created successfully',
+        'message' => $message,
+        'email_notification' => $emailNotification,
     ]);
 } catch (Throwable $e) {
     if (isset($conn) && $conn instanceof PDO && $conn->inTransaction()) {

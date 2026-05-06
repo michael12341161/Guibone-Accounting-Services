@@ -30,6 +30,10 @@ function isExpiredPasswordResponse(responseData) {
   return message.includes("password has expired");
 }
 
+function isPasswordResetRequiredResponse(responseData) {
+  return Boolean(responseData?.password_reset_required);
+}
+
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +44,7 @@ export default function LoginPage() {
   const [captchaError, setCaptchaError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotRequired, setForgotRequired] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
   const [forgotDefaultEmail, setForgotDefaultEmail] = useState("");
   const [forgotPasswordExpiryDaysOverride, setForgotPasswordExpiryDaysOverride] = useState(null);
@@ -192,11 +197,12 @@ export default function LoginPage() {
     }
   };
 
-  const openForgotPasswordModal = (responseData = {}) => {
+  const openForgotPasswordModal = (responseData = {}, { required = false } = {}) => {
     setForgotDefaultEmail(String(responseData?.email || username || "").trim());
     setForgotPasswordExpiryDaysOverride(
       responseData?.password_expiry_days ?? securitySettings?.passwordExpiryDays ?? null
     );
+    setForgotRequired(Boolean(required));
     setForgotOpen(true);
   };
 
@@ -239,7 +245,9 @@ export default function LoginPage() {
         const responseData = res.data || {};
         setLoginError(responseData?.message || "Incorrect email or password");
 
-        if (isExpiredPasswordResponse(responseData)) {
+        if (isPasswordResetRequiredResponse(responseData)) {
+          openForgotPasswordModal(responseData, { required: true });
+        } else if (isExpiredPasswordResponse(responseData)) {
           openForgotPasswordModal(responseData);
         }
 
@@ -253,7 +261,9 @@ export default function LoginPage() {
       const responseData = err?.response?.data || {};
       setLoginError(responseData?.message || "Login failed");
 
-      if (isExpiredPasswordResponse(responseData)) {
+      if (isPasswordResetRequiredResponse(responseData)) {
+        openForgotPasswordModal(responseData, { required: true });
+      } else if (isExpiredPasswordResponse(responseData)) {
         openForgotPasswordModal(responseData);
       }
 
@@ -324,6 +334,7 @@ export default function LoginPage() {
               onOpenForgotPassword={() => {
                 setForgotDefaultEmail(String(username || "").trim());
                 setForgotPasswordExpiryDaysOverride(securitySettings?.passwordExpiryDays ?? null);
+                setForgotRequired(false);
                 setForgotOpen(true);
               }}
               onCreateAccount={() => setSignupOpen(true)}
@@ -333,11 +344,13 @@ export default function LoginPage() {
               open={forgotOpen}
               onClose={() => {
                 setForgotOpen(false);
+                setForgotRequired(false);
                 setForgotPasswordExpiryDaysOverride(null);
               }}
               defaultEmail={forgotDefaultEmail}
               passwordExpiryDaysOverride={forgotPasswordExpiryDaysOverride}
               securitySettingsOverride={securitySettings}
+              required={forgotRequired}
             />
             <SignUpModal open={signupOpen} onClose={() => setSignupOpen(false)} />
 

@@ -55,6 +55,7 @@ export default function ForgotPasswordModal({
   defaultEmail = "",
   passwordExpiryDaysOverride = null,
   securitySettingsOverride = null,
+  required = false,
 }) {
   const { login } = useAuth();
   const [step, setStep] = useState("email"); // email | code | reset | done
@@ -76,7 +77,7 @@ export default function ForgotPasswordModal({
   const [error, setError] = useState("");
   useErrorToast(error);
 
-  const canClose = !loading;
+  const canClose = !loading && (!required || step === "done");
   const activeStepIndex = Math.max(
     0,
     FORGOT_PASSWORD_STEPS.findIndex((item) => item.id === step)
@@ -120,8 +121,8 @@ export default function ForgotPasswordModal({
     };
   }, [open, securitySettingsOverride]);
 
-  const close = () => {
-    if (!canClose) return;
+  const close = (force = false) => {
+    if (!force && !canClose) return;
 
     setStep("email");
     setEmail("");
@@ -137,11 +138,12 @@ export default function ForgotPasswordModal({
   };
 
   const title = useMemo(() => {
+    if (required && step === "email") return "Password reset required";
     if (step === "email") return "Forgot password";
     if (step === "code") return "Verify code";
     if (step === "done") return "Password updated";
     return "Reset password";
-  }, [step]);
+  }, [required, step]);
 
   const description = useMemo(() => {
     const passwordExpiryDays = resolvePasswordExpiryDays(
@@ -276,20 +278,25 @@ export default function ForgotPasswordModal({
           passwordExpiryDaysOverride,
           securitySettings
         );
-        try {
-          const sessionResponse = await api.get("session_status.php");
-          const nextUser = sessionResponse?.data?.authenticated ? sessionResponse.data.user : null;
-          if (nextUser) {
-            login(nextUser);
-          }
-        } catch (_) {}
+        const resetUser = res.data?.user && typeof res.data.user === "object" ? res.data.user : null;
+        if (resetUser) {
+          login(resetUser);
+        } else {
+          try {
+            const sessionResponse = await api.get("session_status.php");
+            const nextUser = sessionResponse?.data?.authenticated ? sessionResponse.data.user : null;
+            if (nextUser) {
+              login(nextUser);
+            }
+          } catch (_) {}
+        }
         setStep("done");
         setMessage(
           passwordExpiryDays > 0
             ? `${res.data?.message || "Password updated successfully."} Your new password will expire again in ${formatDaysLabel(passwordExpiryDays)}.`
             : `${res.data?.message || "Password updated successfully."} Password expiry is currently disabled.`
         );
-        setTimeout(() => close(), 1200);
+        setTimeout(() => close(true), 1200);
       } else {
         setError(res.data?.message || "Failed to update password.");
       }
@@ -303,7 +310,7 @@ export default function ForgotPasswordModal({
   return (
     <Modal
       open={open}
-      onClose={close}
+      onClose={canClose ? () => close() : undefined}
       title={title}
       description={description}
       size="md"

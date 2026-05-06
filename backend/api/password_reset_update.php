@@ -14,6 +14,86 @@ function respond($code, $payload) {
   exit;
 }
 
+function buildPasswordResetSessionUser(PDO $conn, string $email, array $securitySettings): ?array {
+  $profileImageSelect = "CASE
+              WHEN u.Role_id = 4 THEN c.Profile_Image
+              ELSE u.Profile_Image
+          END AS Profile_Image";
+
+  $stmt = $conn->prepare(
+    'SELECT u.User_id AS User_ID,
+            u.Username,
+            u.Password_changed_at AS Password_changed_at,
+            u.Role_id AS Role_ID,
+            c.Client_ID AS Client_ID,
+            c.Status_id AS Client_Status_ID,
+            s.Status_name AS Client_Status_Name,
+            u.Email,
+            u.Created_at AS Created_at,
+            r.Role_name AS Role_name,
+            CASE
+                WHEN u.Role_id = 4 THEN c.First_name
+                ELSE u.first_name
+            END AS First_name,
+            CASE
+                WHEN u.Role_id = 4 THEN c.Middle_name
+                ELSE u.middle_name
+            END AS Middle_name,
+            CASE
+                WHEN u.Role_id = 4 THEN c.Last_name
+                ELSE u.last_name
+            END AS Last_name,
+            ' . $profileImageSelect . '
+     FROM user u
+     LEFT JOIN client c ON c.User_id = u.User_id
+     LEFT JOIN role r ON r.Role_id = u.Role_id
+     LEFT JOIN status s ON s.Status_id = c.Status_id
+     WHERE LOWER(u.Email) = LOWER(:email)
+     LIMIT 1'
+  );
+  $stmt->execute([':email' => $email]);
+  $user = $stmt->fetch(PDO::FETCH_ASSOC);
+  if (!$user) {
+    return null;
+  }
+
+  $roleId = isset($user['Role_ID']) ? (int)$user['Role_ID'] : 0;
+  $approvalStatus = null;
+  if ($roleId === MONITORING_ROLE_CLIENT) {
+    $approvalStatus = monitoring_client_approval_status(
+      isset($user['Client_Status_Name']) ? (string)$user['Client_Status_Name'] : null,
+      isset($user['Client_Status_ID']) ? (int)$user['Client_Status_ID'] : null,
+      'Pending'
+    );
+  }
+
+  $passwordExpiryInfo = monitoring_resolve_password_expiry_info(
+    $securitySettings,
+    $user['Password_changed_at'] ?? null,
+    $user['Created_at'] ?? null
+  );
+
+  return [
+    'id' => (int)$user['User_ID'],
+    'username' => $user['Username'],
+    'role_id' => $roleId,
+    'role' => $user['Role_name'] ?? null,
+    'role_name' => $user['Role_name'] ?? null,
+    'client_id' => isset($user['Client_ID']) ? (int)$user['Client_ID'] : null,
+    'email' => $user['Email'] ?? null,
+    'first_name' => $user['First_name'] ?? null,
+    'middle_name' => $user['Middle_name'] ?? null,
+    'last_name' => $user['Last_name'] ?? null,
+    'profile_image' => $user['Profile_Image'] ?? null,
+    'password_changed_at' => $passwordExpiryInfo['password_changed_at'],
+    'password_expires_at' => $passwordExpiryInfo['password_expires_at'],
+    'password_days_until_expiry' => $passwordExpiryInfo['password_days_until_expiry'],
+    'registration_source' => null,
+    'approval_status' => $approvalStatus,
+    'security_settings' => $securitySettings,
+  ];
+}
+
 $raw = file_get_contents('php://input');
 $data = json_decode($raw, true);
 if (!is_array($data)) $data = $_POST;
@@ -61,12 +141,12 @@ try {
   }
 
   $accountAccess = monitoring_fetch_account_access_status_by_email($conn, $email);
-  if (!empty($accountAccess['is_inactive'])) {
+  if (!empty($accountAccess['blocked_message'])) {
     unset($_SESSION['pw_reset']);
     respond(403, [
       'success' => false,
-      'message' => monitoring_get_inactive_account_message(),
-      'inactive_account' => true,
+      'message' => (string)$accountAccess['blocked_message'],
+      'inactive_account' => !empty($accountAccess['is_inactive']),
     ]);
   }
 
@@ -78,31 +158,25 @@ try {
      SET Password = :p,
          Password_changed_at = NOW(),
          Failed_login_attempts = 0,
-         Locked_until = NULL
-     WHERE Email = :e'
+         Locked_until = NULL,
+         Force_password_reset = 0
+     WHERE LOWER(Email) = LOWER(:e)'
   );
   $updUser->execute([':p' => $hash, ':e' => $email]);
 
   // Clear session token
   unset($_SESSION['pw_reset']);
 
-  $sessionUser = monitoring_read_session_user(false);
-  $sessionEmail = trim((string)($sessionUser['email'] ?? ''));
-  if ($sessionEmail !== '' && strcasecmp($sessionEmail, $email) === 0) {
-    $passwordExpiryInfo = monitoring_resolve_password_expiry_info(
-      $securitySettings,
-      date('Y-m-d H:i:s'),
-      null
-    );
-
-    monitoring_store_session_user(array_merge($sessionUser, [
-      'password_changed_at' => $passwordExpiryInfo['password_changed_at'],
-      'password_expires_at' => $passwordExpiryInfo['password_expires_at'],
-      'password_days_until_expiry' => $passwordExpiryInfo['password_days_until_expiry'],
-    ]));
+  $sessionUser = buildPasswordResetSessionUser($conn, $email, $securitySettings);
+  if ($sessionUser !== null) {
+    monitoring_store_session_user($sessionUser);
   }
 
-  respond(200, ['success' => true, 'message' => 'Password updated successfully.']);
+  respond(200, [
+    'success' => true,
+    'message' => 'Password updated successfully.',
+    'user' => $sessionUser,
+  ]);
 } catch (Throwable $e) {
   respond(500, ['success' => false, 'message' => 'Server error.']);
 }

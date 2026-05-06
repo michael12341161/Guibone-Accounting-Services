@@ -900,7 +900,8 @@ try {
                  Password = :p,
                  Password_changed_at = NOW(),
                  Failed_login_attempts = 0,
-                 Locked_until = NULL
+                 Locked_until = NULL,
+                 Force_password_reset = 0
              WHERE User_id = :id'
         );
         $upd->execute([

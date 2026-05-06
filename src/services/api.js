@@ -846,6 +846,98 @@ export async function sendSystemTestEmail({ settings, recipientEmail }, config =
   };
 }
 
+function normalizeTempMailBlockEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  const seen = new Set();
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const value = String(entry.value || "").trim().toLowerCase();
+      const id = String(entry.id || value).trim();
+      const type = String(entry.type || "domain").trim().toLowerCase() === "email" ? "email" : "domain";
+      if (!value || !id || seen.has(value)) {
+        return null;
+      }
+
+      seen.add(value);
+      return {
+        id,
+        value,
+        type,
+        created_at: entry.created_at || null,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.value.localeCompare(right.value));
+}
+
+export async function fetchTempMailBlocklist(config = {}) {
+  const response = await api.get("temp_mail_blocker.php", config);
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      entries: normalizeTempMailBlockEntries(response?.data?.entries),
+    },
+  };
+}
+
+export async function addTempMailBlockEntry(value, config = {}) {
+  const response = await api.post(
+    "temp_mail_blocker.php",
+    {
+      action: "add",
+      value: String(value ?? "").trim(),
+    },
+    config
+  );
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      entries: normalizeTempMailBlockEntries(response?.data?.entries),
+    },
+  };
+}
+
+export async function removeTempMailBlockEntry(entryId, config = {}) {
+  const response = await api.post(
+    "temp_mail_blocker.php",
+    {
+      action: "remove",
+      id: String(entryId ?? "").trim(),
+    },
+    config
+  );
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      entries: normalizeTempMailBlockEntries(response?.data?.entries),
+    },
+  };
+}
+
+export async function checkRegistrationEmailAvailability(email, config = {}) {
+  return api.post(
+    "client_create.php",
+    {
+      action: "check_email",
+      email: String(email ?? "").trim().toLowerCase(),
+    },
+    config
+  );
+}
+
 export async function fetchTaskWorkloadSettings(config = {}) {
   const response = await api.get("task_workload_settings.php", config);
 

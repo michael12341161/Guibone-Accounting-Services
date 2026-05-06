@@ -7,6 +7,7 @@ require_once __DIR__ . '/module_permission_store.php';
 require_once __DIR__ . '/document_helpers.php';
 require_once __DIR__ . '/employee_specialization.php';
 require_once __DIR__ . '/status_helpers.php';
+require_once __DIR__ . '/disposable_email_helpers.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/Exception.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/PHPMailer.php';
 require_once __DIR__ . '/../../PHPMailer-master/src/SMTP.php';
@@ -434,7 +435,12 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
         ];
     }
 
-    if (!monitoring_send_client_status_emails_enabled($conn)) {
+    $respectStatusEmailSetting = array_key_exists('respect_status_email_setting', $options)
+        ? (bool)$options['respect_status_email_setting']
+        : true;
+    $isAccountCreationEmail = !empty($options['account_creation_email']);
+    $accountActionLabel = $isAccountCreationEmail ? 'created' : 'approved';
+    if ($respectStatusEmailSetting && !monitoring_send_client_status_emails_enabled($conn)) {
         return [
             'attempted' => false,
             'sent' => false,
@@ -450,7 +456,7 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
         return [
             'attempted' => false,
             'sent' => false,
-            'message' => 'The client was approved, but the email service is not configured.',
+            'message' => 'The client was ' . $accountActionLabel . ', but the email service is not configured.',
         ];
     }
 
@@ -458,8 +464,10 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
     $safeLoginUrl = htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8');
     $loginUsername = trim((string)($options['login_username'] ?? ''));
     $loginPassword = (string)($options['login_password'] ?? '');
+    $mustResetPassword = !empty($options['must_reset_password']);
     $safeLoginUsername = htmlspecialchars($loginUsername, ENT_QUOTES, 'UTF-8');
     $safeLoginPassword = htmlspecialchars($loginPassword, ENT_QUOTES, 'UTF-8');
+    $passwordLabel = $mustResetPassword ? 'Temporary password' : 'Password';
 
     $credentialsHtml = '';
     $credentialsText = '';
@@ -467,16 +475,29 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
         $credentialsHtml = '<div style="margin:0 0 18px;padding:16px;border:1px solid #99f6e4;border-radius:12px;background:#f0fdfa;">'
             . '  <div style="margin:0 0 10px;font-size:13px;font-weight:700;color:#0f766e;">Your Login Credentials</div>';
         if ($loginUsername !== '') {
-            $credentialsHtml .= '<p style="margin:0 0 8px;"><strong>Username:</strong> ' . $safeLoginUsername . '</p>';
-            $credentialsText .= "Username: {$loginUsername}\n";
+            $credentialsHtml .= '<p style="margin:0 0 8px;"><strong>Email:</strong> ' . $safeLoginUsername . '</p>';
+            $credentialsText .= "Email: {$loginUsername}\n";
         }
         if ($loginPassword !== '') {
-            $credentialsHtml .= '<p style="margin:0;"><strong>Password:</strong> ' . $safeLoginPassword . '</p>';
-            $credentialsText .= "Password: {$loginPassword}\n";
+            $credentialsHtml .= '<p style="margin:0;"><strong>' . $passwordLabel . ':</strong> ' . $safeLoginPassword . '</p>';
+            $credentialsText .= "{$passwordLabel}: {$loginPassword}\n";
         }
         $credentialsHtml .= '</div>';
         $credentialsText = "Your login credentials:\n" . $credentialsText . "\n";
     }
+    $resetHtml = $mustResetPassword
+        ? '              <p style="margin:0 0 14px;">For security, reset your password before opening your dashboard.</p>'
+        : '';
+    $resetText = $mustResetPassword
+        ? "For security, reset your password before opening your dashboard.\n\n"
+        : '';
+    $emailTitle = $isAccountCreationEmail ? 'Account Created' : 'Account Approved';
+    $introHtml = $isAccountCreationEmail
+        ? 'Your account has been <strong>created</strong>.'
+        : 'Good news! Your account has been <strong>approved</strong>.';
+    $introText = $isAccountCreationEmail
+        ? 'Your account has been created.'
+        : 'Good news! Your account has been approved.';
 
     $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
 
@@ -494,7 +515,7 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
             $mail->addReplyTo($supportEmail, $companyName . ' Support');
         }
         $mail->addAddress($email);
-        $mail->Subject = $companyName . ' Account Approved';
+        $mail->Subject = $companyName . ' ' . $emailTitle;
         $mail->isHTML(true);
 
         $mail->Body = '<!doctype html>'
@@ -507,17 +528,18 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
             . '          <tr>'
             . '            <td style="padding:18px 20px;background:#0f766e;color:#ffffff;">'
             . '              <div style="font-size:14px;opacity:0.9;">' . $safeCompanyName . '</div>'
-            . '              <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;">Account Approved</div>'
+            . '              <div style="margin-top:6px;font-size:22px;line-height:1.2;font-weight:700;">' . $emailTitle . '</div>'
             . '            </td>'
             . '          </tr>'
             . '          <tr>'
             . '            <td style="padding:24px 20px;color:#0f172a;font-size:14px;line-height:1.7;">'
             . '              <p style="margin:0 0 14px;">Hello,</p>'
-            . '              <p style="margin:0 0 14px;">Good news! Your account has been <strong>approved</strong>.</p>'
+            . '              <p style="margin:0 0 14px;">' . $introHtml . '</p>'
             . '              <p style="margin:0 0 14px;">You can now log in to your dashboard and start using the system.</p>'
             . ($credentialsHtml !== ''
                 ? '              <p style="margin:0 0 14px;">Use the credentials below to access your account.</p>' . $credentialsHtml
                 : '              <p style="margin:0 0 14px;">Please use your registered email and password to access your account.</p>')
+            . $resetHtml
             . '              <p style="margin:0 0 10px;">Login here:</p>'
             . '              <p style="margin:0 0 18px;"><a href="' . $safeLoginUrl . '" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;">Open Login Page</a></p>'
             . '              <p style="margin:0 0 14px;">If you have any questions or need assistance, feel free to contact us.</p>'
@@ -536,11 +558,12 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
             . '</body></html>';
 
         $mail->AltBody = "Hello,\n\n"
-            . "Good news! Your account has been approved.\n\n"
+            . $introText . "\n\n"
             . "You can now log in to your dashboard and start using the system.\n\n"
             . ($credentialsText !== ''
                 ? $credentialsText
                 : "Please use your registered email and password to access your account.\n\n")
+            . $resetText
             . "Login here:\n"
             . $loginUrl . "\n\n"
             . "If you have any questions or need assistance, feel free to contact us.\n\n"
@@ -552,13 +575,13 @@ function sendApprovalEmail(string $recipientEmail, array $options = []): array {
         return [
             'attempted' => true,
             'sent' => true,
-            'message' => 'Approval email sent to ' . $email . '.',
+            'message' => ($isAccountCreationEmail ? 'Account email' : 'Approval email') . ' sent to ' . $email . '.',
         ];
     } catch (Throwable $__) {
         return [
             'attempted' => true,
             'sent' => false,
-            'message' => 'The client was approved, but the approval email could not be sent.',
+            'message' => 'The client was ' . $accountActionLabel . ', but the account email could not be sent.',
         ];
     }
 }
@@ -1241,6 +1264,10 @@ try {
             respond(422, ['success' => false, 'message' => 'Valid email is required.']);
         }
 
+        if (monitoring_email_is_disposable_for_registration($email)) {
+            respond(422, ['success' => false, 'message' => monitoring_disposable_email_registration_message()]);
+        }
+
         $existingAccount = findExistingAccountByEmail($conn, $email);
         if ($existingAccount !== null) {
             respond(409, [
@@ -1662,21 +1689,28 @@ try {
     $maxPasswordLength = (int)$securitySettings['maxPasswordLength'];
     $trimmedEmail = trim((string)($email ?? ''));
     $rawUserPassword = (string)($userPassword ?? '');
-    $creatingUserAccount = $trimmedEmail !== '' || $rawUserPassword !== '';
+    $staffCanCreateClient = $sessionUser !== null
+        && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
+    $creatingUserAccount = $trimmedEmail !== '';
+    $requiresSuppliedPassword = !$staffCanCreateClient;
 
     if ($first === '' || $last === '') {
         respond(400, ['success' => false, 'message' => 'First name and last name are required.']);
     }
 
-    if ($creatingUserAccount && $trimmedEmail === '') {
+    if ($rawUserPassword !== '' && $trimmedEmail === '') {
         respond(422, ['success' => false, 'message' => 'Email is required when setting an account password.']);
     }
 
-    if ($creatingUserAccount && $rawUserPassword === '') {
+    if ($creatingUserAccount && $requiresSuppliedPassword && $rawUserPassword === '') {
         respond(422, ['success' => false, 'message' => 'Account password is required when email is provided.']);
     }
 
-    if ($rawUserPassword !== '') {
+    if ($creatingUserAccount && monitoring_email_is_disposable_for_registration($trimmedEmail)) {
+        respond(422, ['success' => false, 'message' => monitoring_disposable_email_registration_message()]);
+    }
+
+    if ($requiresSuppliedPassword && $rawUserPassword !== '') {
         $passwordValidationMessage = monitoring_validate_password_value($rawUserPassword, $maxPasswordLength);
         if ($passwordValidationMessage !== null) {
             respond(422, ['success' => false, 'message' => $passwordValidationMessage]);
@@ -1686,9 +1720,6 @@ try {
     if ($trimmedEmail !== '' && findExistingAccountByEmail($conn, $trimmedEmail) !== null) {
         respond(409, ['success' => false, 'message' => duplicateEmailMessage()]);
     }
-
-    $staffCanCreateClient = $sessionUser !== null
-        && monitoring_user_has_any_role($sessionUser, [MONITORING_ROLE_ADMIN, MONITORING_ROLE_SECRETARY]);
 
     if (!$staffCanCreateClient && !monitoring_client_self_signup_enabled($conn)) {
         $supportEmail = monitoring_get_system_support_email($conn);
@@ -1816,13 +1847,20 @@ try {
             $roleId = (int)$rid;
         }
 
-        $plain = $rawUserPassword;
+        $plain = $staffCanCreateClient ? $last : $rawUserPassword;
         $passwordHash = password_hash((string)$plain, PASSWORD_DEFAULT);
         $loginUsernameForEmail = $trimmedEmail;
         $loginPasswordForEmail = $plain;
+        $forcePasswordReset = $staffCanCreateClient ? 1 : 0;
 
-        $insU = $conn->prepare('INSERT INTO user (Username, Password, Role_id, Email) VALUES (:u, :p, :r, :e)');
-        $insU->execute([':u' => $trimmedEmail, ':p' => $passwordHash, ':r' => $roleId, ':e' => $trimmedEmail]);
+        $insU = $conn->prepare('INSERT INTO user (Username, Password, Role_id, Email, Force_password_reset) VALUES (:u, :p, :r, :e, :force_reset)');
+        $insU->execute([
+            ':u' => $trimmedEmail,
+            ':p' => $passwordHash,
+            ':r' => $roleId,
+            ':e' => $trimmedEmail,
+            ':force_reset' => $forcePasswordReset,
+        ]);
         $newUserId = (int)$conn->lastInsertId();
         if ($newUserId > 0) {
             $link = $conn->prepare('UPDATE client SET User_id = :uid WHERE Client_ID = :cid');
@@ -1855,6 +1893,9 @@ try {
         $emailNotification = sendApprovalEmail((string)($client['email'] ?? ''), [
             'login_username' => $loginUsernameForEmail,
             'login_password' => $loginPasswordForEmail,
+            'must_reset_password' => $staffCanCreateClient && $loginUsernameForEmail !== '',
+            'respect_status_email_setting' => false,
+            'account_creation_email' => true,
         ]);
         if ($emailNotification['message'] !== '') {
             $statusMessage .= ' ' . $emailNotification['message'];

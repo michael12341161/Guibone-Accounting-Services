@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { appLogo } from "../../assets/branding";
@@ -8,6 +8,7 @@ import AddressFields from "../../components/SignUpForm/AddressFields";
 import InputField from "../../components/UI/InputField";
 import {
   api,
+  checkRegistrationEmailAvailability,
   DEFAULT_SECURITY_SETTINGS,
   DEFAULT_SYSTEM_CONFIGURATION,
   fetchPublicSystemConfiguration,
@@ -78,6 +79,7 @@ const REQUIRED_SIGNUP_DOCUMENT_KEYS = new Set([
 
 const DUPLICATE_EMAIL_MESSAGE =
   "This email already has an account. Please use a different email or login instead.";
+const EMAIL_CHECK_DEBOUNCE_MS = 400;
 
 const SIGNUP_STEPS = [
   {
@@ -419,6 +421,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
   useErrorToast(error);
   useErrorToast(emailError);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const emailCheckRequestRef = useRef(0);
   const [warning, setWarning] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -637,6 +640,58 @@ export default function SignUpPage({ embedded = false, onClose }) {
     }));
   };
 
+  useEffect(() => {
+    if (!systemConfig.allowClientSelfSignup) {
+      emailCheckRequestRef.current += 1;
+      setEmailError("");
+      setCheckingEmail(false);
+      return undefined;
+    }
+
+    const email = String(form.email || "").trim().toLowerCase();
+    if (!email || !isValidEmail(email)) {
+      emailCheckRequestRef.current += 1;
+      setEmailError("");
+      setCheckingEmail(false);
+      return undefined;
+    }
+
+    const requestId = emailCheckRequestRef.current + 1;
+    emailCheckRequestRef.current = requestId;
+    const controller = new AbortController();
+    setCheckingEmail(true);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        await checkRegistrationEmailAvailability(email, { signal: controller.signal });
+        if (emailCheckRequestRef.current === requestId) {
+          setEmailError("");
+        }
+      } catch (requestError) {
+        if (controller.signal.aborted || emailCheckRequestRef.current !== requestId) {
+          return;
+        }
+
+        const status = requestError?.response?.status;
+        const message = requestError?.response?.data?.message || "";
+        if (status === 409) {
+          setEmailError(message || DUPLICATE_EMAIL_MESSAGE);
+        } else {
+          setEmailError(status === 422 && message ? message : "");
+        }
+      } finally {
+        if (!controller.signal.aborted && emailCheckRequestRef.current === requestId) {
+          setCheckingEmail(false);
+        }
+      }
+    }, EMAIL_CHECK_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.email, systemConfig.allowClientSelfSignup]);
+
   const uploadClientDocuments = async (clientId) => {
     const uploads = signupDocumentTypes
       .map((document) => ({
@@ -691,10 +746,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
 
     try {
       setCheckingEmail(true);
-      await api.post("client_create.php", {
-        action: "check_email",
-        email: normalizedEmail,
-      });
+      await checkRegistrationEmailAvailability(normalizedEmail);
       setEmailError("");
       return true;
     } catch (requestError) {
@@ -702,6 +754,11 @@ export default function SignUpPage({ embedded = false, onClose }) {
       if (requestError?.response?.status === 409) {
         setEmailError(message || DUPLICATE_EMAIL_MESSAGE);
         return false;
+      }
+
+      if (requestError?.response?.status === 422 && message) {
+        setEmailError(message);
+        throw requestError;
       }
 
       setEmailError("");
@@ -725,6 +782,14 @@ export default function SignUpPage({ embedded = false, onClose }) {
 
     if (!isValidEmail(form.email.trim())) {
       return "Enter a valid email address.";
+    }
+
+    if (checkingEmail) {
+      return "Checking email availability. Please wait.";
+    }
+
+    if (emailError) {
+      return emailError;
     }
 
     if (!form.user_password) {
@@ -795,23 +860,6 @@ export default function SignUpPage({ embedded = false, onClose }) {
     }
 
     return "";
-  };
-
-  const handleEmailBlur = async () => {
-    if (!systemConfig.allowClientSelfSignup) {
-      return;
-    }
-
-    const normalizedEmail = form.email.trim().toLowerCase();
-    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-      return;
-    }
-
-    try {
-      await checkEmailAvailability(normalizedEmail);
-    } catch (_) {
-      // Keep signup available even if the precheck endpoint is temporarily unavailable.
-    }
   };
 
   const handleSubmit = async (event) => {
@@ -1074,11 +1122,11 @@ export default function SignUpPage({ embedded = false, onClose }) {
                     type="email"
                     value={form.email}
                     onChange={handleChange}
-                    onBlur={handleEmailBlur}
                     required
                     autoComplete="email"
                     placeholder="you@example.com"
                     error={emailError}
+                    helperText={checkingEmail ? "Checking email..." : ""}
                     compact={embedded}
                   />
                   <InputField
@@ -1391,7 +1439,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
                         <button
                           type="button"
                           onClick={() => goToStep(activeStepIndex + 1)}
-                          disabled={submitting || checkingEmail}
+                          disabled={submitting || checkingEmail || Boolean(emailError)}
                           className={`${embedded ? "px-5 py-2 text-[11px]" : "px-6 py-3 text-sm"} inline-flex items-center justify-center rounded-md bg-emerald-600 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70`}
                         >
                           Next
@@ -1399,7 +1447,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
                       ) : (
                         <button
                           type="submit"
-                          disabled={submitting || checkingEmail || !systemConfig.allowClientSelfSignup}
+                          disabled={submitting || checkingEmail || Boolean(emailError) || !systemConfig.allowClientSelfSignup}
                           className={`${embedded ? "px-5 py-2 text-[11px]" : "px-6 py-3 text-sm"} inline-flex items-center justify-center rounded-md bg-emerald-600 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70`}
                         >
                           {submitting
