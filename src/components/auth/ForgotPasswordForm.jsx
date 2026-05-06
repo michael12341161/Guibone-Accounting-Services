@@ -6,7 +6,7 @@ import PasswordRequirementsPanel from "./PasswordRequirementsPanel";
 function SpinnerIcon() {
   return (
     <svg
-      className="h-4 w-4 animate-spin"
+      className="h-3.5 w-3.5 animate-spin"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -26,7 +26,7 @@ function EyeIcon() {
       viewBox="0 0 24 24"
       strokeWidth="1.5"
       stroke="currentColor"
-      className="h-4 w-4"
+      className="h-3.5 w-3.5"
     >
       <path
         strokeLinecap="round"
@@ -46,7 +46,7 @@ function EyeOffIcon() {
       viewBox="0 0 24 24"
       strokeWidth="1.5"
       stroke="currentColor"
-      className="h-4 w-4"
+      className="h-3.5 w-3.5"
     >
       <path
         strokeLinecap="round"
@@ -75,7 +75,7 @@ function ForgotPasswordProgress({ steps = [], activeStepIndex = 0, progressPerce
   }
 
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2.5">
       <div className="flex items-center" aria-label="Password reset progress">
         {safeSteps.map((item, index) => {
           const complete = index < boundedIndex;
@@ -89,30 +89,30 @@ function ForgotPasswordProgress({ steps = [], activeStepIndex = 0, progressPerce
 
           return (
             <React.Fragment key={item.id || item.label}>
-              <div className="flex min-w-0 flex-col items-center gap-1">
+              <div className="flex min-w-0 flex-col items-center gap-0.5">
                 <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-semibold transition ${circleClassName}`}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md border text-[10px] font-semibold transition ${circleClassName}`}
                   aria-current={active ? "step" : undefined}
                 >
                   {index + 1}
                 </span>
-                <span className={active ? "text-[10px] font-semibold text-emerald-700" : "text-[10px] font-medium text-slate-500"}>
+                <span className={active ? "text-[9px] font-semibold text-emerald-700" : "text-[9px] font-medium text-slate-500"}>
                   {item.label}
                 </span>
               </div>
-              {index < safeSteps.length - 1 ? <div className={`mx-2 h-0.5 flex-1 rounded-full ${lineClassName}`} /> : null}
+              {index < safeSteps.length - 1 ? <div className={`mx-1.5 h-0.5 flex-1 rounded-full ${lineClassName}`} /> : null}
             </React.Fragment>
           );
         })}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
+      <div className="mt-2.5 flex items-center justify-between gap-3 text-[10px] font-semibold text-slate-600">
         <span>
           Step {boundedIndex + 1} of {safeSteps.length}
         </span>
         <span className="text-emerald-700">{boundedProgress}%</span>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
         <div
           className="h-full rounded-full bg-emerald-600 transition-all duration-300"
           style={{ width: `${boundedProgress}%` }}
@@ -175,7 +175,7 @@ export default function ForgotPasswordForm({
   };
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
+    <form className="space-y-3" onSubmit={handleSubmit}>
       <ForgotPasswordProgress
         steps={steps}
         activeStepIndex={activeStepIndex}
@@ -183,13 +183,13 @@ export default function ForgotPasswordForm({
       />
 
       {message ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
           {message}
         </div>
       ) : null}
 
       {error ? (
-        <div className="whitespace-pre-line rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        <div className="whitespace-pre-line rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
           {error}
         </div>
       ) : null}
@@ -204,10 +204,11 @@ export default function ForgotPasswordForm({
             onChange={onEmailChange}
             placeholder="you@example.com"
             autoComplete="username"
+            compact
             required
           />
 
-          <Button type="submit" fullWidth disabled={loading}>
+          <Button type="submit" size="sm" fullWidth disabled={loading}>
             {loading ? (
               <>
                 <SpinnerIcon />
@@ -230,21 +231,22 @@ export default function ForgotPasswordForm({
             placeholder="6-digit code"
             inputMode="numeric"
             maxLength={6}
+            compact
             required
           />
 
           {codeExpiryMinutes > 0 ? (
-            <p className="text-xs text-slate-500">
+            <p className="text-[11px] text-slate-500">
               This verification code expires in {formatMinutesLabel(codeExpiryMinutes)}.
             </p>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Button type="button" variant="secondary" onClick={onSendCode} disabled={loading}>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={onSendCode} disabled={loading}>
               Resend
             </Button>
 
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" size="sm" disabled={loading}>
               {loading ? (
                 <>
                   <SpinnerIcon />
@@ -260,7 +262,7 @@ export default function ForgotPasswordForm({
 
       {step === "reset" ? (
         <>
-          <div className="space-y-1 text-xs text-slate-500">
+          <div className="space-y-1 text-[11px] text-slate-500">
             {resetWindowMinutes > 0 ? (
               <p>
                 Complete the password change within {formatMinutesLabel(resetWindowMinutes)} after verification.
@@ -283,11 +285,12 @@ export default function ForgotPasswordForm({
             onBlur={() => setPasswordFocused(false)}
             placeholder="Enter new password"
             maxLength={maxPasswordLength}
+            compact
             rightAdornment={
               <button
                 type="button"
                 onClick={() => setShowNewPassword((value) => !value)}
-                className="rounded-lg px-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-md px-1.5 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                 aria-label={showNewPassword ? "Hide password" : "Show password"}
               >
                 {showNewPassword ? <EyeIcon /> : <EyeOffIcon />}
@@ -307,11 +310,12 @@ export default function ForgotPasswordForm({
             onBlur={() => setConfirmFocused(false)}
             placeholder="Re-enter new password"
             maxLength={maxPasswordLength}
+            compact
             rightAdornment={
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword((value) => !value)}
-                className="rounded-lg px-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-md px-1.5 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                 aria-label={showConfirmPassword ? "Hide password" : "Show password"}
               >
                 {showConfirmPassword ? <EyeIcon /> : <EyeOffIcon />}
@@ -328,10 +332,11 @@ export default function ForgotPasswordForm({
               maxPasswordLength={maxPasswordLength}
               showConfirmation
               active={passwordCardActive}
+              compact
             />
           ) : null}
 
-          <Button type="submit" fullWidth disabled={loading}>
+          <Button type="submit" size="sm" fullWidth disabled={loading}>
             {loading ? (
               <>
                 <SpinnerIcon />
@@ -345,7 +350,7 @@ export default function ForgotPasswordForm({
       ) : null}
 
       {step === "done" ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
           Password reset finished.
         </div>
       ) : null}

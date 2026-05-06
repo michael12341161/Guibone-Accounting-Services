@@ -13,6 +13,14 @@ export function Modal({
   footer,
   size = "md",
   closeOnOverlayClick = true,
+  panelClassName = "",
+  headerClassName = "",
+  headerContentClassName = "",
+  titleClassName = "",
+  descriptionClassName = "",
+  closeButtonClassName = "",
+  bodyClassName = "",
+  footerClassName = "",
 }) {
   const [visible, setVisible] = useState(open);
   const [rendered, setRendered] = useState(open);
@@ -94,20 +102,21 @@ export function Modal({
               sizeClasses,
               "rounded-lg border border-slate-200 bg-white text-slate-900 shadow-lg",
               "transition-[opacity,transform] duration-200 ease-out",
-              visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+              visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+              panelClassName
             )}
           >
             <div className="flex max-h-[calc(100vh-3rem)] flex-col sm:max-h-[calc(100vh-4rem)]">
               {(title || description || onClose) && (
-                <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
-                  <div className="min-w-0 space-y-1">
+                <div className={cn("flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4", headerClassName)}>
+                  <div className={cn("min-w-0 space-y-1", headerContentClassName)}>
                     {title && (
-                      <h2 id={titleId} className="text-base font-semibold leading-none tracking-tight">
+                      <h2 id={titleId} className={cn("text-base font-semibold leading-none tracking-tight", titleClassName)}>
                         {title}
                       </h2>
                     )}
                     {description && (
-                      <p id={descriptionId} className="text-sm text-slate-600">
+                      <p id={descriptionId} className={cn("text-sm text-slate-600", descriptionClassName)}>
                         {description}
                       </p>
                     )}
@@ -120,7 +129,8 @@ export function Modal({
                       className={cn(
                         "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors",
                         "hover:bg-slate-100 hover:text-slate-700",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
+                        closeButtonClassName
                       )}
                       aria-label="Close"
                     >
@@ -142,12 +152,12 @@ export function Modal({
                 </div>
               )}
 
-              <div className="overflow-y-auto px-6 py-5 text-sm text-slate-700">
+              <div className={cn("overflow-y-auto px-6 py-5 text-sm text-slate-700", bodyClassName)}>
                 {children}
               </div>
 
               {footer && (
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-3">
+                <div className={cn("flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-3", footerClassName)}>
                   {footer}
                 </div>
               )}

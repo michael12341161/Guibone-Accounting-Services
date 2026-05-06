@@ -24,14 +24,14 @@ export default function AuthInput({
       {label ? (
         <label
           htmlFor={id}
-          className={classNames("block text-sm font-medium text-slate-700", labelClassName)}
+          className={classNames("block text-xs font-medium text-slate-700", labelClassName)}
         >
           {required ? <span className="mr-1 text-rose-500">*</span> : null}
           {label}
         </label>
       ) : null}
 
-      <div className="relative mt-2">
+      <div className="relative mt-1.5">
         <input
           id={id}
           ref={inputRef}
@@ -40,15 +40,15 @@ export default function AuthInput({
           onChange={onChange}
           placeholder={placeholder}
           className={classNames(
-            "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15",
-            rightAdornment && "pr-11",
+            "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 shadow-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15",
+            rightAdornment && "pr-10",
             inputClassName
           )}
           {...props}
         />
 
         {rightAdornment ? (
-          <div className="absolute inset-y-0 right-2.5 flex items-center">{rightAdornment}</div>
+          <div className="absolute inset-y-0 right-2 flex items-center">{rightAdornment}</div>
         ) : null}
       </div>
     </div>

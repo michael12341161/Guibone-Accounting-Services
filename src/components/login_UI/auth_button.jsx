@@ -13,7 +13,7 @@ function classNames(...values) {
 
 function SpinnerIcon() {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
       <path d="M12 2a10 10 0 0 1 10 10" />
     </svg>
@@ -38,7 +38,7 @@ export default function AuthButton({
       type={type}
       disabled={isDisabled}
       className={classNames(
-        "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 disabled:opacity-70",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-4 disabled:opacity-70",
         VARIANT_STYLES[variant] || VARIANT_STYLES.primary,
         fullWidth && "w-full",
         className

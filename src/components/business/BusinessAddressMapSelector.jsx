@@ -79,6 +79,37 @@ function MapInteractionController({ interactive }) {
   return null;
 }
 
+function MapSizeController({ watchKey }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const firstFrame = window.requestAnimationFrame(() => {
+      map.invalidateSize(false);
+    });
+    const secondPass = window.setTimeout(() => {
+      map.invalidateSize(false);
+    }, 180);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.clearTimeout(secondPass);
+    };
+  }, [map, watchKey]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      map.invalidateSize(false);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [map]);
+
+  return null;
+}
+
 function ClickToSelectLocation({ disabled, onSelect }) {
   useMapEvents({
     click(event) {
@@ -549,7 +580,7 @@ function BusinessAddressMapSelector({
       ) : null}
 
       <div
-        className={`${compact ? "rounded-md" : "rounded-2xl"} relative overflow-hidden border border-slate-200`}
+        className={`leaflet-map-surface ${compact ? "rounded-md" : "rounded-2xl"} relative overflow-hidden border border-slate-200`}
         onMouseLeave={() => setMapInteractionEnabled(false)}
       >
         {!mapInteractionEnabled ? (
@@ -585,6 +616,11 @@ function BusinessAddressMapSelector({
           keyboard={false}
           className={compact ? "h-56 w-full" : "h-[22rem] w-full"}
         >
+          <MapSizeController
+            watchKey={`${compact ? "compact" : "regular"}:${mapInteractionEnabled ? "active" : "inactive"}:${
+              currentPosition ? "selected" : "empty"
+            }`}
+          />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

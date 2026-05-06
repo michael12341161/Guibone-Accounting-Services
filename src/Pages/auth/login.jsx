@@ -298,20 +298,20 @@ export default function LoginPage() {
       <div className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
         <LoginVisualPanel />
 
-        <div className="flex items-center justify-center p-6 sm:p-10 lg:p-12">
-          <div className="login-fade-up w-full max-w-md">
-            <div className="mb-6 flex items-center justify-start">
+        <div className="flex items-center justify-center p-4 sm:p-6 lg:p-8">
+          <div className="login-fade-up w-full max-w-sm">
+            <div className="mb-4 flex items-center justify-start">
               <Link
                 to="/"
-                className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
+                className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
               >
                 Back to Home
               </Link>
             </div>
 
-            <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
-              <img src={appLogo} alt="Guibone Accounting Services" className="h-12 w-12 rounded-xl object-contain" />
-              <div className="text-base font-semibold text-slate-800">Guibone Accounting Services</div>
+            <div className="mb-5 flex items-center justify-center gap-2 lg:hidden">
+              <img src={appLogo} alt="Guibone Accounting Services" className="h-9 w-9 rounded-lg object-contain" />
+              <div className="text-sm font-semibold text-slate-800">Guibone Accounting Services</div>
             </div>
 
             <LoginForm
@@ -354,12 +354,12 @@ export default function LoginPage() {
             />
             <SignUpModal open={signupOpen} onClose={() => setSignupOpen(false)} />
 
-            <p className="mt-6 text-center text-xs text-slate-500">
+            <p className="mt-4 text-center text-[11px] text-slate-500">
               By continuing, you agree to our <span className="text-slate-600">Terms</span> and{" "}
               <span className="text-slate-600">Privacy Policy</span>.
             </p>
 
-            <p className="mt-3 text-center text-xs text-slate-500">
+            <p className="mt-2 text-center text-[11px] text-slate-500">
               Client accounts sign in using the email address submitted during registration.
             </p>
           </div>

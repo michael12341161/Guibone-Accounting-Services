@@ -1006,7 +1006,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
           >
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.10),_transparent_40%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.10),_transparent_40%)]" />
 
-            <div className={embedded ? "relative flex h-full min-h-0 flex-col" : "relative mx-auto max-w-4xl"}>
+            <div className={embedded ? "relative flex h-full min-h-0 w-full flex-col" : "relative mx-auto max-w-4xl"}>
               <div className={embedded ? "shrink-0 border-b border-slate-200/70 px-4 py-3 sm:px-5" : "border-b border-slate-200/70 pb-6"}>
                 <div className={embedded ? "flex items-start justify-between gap-4" : "flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between"}>
                   <div className={embedded ? "min-w-0 flex-1" : "max-w-2xl"}>
@@ -1065,7 +1065,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
                 </div>
               </div>
 
-              <form onSubmit={handleSubmit} className={embedded ? "flex min-h-0 flex-1 flex-col" : "mt-8 space-y-6"}>
+              <form onSubmit={handleSubmit} className={embedded ? "flex min-h-0 w-full flex-1 flex-col" : "mt-8 space-y-6"}>
                 <div className={embedded ? "shrink-0 space-y-2 border-b border-slate-200/70 px-4 py-3 sm:px-5" : "space-y-3"}>
                   <StatusMessage tone="error">{error}</StatusMessage>
                   <StatusMessage tone="warning">{signupDisabledMessage}</StatusMessage>
@@ -1074,11 +1074,12 @@ export default function SignUpPage({ embedded = false, onClose }) {
                   <SignUpStepper steps={SIGNUP_STEPS} activeIndex={activeStepIndex} onStepChange={goToStep} compact={embedded} />
                 </div>
 
-                <div className={embedded ? "min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5" : "space-y-6"}>
-                  <AnimatePresence mode="wait">
+                <div className={embedded ? "min-h-0 w-full flex-1 overflow-y-scroll px-4 py-3 [scrollbar-gutter:stable] sm:px-5" : "space-y-6"}>
+                  <AnimatePresence initial={false} mode="wait">
                     {activeStepIndex === 0 ? (
                       <motion.div
                         key="signup-personal"
+                        className="w-full"
                         initial={{ opacity: 0, x: 16 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -16 }}
@@ -1279,6 +1280,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
                     {activeStepIndex === 1 ? (
                       <motion.div
                         key="signup-business"
+                        className="w-full"
                         initial={{ opacity: 0, x: 16 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -16 }}
@@ -1352,6 +1354,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
                     {activeStepIndex === 2 ? (
                       <motion.div
                         key="signup-documents"
+                        className="w-full"
                         initial={{ opacity: 0, x: 16 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -16 }}

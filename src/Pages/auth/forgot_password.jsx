@@ -313,8 +313,14 @@ export default function ForgotPasswordModal({
       onClose={canClose ? () => close() : undefined}
       title={title}
       description={description}
-      size="md"
+      size="sm"
       closeOnOverlayClick={canClose}
+      headerClassName="px-4 py-3.5"
+      headerContentClassName="space-y-0.5"
+      titleClassName="text-sm"
+      descriptionClassName="text-xs leading-5"
+      closeButtonClassName="h-8 w-8"
+      bodyClassName="px-4 py-4 text-xs"
     >
       <ForgotPasswordForm
         step={step}

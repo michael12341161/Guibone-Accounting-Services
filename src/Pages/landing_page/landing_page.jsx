@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { LoaderCircle, MapPin } from "lucide-react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -51,6 +51,37 @@ const LANDING_MARKER_ICON = L.icon({
   popupAnchor: [1, -34],
   shadowSize: [41, 41],
 });
+
+function LandingMapSizeController({ watchKey }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const firstFrame = window.requestAnimationFrame(() => {
+      map.invalidateSize(false);
+    });
+    const secondPass = window.setTimeout(() => {
+      map.invalidateSize(false);
+    }, 180);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.clearTimeout(secondPass);
+    };
+  }, [map, watchKey]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      map.invalidateSize(false);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [map]);
+
+  return null;
+}
 
 const serviceItems = [
   {
@@ -125,7 +156,7 @@ function cx(...classes) {
 }
 
 function Container({ className, children }) {
-  return <div className={cx("mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8", className)}>{children}</div>;
+  return <div className={cx("mx-auto w-full max-w-6xl px-4 sm:px-5 lg:px-6", className)}>{children}</div>;
 }
 
 function NavLink({ href, children, active, onClick, isDarkMode }) {
@@ -135,7 +166,7 @@ function NavLink({ href, children, active, onClick, isDarkMode }) {
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cx(
-        "relative inline-flex h-10 items-center justify-center px-1 text-sm font-semibold transition-colors duration-300",
+        "relative inline-flex h-9 items-center justify-center px-1 text-xs font-semibold transition-colors duration-300",
         "after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:rounded-full after:transition-transform after:duration-300",
         active
           ? isDarkMode
@@ -157,7 +188,7 @@ function MobileMenuButton({ open, onClick, isDarkMode }) {
       type="button"
       onClick={onClick}
       className={cx(
-        "inline-flex items-center justify-center rounded-2xl border p-2.5 shadow-sm transition lg:hidden",
+        "inline-flex items-center justify-center rounded-xl border p-2 shadow-sm transition lg:hidden",
         isDarkMode
           ? "border-slate-800 bg-slate-950/60 text-slate-100 hover:bg-slate-900/70"
           : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
@@ -165,7 +196,7 @@ function MobileMenuButton({ open, onClick, isDarkMode }) {
       aria-expanded={open}
       aria-label="Toggle navigation"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
         {open ? (
           <path
             fillRule="evenodd"
@@ -191,21 +222,21 @@ function SectionHeader({ eyebrow, title, description, align = "left", isDarkMode
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.6 }}
-      className={cx("max-w-3xl", align === "center" && "mx-auto text-center")}
+      className={cx("max-w-2xl", align === "center" && "mx-auto text-center")}
     >
       <p
         className={cx(
-          "text-xs font-semibold uppercase tracking-[0.24em]",
+          "text-[0.65rem] font-semibold uppercase tracking-[0.18em]",
           isDarkMode ? "text-emerald-300" : "text-emerald-700"
         )}
       >
         {eyebrow}
       </p>
-      <h2 className={cx("mt-4 text-3xl font-semibold tracking-tight sm:text-4xl", isDarkMode ? "text-white" : "text-slate-900")}>
+      <h2 className={cx("mt-3 text-2xl font-semibold tracking-tight sm:text-3xl", isDarkMode ? "text-white" : "text-slate-900")}>
         {title}
       </h2>
       {description ? (
-        <p className={cx("mt-4 text-base leading-7", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+        <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
           {description}
         </p>
       ) : null}
@@ -217,14 +248,14 @@ function StatPill({ label, value, isDarkMode }) {
   return (
     <div
       className={cx(
-        "rounded-2xl border px-4 py-3",
+        "rounded-lg border px-3 py-2",
         isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
       )}
     >
-      <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-slate-300" : "text-slate-500")}>
+      <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-slate-300" : "text-slate-500")}>
         {label}
       </p>
-      <p className={cx("mt-2 text-lg font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
+      <p className={cx("mt-1.5 text-base font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
         {value}
       </p>
     </div>
@@ -240,7 +271,7 @@ function FeatureCard({ title, description, icon, isDarkMode }) {
       transition={{ duration: 0.5 }}
       whileHover={{ y: -5 }}
       className={cx(
-        "group rounded-[2rem] border p-6 transition-all duration-300 hover:shadow-xl",
+        "group rounded-lg border p-4 transition-all duration-300 hover:shadow-lg",
         isDarkMode
           ? "border-slate-800 bg-slate-950/40 hover:bg-slate-950/70 hover:border-emerald-500/30"
           : "border-slate-200 bg-white/80 hover:bg-white hover:border-emerald-200"
@@ -248,16 +279,16 @@ function FeatureCard({ title, description, icon, isDarkMode }) {
     >
       <div
         className={cx(
-          "flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ring-inset transition-transform duration-300 group-hover:scale-110",
+          "flex h-9 w-9 items-center justify-center rounded-lg ring-1 ring-inset transition-transform duration-300 group-hover:scale-105",
           isDarkMode ? "bg-emerald-500/10 text-emerald-200 ring-emerald-400/20" : "bg-emerald-50 text-emerald-700 ring-emerald-200"
         )}
       >
         {icon}
       </div>
-      <h3 className={cx("mt-5 text-lg font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>{title}</h3>
-      <p className={cx("mt-2 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>{description}</p>
-      <div className={cx("mt-5 h-px w-full", isDarkMode ? "bg-white/5" : "bg-slate-100")} />
-      <p className={cx("mt-4 text-sm font-semibold transition-colors duration-300", isDarkMode ? "text-emerald-200 group-hover:text-emerald-400" : "text-emerald-700 group-hover:text-emerald-600")}>
+      <h3 className={cx("mt-3 text-sm font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>{title}</h3>
+      <p className={cx("mt-1.5 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>{description}</p>
+      <div className={cx("mt-4 h-px w-full", isDarkMode ? "bg-white/5" : "bg-slate-100")} />
+      <p className={cx("mt-3 text-xs font-semibold transition-colors duration-300", isDarkMode ? "text-emerald-200 group-hover:text-emerald-400" : "text-emerald-700 group-hover:text-emerald-600")}>
         Organized. Trackable. Secure.
       </p>
     </motion.div>
@@ -273,20 +304,20 @@ function ServiceCard({ title, description, isDarkMode }) {
       transition={{ duration: 0.5 }}
       whileHover={{ y: -5 }}
       className={cx(
-        "group rounded-[2rem] border p-6 shadow-sm transition-all duration-300 hover:shadow-xl",
+        "group rounded-lg border p-4 shadow-sm transition-all duration-300 hover:shadow-lg",
         isDarkMode
           ? "border-slate-800 bg-slate-950/35 hover:bg-slate-950/60 hover:border-emerald-500/30"
           : "border-slate-200 bg-white/80 hover:bg-white hover:border-emerald-200"
       )}
     >
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3">
         <div
           className={cx(
-            "mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110",
+            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-105",
             isDarkMode ? "bg-emerald-500/10 text-emerald-200" : "bg-emerald-50 text-emerald-700"
           )}
         >
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
               d="M9 12l2 2 4-5"
               stroke="currentColor"
@@ -305,8 +336,8 @@ function ServiceCard({ title, description, isDarkMode }) {
           </svg>
         </div>
         <div className="min-w-0">
-          <h3 className={cx("text-base font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>{title}</h3>
-          <p className={cx("mt-2 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>{description}</p>
+          <h3 className={cx("text-sm font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>{title}</h3>
+          <p className={cx("mt-1.5 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>{description}</p>
         </div>
       </div>
     </motion.div>
@@ -315,7 +346,7 @@ function ServiceCard({ title, description, isDarkMode }) {
 
 function ContactInput({ label, name, value, onChange, type = "text", placeholder, multiline = false, isDarkMode }) {
   const sharedClassName = cx(
-    "w-full rounded-2xl border px-4 py-3.5 text-sm shadow-sm outline-none transition focus:ring-4",
+    "w-full rounded-lg border px-3 py-2.5 text-xs shadow-sm outline-none transition focus:ring-2",
     isDarkMode
       ? "border-slate-800 bg-slate-950/40 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:ring-emerald-400/15"
       : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-emerald-500/15"
@@ -323,15 +354,15 @@ function ContactInput({ label, name, value, onChange, type = "text", placeholder
 
   return (
     <label className="block">
-      <span className={cx("mb-2 block text-sm font-semibold", isDarkMode ? "text-slate-200" : "text-slate-700")}>{label}</span>
+      <span className={cx("mb-1.5 block text-xs font-semibold", isDarkMode ? "text-slate-200" : "text-slate-700")}>{label}</span>
       {multiline ? (
         <textarea
           name={name}
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          rows={6}
-          className={cx(sharedClassName, "min-h-[170px] resize-y")}
+          rows={5}
+          className={cx(sharedClassName, "min-h-[120px] resize-y")}
           required
         />
       ) : (
@@ -353,12 +384,12 @@ function ContactInfoItem({ label, value, description, href, isDarkMode }) {
   const valueContent = href ? (
     <a
       href={href}
-      className={cx("text-base font-semibold transition break-words", isDarkMode ? "text-white hover:text-emerald-200" : "text-slate-900 hover:text-emerald-700")}
+      className={cx("text-sm font-semibold transition break-words", isDarkMode ? "text-white hover:text-emerald-200" : "text-slate-900 hover:text-emerald-700")}
     >
       {value}
     </a>
   ) : (
-    <p className={cx("text-base font-semibold break-words", isDarkMode ? "text-white" : "text-slate-900")}>{value}</p>
+    <p className={cx("text-sm font-semibold break-words", isDarkMode ? "text-white" : "text-slate-900")}>{value}</p>
   );
 
   return (
@@ -369,22 +400,22 @@ function ContactInfoItem({ label, value, description, href, isDarkMode }) {
       transition={{ duration: 0.5 }}
       whileHover={{ scale: 1.02 }}
       className={cx(
-        "flex items-start gap-4 rounded-[2rem] border p-5 transition-all duration-300 hover:shadow-md",
+        "flex items-start gap-3 rounded-lg border p-4 transition-all duration-300 hover:shadow-md",
         isDarkMode ? "border-slate-800 bg-slate-950/35 hover:bg-slate-950/50 hover:border-emerald-500/30" : "border-slate-200 bg-white/80 hover:bg-white hover:border-emerald-200"
       )}
     >
       <div
         className={cx(
-          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold",
           isDarkMode ? "bg-emerald-500/10 text-emerald-200" : "bg-emerald-50 text-emerald-700"
         )}
       >
         {label.charAt(0)}
       </div>
       <div className="min-w-0">
-        <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>{label}</p>
-        <div className="mt-2">{valueContent}</div>
-        <p className={cx("mt-2 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>{description}</p>
+        <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>{label}</p>
+        <div className="mt-1.5">{valueContent}</div>
+        <p className={cx("mt-1.5 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>{description}</p>
       </div>
     </motion.div>
   );
@@ -439,19 +470,19 @@ function OfficeMapCard({ isDarkMode }) {
   return (
     <div
       className={cx(
-        "mt-8 rounded-[2rem] border p-5 sm:p-6",
+        "mt-6 rounded-lg border p-4 sm:p-5",
         isDarkMode ? "border-slate-800 bg-slate-950/35" : "border-slate-200 bg-white"
       )}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+          <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
             Office location
           </p>
-          <p className={cx("mt-3 text-xl font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+          <p className={cx("mt-2 text-base font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
             {OFFICE_ADDRESS}
           </p>
-          <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+          <p className={cx("mt-2 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>
             {OFFICE_ADDRESS_DESCRIPTION}
           </p>
         </div>
@@ -461,70 +492,71 @@ function OfficeMapCard({ isDarkMode }) {
           target="_blank"
           rel="noreferrer"
           className={cx(
-            "inline-flex shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition",
+            "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition",
             isDarkMode
               ? "border-slate-700 bg-slate-950/50 text-slate-100 hover:border-emerald-400 hover:text-emerald-200"
               : "border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:text-emerald-700"
           )}
         >
-          <MapPin className="h-4 w-4" strokeWidth={1.8} />
+          <MapPin className="h-3.5 w-3.5" strokeWidth={1.8} />
           Open map
         </a>
       </div>
 
       <div
         className={cx(
-          "mt-5 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium",
+          "mt-4 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[0.7rem] font-medium",
           isDarkMode ? "border-white/10 bg-white/5 text-slate-200" : "border-slate-200 bg-slate-50 text-slate-600"
         )}
       >
-        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
         <span>{OFFICE_HOURS}</span>
       </div>
 
       {mapLoading ? (
         <div
           className={cx(
-            "mt-5 flex items-center gap-2 rounded-3xl border px-4 py-4 text-sm",
+            "mt-4 flex items-center gap-2 rounded-lg border px-3 py-3 text-xs",
             isDarkMode ? "border-slate-800 bg-slate-950/50 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"
           )}
         >
-          <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} />
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
           <span>Loading the office map...</span>
         </div>
       ) : mapError ? (
         <div
           className={cx(
-            "mt-5 rounded-3xl border px-4 py-4 text-sm",
+            "mt-4 rounded-lg border px-3 py-3 text-xs",
             isDarkMode ? "border-rose-500/30 bg-rose-500/10 text-rose-200" : "border-rose-200 bg-rose-50 text-rose-700"
           )}
         >
           {mapError}
         </div>
       ) : mapLocation ? (
-        <div className="mt-5 space-y-3">
-          <div className="overflow-hidden rounded-[1.75rem] border border-slate-200">
+        <div className="mt-4 space-y-2">
+          <div className="leaflet-map-surface overflow-hidden rounded-lg border border-slate-200">
             <MapContainer
               center={[mapLocation.lat, mapLocation.lng]}
               zoom={DEFAULT_MAP_ZOOM}
               scrollWheelZoom={false}
-              className="h-[18rem] w-full"
+              className="h-[14rem] w-full"
             >
+              <LandingMapSizeController watchKey={mapLocation?.label || `${mapLocation.lat}:${mapLocation.lng}`} />
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <Marker position={[mapLocation.lat, mapLocation.lng]} icon={LANDING_MARKER_ICON}>
                 <Popup>
-                  <div className="max-w-[16rem] text-sm">
+                  <div className="max-w-[14rem] text-xs">
                     <div className="font-semibold text-slate-900">{OFFICE_NAME}</div>
-                    <div className="mt-1 text-xs text-slate-600">{mapLocation.label}</div>
+                    <div className="mt-1 text-[0.7rem] text-slate-600">{mapLocation.label}</div>
                   </div>
                 </Popup>
               </Marker>
             </MapContainer>
           </div>
-          <p className={cx("text-xs", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+          <p className={cx("text-[0.7rem]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
             Map preview based on the office address above.
           </p>
         </div>
@@ -678,28 +710,28 @@ export default function LandingPage() {
           isDarkMode ? "border-slate-900/60 bg-slate-950/60" : "border-white/40 bg-white/60"
         )}
       >
-        <Container className="py-4">
-          <div className="flex items-center justify-between gap-4">
-            <a href="#home" onClick={() => handleNavClick("#home")} className="flex items-center gap-3 min-w-0">
+        <Container className="py-3">
+          <div className="flex items-center justify-between gap-3">
+            <a href="#home" onClick={() => handleNavClick("#home")} className="flex min-w-0 items-center gap-2.5">
               <img
                 src={appLogo}
                 alt="Monitoring System"
                 className={cx(
-                  "h-11 w-11 rounded-2xl border object-contain p-1.5 shadow-sm sm:h-12 sm:w-12",
+                  "h-9 w-9 rounded-lg border object-contain p-1 shadow-sm sm:h-10 sm:w-10",
                   isDarkMode ? "border-slate-800 bg-slate-950" : "border-emerald-200 bg-white"
                 )}
               />
               <div className="min-w-0">
-                <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+                <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
                   Guibone
                 </p>
-                <p className={cx("truncate text-sm font-semibold tracking-tight sm:text-base", isDarkMode ? "text-white" : "text-slate-900")}>
+                <p className={cx("truncate text-xs font-semibold tracking-tight sm:text-sm", isDarkMode ? "text-white" : "text-slate-900")}>
                   Guibone Accounting Services
                 </p>
               </div>
             </a>
 
-            <div className="hidden items-center gap-4 lg:flex">
+            <div className="hidden items-center gap-3 lg:flex">
               <nav className="flex items-center gap-1">
                 {sectionLinks.map((item) => (
                   <NavLink
@@ -714,15 +746,15 @@ export default function LandingPage() {
                 ))}
               </nav>
 
-              <div className={cx("h-8 w-px", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
+              <div className={cx("h-6 w-px", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <DarkModeToggle />
                 <Link
                   to="/login"
                   onClick={handleAuthLinkClick}
                   className={cx(
-                    "inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm font-semibold transition-all duration-300 hover:scale-105",
+                    "inline-flex h-9 items-center justify-center rounded-full border px-3 text-xs font-semibold transition-all duration-300 hover:scale-105",
                     isDarkMode
                       ? "border-slate-800 text-slate-100 hover:border-emerald-400 hover:text-emerald-200"
                       : "border-slate-300 text-slate-700 hover:border-emerald-300 hover:text-emerald-700"
@@ -733,7 +765,7 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={openSignupModal}
-                  className="inline-flex h-10 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all duration-300 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/35"
+                  className="inline-flex h-9 items-center justify-center rounded-full bg-emerald-600 px-3 text-xs font-semibold text-white shadow-md shadow-emerald-600/20 transition-all duration-300 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/35"
                 >
                   Sign up
                 </button>
@@ -749,18 +781,18 @@ export default function LandingPage() {
           {menuOpen ? (
             <div
               className={cx(
-                "mt-4 rounded-3xl border p-4 shadow-lg lg:hidden",
+                "mt-3 rounded-lg border p-3 shadow-lg lg:hidden",
                 isDarkMode ? "border-slate-800 bg-slate-950/90" : "border-slate-200 bg-white"
               )}
             >
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2.5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className={cx("text-sm font-semibold", isDarkMode ? "text-slate-100" : "text-slate-900")}>Menu</p>
+                  <p className={cx("text-xs font-semibold", isDarkMode ? "text-slate-100" : "text-slate-900")}>Menu</p>
                   <button
                     type="button"
                     onClick={closeMenu}
                     className={cx(
-                      "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                      "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition",
                       isDarkMode ? "text-slate-200 hover:bg-white/5" : "text-slate-700 hover:bg-slate-100"
                     )}
                   >
@@ -768,7 +800,7 @@ export default function LandingPage() {
                   </button>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   {sectionLinks.map((item) => (
                     <NavLink
                       key={item.href}
@@ -789,7 +821,7 @@ export default function LandingPage() {
                     to="/login"
                     onClick={handleAuthLinkClick}
                     className={cx(
-                      "rounded-2xl border px-4 py-3 text-center text-sm font-semibold transition",
+                      "rounded-lg border px-3 py-2.5 text-center text-xs font-semibold transition",
                       isDarkMode ? "border-slate-800 text-slate-100" : "border-slate-300 text-slate-700"
                     )}
                   >
@@ -798,7 +830,7 @@ export default function LandingPage() {
                   <button
                     type="button"
                     onClick={openSignupModal}
-                    className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-emerald-700"
+                    className="rounded-lg bg-emerald-600 px-3 py-2.5 text-center text-xs font-semibold text-white transition hover:bg-emerald-700"
                   >
                     Sign up
                   </button>
@@ -809,21 +841,21 @@ export default function LandingPage() {
         </Container>
       </header>
 
-      <main className="pt-20">
+      <main className="pt-16">
         {/* Hero */}
-        <section id="home" className="scroll-mt-28">
-          <Container className="pt-8 pb-16 md:pt-10 md:pb-20 lg:pt-12 lg:pb-24">
-            <div className="grid items-center gap-12 lg:grid-cols-2">
+        <section id="home" className="scroll-mt-24">
+          <Container className="pt-6 pb-12 md:pt-8 md:pb-14 lg:pt-10 lg:pb-16">
+            <div className="grid items-center gap-8 lg:grid-cols-2">
               <div>
                 <div
                   className={cx(
-                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold shadow-sm",
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm",
                     isDarkMode
                       ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
                       : "border-emerald-200 bg-white/70 text-emerald-700"
                   )}
                 >
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   Welcome to Guibone Accounting Services
                 </div>
 
@@ -831,10 +863,10 @@ export default function LandingPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6 }}
-                  className={cx("mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl", isDarkMode ? "text-white" : "text-slate-900")}
+                  className={cx("mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl", isDarkMode ? "text-white" : "text-slate-900")}
                 >
                   Guibone Accounting Services
-                  <span className={cx("block mt-2", isDarkMode ? "text-emerald-300" : "text-emerald-700")}>
+                  <span className={cx("mt-1.5 block", isDarkMode ? "text-emerald-300" : "text-emerald-700")}>
                     for Accounting & Business Registration
                   </span>
                 </motion.h1>
@@ -843,7 +875,7 @@ export default function LandingPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.1 }}
-                  className={cx("mt-6 text-lg tracking-tight leading-8", isDarkMode ? "text-slate-300" : "text-slate-600")}
+                  className={cx("mt-4 text-sm leading-6 tracking-tight sm:text-base sm:leading-7", isDarkMode ? "text-slate-300" : "text-slate-600")}
                 >
                   A centralized platform to manage client records, tasks, documents, and appointments—designed for clear progress visibility and role-based access.
                 </motion.p>
@@ -852,12 +884,12 @@ export default function LandingPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"
+                  className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-center"
                 >
                   <Link
                     to="/login"
                     onClick={handleAuthLinkClick}
-                    className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all duration-300 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/40"
+                    className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-emerald-600/20 transition-all duration-300 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/40"
                   >
                     Go to Sign in
                   </Link>
@@ -865,7 +897,7 @@ export default function LandingPage() {
                     type="button"
                     onClick={openSignupModal}
                     className={cx(
-                      "inline-flex items-center justify-center rounded-full border px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:scale-[1.03]",
+                      "inline-flex items-center justify-center rounded-full border px-5 py-2.5 text-xs font-semibold transition-all duration-300 hover:scale-[1.03]",
                       isDarkMode
                         ? "border-slate-800 bg-slate-950/30 text-slate-100 hover:border-emerald-400 hover:bg-slate-900"
                         : "border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:text-emerald-700 hover:bg-slate-50"
@@ -877,7 +909,7 @@ export default function LandingPage() {
                     href="#services"
                     onClick={() => handleNavClick("#services")}
                     className={cx(
-                      "inline-flex items-center justify-center rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:scale-[1.03]",
+                      "inline-flex items-center justify-center rounded-full px-5 py-2.5 text-xs font-semibold transition-all duration-300 hover:scale-[1.03]",
                       isDarkMode ? "text-slate-200 hover:bg-white/5" : "text-slate-700 hover:bg-slate-100"
                     )}
                   >
@@ -885,7 +917,7 @@ export default function LandingPage() {
                   </a>
                 </motion.div>
 
-                <div className="mt-10 grid gap-3 sm:grid-cols-3">
+                <div className="mt-7 grid gap-2 sm:grid-cols-3">
                   <StatPill label="Workflow" value="Role-based" isDarkMode={isDarkMode} />
                   <StatPill label="Tracking" value="Real-time" isDarkMode={isDarkMode} />
                   <StatPill label="Access" value="Secure" isDarkMode={isDarkMode} />
@@ -893,12 +925,12 @@ export default function LandingPage() {
               </div>
 
               <div className="relative">
-                <div className={cx("absolute -top-10 left-6 h-48 w-48 rounded-full blur-3xl", isDarkMode ? "bg-emerald-500/15" : "bg-emerald-200/70")} />
-                <div className={cx("absolute -bottom-10 right-0 h-56 w-56 rounded-full blur-3xl", isDarkMode ? "bg-blue-500/15" : "bg-amber-200/70")} />
+                <div className={cx("absolute -top-8 left-6 h-36 w-36 rounded-full blur-3xl", isDarkMode ? "bg-emerald-500/15" : "bg-emerald-200/70")} />
+                <div className={cx("absolute -bottom-8 right-0 h-44 w-44 rounded-full blur-3xl", isDarkMode ? "bg-blue-500/15" : "bg-amber-200/70")} />
 
                 <div
                   className={cx(
-                    "relative overflow-hidden rounded-[2.2rem] border p-6 shadow-[0_40px_90px_-55px_rgba(15,23,42,0.7)] sm:p-8",
+                    "relative overflow-hidden rounded-lg border p-4 shadow-[0_28px_70px_-50px_rgba(15,23,42,0.7)] sm:p-5",
                     isDarkMode ? "border-slate-800 bg-slate-950/40" : "border-slate-200 bg-white/70"
                   )}
                 >
@@ -911,31 +943,31 @@ export default function LandingPage() {
                     )}
                   />
 
-                  <div className="relative space-y-4">
+                  <div className="relative space-y-3">
                     <div
                       className={cx(
-                        "rounded-3xl border p-5",
+                        "rounded-lg border p-4",
                         isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
                       )}
                     >
-                      <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+                      <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
                         What you can do
                       </p>
-                      <p className={cx("mt-3 text-xl font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
+                      <p className={cx("mt-2 text-lg font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
                         Track clients, tasks, and appointments from one dashboard.
                       </p>
-                      <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+                      <p className={cx("mt-2 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>
                         Keep work organized with clear ownership, status visibility, and document follow-ups.
                       </p>
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <FeatureCard
                         isDarkMode={isDarkMode}
                         title="Client records"
                         description="Store profiles, requirements, and business details in a secure workspace."
                         icon={
-                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             <path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           </svg>
@@ -946,7 +978,7 @@ export default function LandingPage() {
                         title="Task monitoring"
                         description="Follow processing stages with updates and accountability across roles."
                         icon={
-                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
                           </svg>
@@ -956,18 +988,18 @@ export default function LandingPage() {
 
                     <div
                       className={cx(
-                        "rounded-3xl border p-5",
+                        "rounded-lg border p-4",
                         isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
                       )}
                     >
-                      <p className={cx("text-sm font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
+                      <p className={cx("text-xs font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
                         Included workflows
                       </p>
-                      <ul className={cx("mt-3 grid gap-3 text-sm sm:grid-cols-2", isDarkMode ? "text-slate-300" : "text-slate-600")}>
-                        <li className={cx("rounded-2xl border px-4 py-3", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Document tracking</li>
-                        <li className={cx("rounded-2xl border px-4 py-3", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Appointment scheduling</li>
-                        <li className={cx("rounded-2xl border px-4 py-3", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Status updates</li>
-                        <li className={cx("rounded-2xl border px-4 py-3", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Role-based access</li>
+                      <ul className={cx("mt-2.5 grid gap-2 text-xs sm:grid-cols-2", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+                        <li className={cx("rounded-lg border px-3 py-2", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Document tracking</li>
+                        <li className={cx("rounded-lg border px-3 py-2", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Appointment scheduling</li>
+                        <li className={cx("rounded-lg border px-3 py-2", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Status updates</li>
+                        <li className={cx("rounded-lg border px-3 py-2", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50")}>Role-based access</li>
                       </ul>
                     </div>
 
@@ -979,8 +1011,8 @@ export default function LandingPage() {
         </section>
 
         {/* Services */}
-        <section id="services" className="scroll-mt-28">
-          <Container className="py-16 lg:py-24">
+        <section id="services" className="scroll-mt-24">
+          <Container className="py-12 lg:py-16">
             <SectionHeader
               eyebrow="Services"
               title="Everything you need to track registration and accounting work"
@@ -988,7 +1020,7 @@ export default function LandingPage() {
               isDarkMode={isDarkMode}
             />
 
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {serviceItems.map((item) => (
                 <ServiceCard key={item.title} title={item.title} description={item.description} isDarkMode={isDarkMode} />
               ))}
@@ -996,22 +1028,22 @@ export default function LandingPage() {
 
             <div
               className={cx(
-                "mt-10 grid gap-4 rounded-[2rem] border p-6 sm:p-8 lg:grid-cols-3",
+                "mt-7 grid gap-3 rounded-lg border p-4 sm:p-5 lg:grid-cols-3",
                 isDarkMode ? "border-slate-800 bg-slate-950/35" : "border-slate-200 bg-white/70"
               )}
             >
               <div className="lg:col-span-1">
-                <p className={cx("text-sm font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+                <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
                   How it works
                 </p>
-                <p className={cx("mt-3 text-xl font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
+                <p className={cx("mt-2 text-lg font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>
                   Simple steps. Clear outcomes.
                 </p>
-                <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+                <p className={cx("mt-2 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>
                   Submit requirements, monitor progress, and receive confirmation once processing is complete.
                 </p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3 lg:col-span-2">
+              <div className="grid gap-3 sm:grid-cols-3 lg:col-span-2">
                 {[
                   { step: "1", title: "Submit", desc: "Upload requirements and provide client details." },
                   { step: "2", title: "Track", desc: "See real-time updates across tasks and appointments." },
@@ -1020,17 +1052,17 @@ export default function LandingPage() {
                   <div
                     key={s.step}
                     className={cx(
-                      "rounded-3xl border p-5",
+                      "rounded-lg border p-4",
                       isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"
                     )}
                   >
                     <div className="flex items-center justify-between">
-                      <p className={cx("text-sm font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>{s.title}</p>
-                      <span className={cx("inline-flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-semibold", isDarkMode ? "bg-emerald-500/10 text-emerald-200" : "bg-emerald-50 text-emerald-700")}>
+                      <p className={cx("text-xs font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>{s.title}</p>
+                      <span className={cx("inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold", isDarkMode ? "bg-emerald-500/10 text-emerald-200" : "bg-emerald-50 text-emerald-700")}>
                         {s.step}
                       </span>
                     </div>
-                    <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>{s.desc}</p>
+                    <p className={cx("mt-2 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>{s.desc}</p>
                   </div>
                 ))}
               </div>
@@ -1039,9 +1071,9 @@ export default function LandingPage() {
         </section>
 
         {/* About */}
-        <section id="about" className="scroll-mt-28">
-          <Container className="py-16 lg:py-24">
-            <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+        <section id="about" className="scroll-mt-24">
+          <Container className="py-12 lg:py-16">
+            <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
               <div>
                 <SectionHeader
                   eyebrow="About"
@@ -1050,12 +1082,12 @@ export default function LandingPage() {
                   isDarkMode={isDarkMode}
                 />
 
-                <div className="mt-8 flex flex-col gap-3">
+                <div className="mt-6 flex flex-col gap-2.5">
                   <Link
                     to="/login"
                     onClick={handleAuthLinkClick}
                     className={cx(
-                      "inline-flex w-full items-center justify-center rounded-full border px-6 py-3.5 text-sm font-semibold transition sm:w-fit",
+                      "inline-flex w-full items-center justify-center rounded-full border px-5 py-2.5 text-xs font-semibold transition sm:w-fit",
                       isDarkMode
                         ? "border-slate-800 bg-slate-950/30 text-slate-100 hover:border-emerald-400"
                         : "border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:text-emerald-700"
@@ -1063,43 +1095,43 @@ export default function LandingPage() {
                   >
                     Access your dashboard
                   </Link>
-                  <p className={cx("text-sm", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                  <p className={cx("text-xs", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                     Already have an account? Sign in to continue.
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {aboutHighlights.map((item) => (
                   <div
                     key={item.title}
                     className={cx(
-                      "rounded-[2rem] border p-6",
+                      "rounded-lg border p-4",
                       isDarkMode ? "border-slate-800 bg-slate-950/35" : "border-slate-200 bg-white/70"
                     )}
                   >
-                    <p className={cx("text-base font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>{item.title}</p>
-                    <p className={cx("mt-2 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>{item.description}</p>
+                    <p className={cx("text-sm font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>{item.title}</p>
+                    <p className={cx("mt-1.5 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>{item.description}</p>
                   </div>
                 ))}
 
                 <div
                   className={cx(
-                    "sm:col-span-2 rounded-[2rem] border p-6",
+                    "sm:col-span-2 rounded-lg border p-4",
                     isDarkMode ? "border-slate-800 bg-slate-950/35" : "border-slate-200 bg-white/70"
                   )}
                 >
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     {[
                       { label: "Clients", value: "Organized" },
                       { label: "Tasks", value: "Trackable" },
                       { label: "Appointments", value: "Scheduled" },
                     ].map((stat) => (
-                      <div key={stat.label} className={cx("rounded-3xl border p-5", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white")}>
-                        <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      <div key={stat.label} className={cx("rounded-lg border p-3", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white")}>
+                        <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                           {stat.label}
                         </p>
-                        <p className={cx("mt-2 text-lg font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>{stat.value}</p>
+                        <p className={cx("mt-1.5 text-base font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>{stat.value}</p>
                       </div>
                     ))}
                   </div>
@@ -1110,8 +1142,8 @@ export default function LandingPage() {
         </section>
 
         {/* Contact */}
-        <section id="contact" className="scroll-mt-28">
-          <Container className="py-16 lg:py-24">
+        <section id="contact" className="scroll-mt-24">
+          <Container className="py-12 lg:py-16">
             <SectionHeader
               eyebrow="Contact"
               title="Talk to the team"
@@ -1120,25 +1152,25 @@ export default function LandingPage() {
               isDarkMode={isDarkMode}
             />
 
-            <div className="mt-10 grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
+            <div className="mt-7 grid gap-4 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
               <div
                 className={cx(
-                  "rounded-[2.25rem] border p-6 shadow-[0_28px_80px_-60px_rgba(15,23,42,0.6)] sm:p-8",
+                  "rounded-lg border p-4 shadow-[0_22px_60px_-50px_rgba(15,23,42,0.6)] sm:p-5",
                   isDarkMode ? "border-slate-800 bg-slate-950/40" : "border-slate-200 bg-white/75"
                 )}
               >
-                <div className="border-b border-slate-200/60 pb-6">
-                  <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+                <div className="border-b border-slate-200/60 pb-4">
+                  <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
                     Send a message
                   </p>
-                  <p className={cx("mt-3 text-2xl font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                  <p className={cx("mt-2 text-lg font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                     We will direct your concern properly.
                   </p>
-                  <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+                  <p className={cx("mt-2 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>
                     This form sends your message directly to our team for support, follow-up, and account assistance.
                   </p>
                 </div>
-                <form onSubmit={handleContactSubmit} className="mt-6 space-y-5">
+                <form onSubmit={handleContactSubmit} className="mt-4 space-y-4">
                   <ContactInput
                     label="Name"
                     name="name"
@@ -1171,7 +1203,7 @@ export default function LandingPage() {
                       type="submit"
                       disabled={submitting}
                       className={cx(
-                        "inline-flex w-full items-center justify-center rounded-full px-8 py-3.5 text-sm font-semibold shadow-lg transition-all duration-300 sm:w-auto",
+                        "inline-flex w-full items-center justify-center rounded-full px-6 py-2.5 text-xs font-semibold shadow-md transition-all duration-300 sm:w-auto",
                         submitting
                           ? "cursor-not-allowed bg-emerald-500 text-white/70 shadow-emerald-500/20"
                           : "bg-emerald-600 text-white shadow-emerald-600/20 hover:bg-emerald-700 hover:scale-105 hover:shadow-emerald-600/40"
@@ -1179,7 +1211,7 @@ export default function LandingPage() {
                     >
                       {submitting ? (
                         <>
-                          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                          <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" />
                           Sending...
                         </>
                       ) : (
@@ -1195,21 +1227,21 @@ export default function LandingPage() {
 
               <div
                 className={cx(
-                  "rounded-[2.25rem] border p-6 sm:p-8",
+                  "rounded-lg border p-4 sm:p-5",
                   isDarkMode ? "border-slate-800 bg-slate-950/40" : "border-slate-200 bg-white/75"
                 )}
               >
-                <p className={cx("text-xs font-semibold uppercase tracking-[0.22em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
+                <p className={cx("text-[0.65rem] font-semibold uppercase tracking-[0.18em]", isDarkMode ? "text-emerald-200" : "text-emerald-700")}>
                   Contact information
                 </p>
-                <p className={cx("mt-3 text-2xl font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                <p className={cx("mt-2 text-lg font-semibold tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                   Choose the best way to reach us.
                 </p>
-                <p className={cx("mt-3 text-sm leading-6", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+                <p className={cx("mt-2 text-xs leading-5", isDarkMode ? "text-slate-300" : "text-slate-600")}>
                   Use these direct contact details for account support, scheduling updates, and office visits, then use the map below to find the office.
                 </p>
 
-                <div className="mt-6 grid gap-4">
+                <div className="mt-4 grid gap-3">
                   {contactItems.filter((item) => item.label !== "Address").map((item) => (
                     <ContactInfoItem
                       key={item.label}
@@ -1224,9 +1256,9 @@ export default function LandingPage() {
 
                 <OfficeMapCard isDarkMode={isDarkMode} />
 
-                <div className={cx("hidden rounded-3xl border p-5", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white")}>
-                  <p className={cx("text-sm font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>Office hours</p>
-                  <p className={cx("mt-2 text-sm", isDarkMode ? "text-slate-300" : "text-slate-600")}>Mon–Fri, 8:00 AM – 5:00 PM</p>
+                <div className={cx("hidden rounded-lg border p-4", isDarkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white")}>
+                  <p className={cx("text-xs font-semibold", isDarkMode ? "text-white" : "text-slate-900")}>Office hours</p>
+                  <p className={cx("mt-1.5 text-xs", isDarkMode ? "text-slate-300" : "text-slate-600")}>Mon–Fri, 8:00 AM – 5:00 PM</p>
                 </div>
               </div>
             </div>
@@ -1237,7 +1269,7 @@ export default function LandingPage() {
       <SignUpModal open={signupModalOpen} onClose={closeSignupModal} />
 
       {/* Footer */}
-      <Footer />
+      <Footer onOpenSignUp={openSignupModal} />
     </div>
   );
 }
