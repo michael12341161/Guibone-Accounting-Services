@@ -1756,7 +1756,7 @@ export default function AdminSettings() {
     {
       key: "rate-limit",
       title: "Rate Limiting",
-      desc: "API request limits and wait messages for regular and login requests.",
+      desc: "Combined per-user API request limits for regular app activity and per-device login attempt limits.",
       iconBg: "bg-teal-50 text-teal-600",
       icon: (
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

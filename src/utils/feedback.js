@@ -3,7 +3,6 @@ import Swal from "sweetalert2";
 import { toast } from "react-hot-toast";
 import {
   MONITORING_AUTH_REQUIRED_MESSAGE,
-  MONITORING_RATE_LIMITED_MESSAGE,
   MONITORING_SESSION_EXPIRED_MESSAGE,
 } from "../services/api";
 
@@ -33,13 +32,6 @@ function isSuppressedAuthToastMessage(message) {
     MONITORING_AUTH_REQUIRED_MESSAGE,
     MONITORING_SESSION_EXPIRED_MESSAGE,
   ].some((candidate) => normalizedMessage === String(candidate).trim().toLowerCase());
-}
-
-function isSuppressedRateLimitToastMessage(message) {
-  return (
-    String(message || "").trim().toLowerCase() ===
-    MONITORING_RATE_LIMITED_MESSAGE.toLowerCase()
-  );
 }
 
 function normalizeToastInput(input, fallbackTitle) {
@@ -93,7 +85,7 @@ export function showSuccessToast(input) {
 
 export function showErrorToast(input) {
   const { message, duration, id } = buildToastMessage(input, "Something went wrong");
-  if (isSuppressedAuthToastMessage(message) || isSuppressedRateLimitToastMessage(message)) {
+  if (isSuppressedAuthToastMessage(message)) {
     return undefined;
   }
   return toast.error(message, buildToastOptions(duration ?? 2600, id));

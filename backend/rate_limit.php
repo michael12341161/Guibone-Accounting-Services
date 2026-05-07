@@ -213,6 +213,7 @@ function monitoring_rate_limit_config(): array
         'default' => [
             'max_requests' => max(1, (int)$settings['default_max_requests']),
             'window_seconds' => max(1, (int)$settings['default_window_seconds']),
+            'bucket_key' => 'regular',
             'message' => monitoring_rate_limit_message(
                 $settings['default_message'],
                 'Too many requests. Please wait a moment and try again.'
@@ -222,6 +223,7 @@ function monitoring_rate_limit_config(): array
             'login.php' => [
                 'max_requests' => max(1, (int)$settings['login_max_requests']),
                 'window_seconds' => max(1, (int)$settings['login_window_seconds']),
+                'bucket_key' => 'login',
                 'message' => monitoring_rate_limit_message(
                     $settings['login_message'],
                     'Too many login attempts. Please wait a moment and try again.'
@@ -251,6 +253,97 @@ function monitoring_rate_limit_client_ip(): string
     return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : 'unknown';
 }
 
+function monitoring_rate_limit_is_https(): bool
+{
+    $https = strtolower((string)($_SERVER['HTTPS'] ?? ''));
+    if ($https !== '' && $https !== 'off' && $https !== '0') {
+        return true;
+    }
+
+    $forwardedProto = strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    return $forwardedProto === 'https';
+}
+
+function monitoring_rate_limit_has_session_cookie(): bool
+{
+    return trim((string)($_COOKIE['MONITORINGSESSID'] ?? '')) !== '';
+}
+
+function monitoring_rate_limit_start_session(): bool
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return true;
+    }
+
+    if (!monitoring_rate_limit_has_session_cookie()) {
+        return false;
+    }
+
+    session_name('MONITORINGSESSID');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => monitoring_rate_limit_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
+    return @session_start();
+}
+
+function monitoring_rate_limit_user_subject(): string
+{
+    static $resolved = false;
+    static $subject = '';
+
+    if ($resolved) {
+        return $subject;
+    }
+
+    $resolved = true;
+    $startedSession = false;
+
+    try {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            if (!monitoring_rate_limit_start_session()) {
+                return $subject;
+            }
+
+            $startedSession = true;
+        }
+
+        $raw = $_SESSION['monitoring_auth'] ?? null;
+        if (!is_array($raw)) {
+            return $subject;
+        }
+
+        $userId = isset($raw['id']) ? (int)$raw['id'] : 0;
+        $roleId = isset($raw['role_id']) ? (int)$raw['role_id'] : 0;
+        if ($userId > 0 && $roleId > 0) {
+            $subject = 'user:' . $userId;
+        }
+    } catch (Throwable $e) {
+        error_log('Rate limiter user scope fallback to IP: ' . $e->getMessage());
+    } finally {
+        if ($startedSession && session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+    }
+
+    return $subject;
+}
+
+function monitoring_rate_limit_subject(string $ip): string
+{
+    $userSubject = monitoring_rate_limit_user_subject();
+    if ($userSubject !== '') {
+        return $userSubject;
+    }
+
+    return 'ip:' . $ip;
+}
+
 function monitoring_rate_limit_request_activity_mode(): string
 {
     $mode = strtolower(trim((string)($_SERVER['HTTP_X_MONITORING_ACTIVITY'] ?? 'active')));
@@ -275,7 +368,7 @@ function monitoring_rate_limit_skip_passive_requests(): bool
 
 function monitoring_rate_limit_limit_read_requests(): bool
 {
-    return monitoring_rate_limit_bool(getenv('RATE_LIMIT_LIMIT_READ_REQUESTS'), false);
+    return monitoring_rate_limit_bool(getenv('RATE_LIMIT_LIMIT_READ_REQUESTS'), true);
 }
 
 function monitoring_rate_limit_is_settings_update(string $endpoint): bool
@@ -341,6 +434,7 @@ function monitoring_rate_limit_settings_for_endpoint(array $config, string $endp
     return [
         'max_requests' => max(1, (int)($override['max_requests'] ?? $default['max_requests'] ?? 100)),
         'window_seconds' => max(1, (int)($override['window_seconds'] ?? $default['window_seconds'] ?? 60)),
+        'bucket_key' => trim((string)($override['bucket_key'] ?? $default['bucket_key'] ?? 'regular')),
         'message' => trim((string)($override['message'] ?? $default['message'] ?? 'Too many requests.')),
     ];
 }
@@ -578,12 +672,12 @@ function monitoring_rate_limit_clear_storage(): array
     return $result;
 }
 
-function monitoring_rate_limit_key(string $endpoint, string $ip): string
+function monitoring_rate_limit_key(string $bucketKey, string $subject): string
 {
-    $safeEndpoint = preg_replace('/[^A-Za-z0-9_.-]/', '_', $endpoint);
-    $endpointPart = $safeEndpoint !== '' ? $safeEndpoint : 'unknown';
+    $safeBucketKey = preg_replace('/[^A-Za-z0-9_.-]/', '_', $bucketKey);
+    $bucketPart = $safeBucketKey !== '' ? $safeBucketKey : 'unknown';
 
-    return 'monitoring:rate_limit:' . $endpointPart . ':' . hash('sha256', $ip);
+    return 'monitoring:rate_limit:' . $bucketPart . ':' . hash('sha256', $subject);
 }
 
 function monitoring_rate_limit_origin_allowed(string $origin): bool
@@ -672,9 +766,11 @@ function monitoring_enforce_rate_limit(?string $endpoint = null): void
     $settings = monitoring_rate_limit_settings_for_endpoint($config, $currentEndpoint);
     $maxRequests = $settings['max_requests'];
     $windowSeconds = $settings['window_seconds'];
+    $bucketKey = trim((string)($settings['bucket_key'] ?? 'regular'));
     $message = $settings['message'] !== '' ? $settings['message'] : 'Too many requests.';
     $clientIp = monitoring_rate_limit_client_ip();
-    $key = monitoring_rate_limit_key($currentEndpoint, $clientIp);
+    $subject = monitoring_rate_limit_subject($clientIp);
+    $key = monitoring_rate_limit_key($bucketKey, $subject);
     $storageDriver = strtolower(trim((string)($config['storage'] ?? 'file')));
 
     if ($storageDriver === 'file') {

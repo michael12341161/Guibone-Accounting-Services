@@ -3,14 +3,14 @@ const RATE_LIMIT_FIELDS = [
   {
     key: "rateLimitMaxRequests",
     label: "Default Request Limit",
-    helper: "Applies to regular API endpoints.",
+    helper: "Applies to all regular API requests combined for each signed-in user.",
     min: 1,
     max: 10000,
   },
   {
     key: "rateLimitWindowSeconds",
     label: "Default Window",
-    helper: "Seconds before the regular endpoint counter resets.",
+    helper: "Seconds before each signed-in user's combined regular request counter resets.",
     min: 1,
     max: 86400,
   },
@@ -46,7 +46,7 @@ export default function RateLimitingSection({
       <div className="border-b border-slate-200 px-5 py-4">
         <h3 className="text-base font-semibold text-slate-800">Rate Limiting</h3>
         <p className="mt-1 text-sm text-slate-500">
-          Control how many API requests a device can send before the system asks it to wait.
+          Control how many regular API requests each signed-in user can send across the app before the system asks them to wait.
         </p>
       </div>
 
@@ -61,7 +61,7 @@ export default function RateLimitingSection({
               <div>
                 <div className="text-sm font-medium text-slate-800">Enable API Rate Limiting</div>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Uses the saved limits below for regular requests and login attempts.
+                  Uses the saved limits below for combined per-user regular requests and per-device login attempts.
                 </p>
               </div>
               <input
@@ -109,7 +109,7 @@ export default function RateLimitingSection({
                     }`}
                 />
                 <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-500">
-                  <span>Shown after regular requests exceed the saved limit.</span>
+                  <span>Shown after a signed-in user exceeds the saved combined regular request limit.</span>
                   <span>{String(system.rateLimitMessage || "").trim().length}/240</span>
                 </div>
                 {systemErrors.rateLimitMessage ? (

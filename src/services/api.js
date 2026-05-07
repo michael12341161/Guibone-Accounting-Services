@@ -78,12 +78,16 @@ function resolveMonitoringActivityMode(config = {}) {
     return explicitMode;
   }
 
+  if (Date.now() - lastUserInteractionAt <= RECENT_ACTIVITY_WINDOW_MS) {
+    return "active";
+  }
+
   const method = String(config?.method || "get").trim().toLowerCase();
   if (PASSIVE_METHODS.has(method)) {
     return "passive";
   }
 
-  return Date.now() - lastUserInteractionAt <= RECENT_ACTIVITY_WINDOW_MS ? "active" : "passive";
+  return "passive";
 }
 
 function attachMonitoringActivity(config) {
@@ -274,12 +278,26 @@ function getRateLimitRetryCount(config = {}) {
   return Number.isFinite(retryCount) && retryCount > 0 ? Math.trunc(retryCount) : 0;
 }
 
+function getMonitoringActivityHeaderValue(config = {}) {
+  const headers = config?.headers || {};
+  return String(
+    headers[SESSION_ACTIVITY_HEADER] ?? headers[SESSION_ACTIVITY_HEADER.toLowerCase()] ?? ""
+  ).trim().toLowerCase();
+}
+
 function shouldRetryRateLimitedRequest(config = {}) {
   if (!config || config.monitoringRateLimitRetry === false) {
     return false;
   }
 
   if (getRateLimitRetryCount(config) >= RATE_LIMIT_MAX_RETRY_ATTEMPTS) {
+    return false;
+  }
+
+  if (
+    config.monitoringRateLimitRetry !== true &&
+    getMonitoringActivityHeaderValue(config) === "active"
+  ) {
     return false;
   }
 
@@ -296,10 +314,7 @@ function shouldWaitForRateLimitCooldown(config = {}) {
     return true;
   }
 
-  const headers = config.headers || {};
-  const activityMode = String(
-    headers[SESSION_ACTIVITY_HEADER] ?? headers[SESSION_ACTIVITY_HEADER.toLowerCase()] ?? ""
-  ).trim().toLowerCase();
+  const activityMode = getMonitoringActivityHeaderValue(config);
   if (activityMode === "passive") {
     return false;
   }
