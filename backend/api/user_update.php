@@ -548,7 +548,6 @@ try {
 
         respond(200, [
             'success' => true,
-            'message' => 'System configuration saved successfully.',
             'settings' => $result['settings'],
         ]);
     }

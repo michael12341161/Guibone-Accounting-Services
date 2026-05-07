@@ -12,7 +12,7 @@ import {
   formatDisplayValue,
 } from "../../utils/business_location";
 import { getDocumentStatusBadgeClass } from "../../utils/document_management";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 
 function readStoredSessionUser() {
   try {
@@ -96,8 +96,7 @@ export default function BusinessPage() {
   const [business, setBusiness] = useState(null);
   const [businessStatus, setBusinessStatus] = useState("Unregistered");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const [isMapOpen, setIsMapOpen] = useState(false);
 
   useEffect(() => {
@@ -275,12 +274,6 @@ export default function BusinessPage() {
         </div>
       </Card>
 
-      {error ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-          {error}
-        </div>
-      ) : null}
-
       {loading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -368,3 +361,4 @@ export default function BusinessPage() {
     </div>
   );
 }
+

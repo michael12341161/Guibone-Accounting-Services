@@ -689,20 +689,7 @@ export default function PermissionsPage() {
   }
 
   if (error && !draftPermissions) {
-    return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
-        {error}
-        <button
-          type="button"
-          onClick={() => {
-            void refreshPermissions();
-          }}
-          className="ml-3 inline-flex items-center rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <RouteLoadingPanel />;
   }
 
   const currentPermissions = draftPermissions || permissions;
@@ -911,3 +898,4 @@ export default function PermissionsPage() {
     </div>
   );
 }
+

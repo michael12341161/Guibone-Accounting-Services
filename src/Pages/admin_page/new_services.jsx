@@ -6,7 +6,7 @@ import { Modal } from "../../components/UI/modal";
 import { DataTable } from "../../components/UI/table";
 import { createServiceType, fetchAvailableServices, updateServiceType } from "../../services/api";
 import { buildServiceBundleCollection, cloneBundleSteps } from "../../utils/service_bundles";
-import { showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 function normalizeServiceName(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -33,15 +33,13 @@ function normalizeBundleSteps(steps) {
 export default function NewServices() {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [submitting, setSubmitting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [form, setForm] = useState(createInitialForm);
-  const [fieldError, setFieldError] = useState("");
+  const [fieldError, setFieldError] = useErrorToastState("");
   const [search, setSearch] = useState("");
-
-  useErrorToast(error);
 
   const loadServices = async ({ silent } = { silent: false }) => {
     try {
@@ -528,11 +526,9 @@ export default function NewServices() {
             </div>
           </div>
 
-          {fieldError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{fieldError}</div>
-          ) : null}
         </form>
       </Modal>
     </div>
   );
 }
+

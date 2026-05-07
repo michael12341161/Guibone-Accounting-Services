@@ -29,7 +29,7 @@ import {
   getServiceBundleKey,
   normalizeServiceNameKey,
 } from "../../utils/service_bundles";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import { filterTaskServiceOptions } from "../../utils/task_service_options";
 import {
   DEFAULT_TASK_WORKLOAD_SETTINGS,
@@ -965,7 +965,7 @@ export default function AdminAccountantTaskManagement() {
   const [taskAssigneeEditValue, setTaskAssigneeEditValue] = useState("");
   const [taskPartnerEditValue, setTaskPartnerEditValue] = useState("");
   const [taskPriorityEditValue, setTaskPriorityEditValue] = useState("Low");
-  const [taskEditError, setTaskEditError] = useState("");
+  const [taskEditError, setTaskEditError] = useErrorToastState("");
   const [taskAssigneeSaving, setTaskAssigneeSaving] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -1001,9 +1001,8 @@ export default function AdminAccountantTaskManagement() {
   // UI state
   const [creatingTask, setCreatingTask] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
-  const [error, setError] = useState("");
-  useErrorToast(error);
-  const [success, setSuccess] = useState("");
+  const [error, setError] = useErrorToastState("");
+  const [, setSuccess] = useState("");
   const taskAssigneeResetTimerRef = useRef(null);
   const workloadLimit = normalizeTaskWorkloadLimit(taskWorkloadSettings?.limit, DEFAULT_TASK_WORKLOAD_SETTINGS.limit);
   const activeClients = useMemo(() => {
@@ -1534,10 +1533,14 @@ export default function AdminAccountantTaskManagement() {
     setSuccess("");
   };
 
+  const announceCreateTaskError = (message) => {
+    setError(message);
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!canCreateTask) {
-      setError("You do not have permission to create tasks.");
+      announceCreateTaskError("You do not have permission to create tasks.");
       return;
     }
     setError("");
@@ -1554,56 +1557,56 @@ export default function AdminAccountantTaskManagement() {
 
     // Enforce single service selection (required)
     if (!selectedClientId) {
-      setError("Please select a client.");
+      announceCreateTaskError("Please select a client.");
       return;
     }
     if (didLoadClients && !activeClients.some((client) => matchesClientId(client, selectedClientId))) {
-      setError("Please select an active client.");
+      announceCreateTaskError("Please select an active client.");
       return;
     }
     // Require explicit service selection; do not auto-select to avoid accidental submissions.
     // This ensures proper validation per requirements.
 
     if (!String(form.service_name || "").trim()) {
-      setError("Please select a service (To-Do).");
+      announceCreateTaskError("Please select a service (To-Do).");
       return;
     }
     if (!String(form.title || "").trim()) {
-      setError("Please select a task title (service).");
+      announceCreateTaskError("Please select a task title (service).");
       return;
     }
     if (matchingAccountants.length === 0) {
-      setError("No assignees are available for the selected service.");
+      announceCreateTaskError("No assignees are available for the selected service.");
       return;
     }
     if (!String(form.accountant_id || "").trim()) {
-      setError("Please assign an accountant or secretary.");
+      announceCreateTaskError("Please assign an accountant or secretary.");
       return;
     }
     if (!matchingAccountants.some((accountant) => String(accountant.id) === String(form.accountant_id))) {
-      setError("Please assign a matching accountant or secretary for the selected service.");
+      announceCreateTaskError("Please assign a matching accountant or secretary for the selected service.");
       return;
     }
     if (selectedAssigneeIsSecretary) {
       if (partnerAccountants.length === 0) {
-        setError("No accountant partners are available right now.");
+        announceCreateTaskError("No accountant partners are available right now.");
         return;
       }
       if (!String(form.partner_id || "").trim()) {
-        setError("Please select an accountant partner for the secretary.");
+        announceCreateTaskError("Please select an accountant partner for the secretary.");
         return;
       }
       if (!partnerAccountants.some((accountant) => String(accountant.id) === String(form.partner_id))) {
-        setError("Please select a valid partner accountant for the secretary.");
+        announceCreateTaskError("Please select a valid partner accountant for the secretary.");
         return;
       }
     }
     if (!String(form.priority || "").trim()) {
-      setError("Please select a priority.");
+      announceCreateTaskError("Please select a priority.");
       return;
     }
     if (!String(form.due_date || "").trim()) {
-      setError("Please select a due date.");
+      announceCreateTaskError("Please select a due date.");
       return;
     }
     if (hasReachedTaskWorkloadLimit(selectedAssigneeWorkload?.totalTasks || 0, workloadLimit)) {
@@ -1696,14 +1699,14 @@ export default function AdminAccountantTaskManagement() {
         setSelectedBundleKey("");
         setEditingBundleKey("");
       } else {
-        setError(res?.data?.message || "Failed to create task.");
+        announceCreateTaskError(res?.data?.message || "Failed to create task.");
       }
     } catch (err) {
       if (err?.response?.data?.workload_limit_reached) {
         showErrorToast(err?.response?.data?.message || "The selected staff member already reached the workload limit.");
         return;
       }
-      setError(err?.response?.data?.message || err?.message || "Request failed.");
+      announceCreateTaskError(err?.response?.data?.message || err?.message || "Request failed.");
     } finally {
       setCreatingTask(false);
     }
@@ -2612,29 +2615,22 @@ export default function AdminAccountantTaskManagement() {
                     </div>
                   ))}
                 </div>
+
               </div>
             ) : null}
 
-            {/* Actions */}
-            <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs">
-                {error && <div className="text-rose-600">{error}</div>}
-                {!error && success && <div className="text-emerald-600">{success}</div>}
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={resetForm}>
-                  Reset
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              <Button type="button" variant="secondary" size="sm" onClick={resetForm}>
+                Reset
+              </Button>
+              {canCreateTask ? (
+                <Button type="submit" size="sm" disabled={creatingTask} className="gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
+                    <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2h5Z" />
+                  </svg>
+                  <span>{creatingTask ? "Creating..." : "Create Task"}</span>
                 </Button>
-                {canCreateTask ? (
-                  <Button type="submit" size="sm" disabled={creatingTask} className="gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
-                      <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2h5Z" />
-                    </svg>
-                    <span>{creatingTask ? "Creating..." : "Create Task"}</span>
-                  </Button>
-                ) : null}
-              </div>
+              ) : null}
             </div>
           </form>
         </CardContent>
@@ -3603,11 +3599,6 @@ export default function AdminAccountantTaskManagement() {
             </div>
           ) : null}
 
-          {isTaskAssigneeEditActive && taskEditError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {taskEditError}
-            </div>
-          ) : null}
         </div>
       </Modal>
 
@@ -3844,3 +3835,4 @@ function InlineAddRow({
     </div>
   );
 }
+

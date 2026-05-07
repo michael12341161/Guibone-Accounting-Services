@@ -8,7 +8,7 @@ import { useModulePermissions } from "../context/ModulePermissionsContext";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../hooks/useAuth";
 import { api, resolveBackendAssetUrl } from "../services/api";
-import { useErrorToast } from "../utils/feedback";
+import { useErrorToastState } from "../utils/feedback";
 import { hasModuleAccess } from "../utils/module_permissions";
 
 const POLL_INTERVAL_MS = AUTO_REFRESH_INTERVAL_MS;
@@ -308,8 +308,7 @@ function BubbleChatSurface({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const messagesRef = useRef(null);
   const shouldStickToBottomRef = useRef(true);
   const selectedPartnerIdRef = useRef(normalizedInitialPartnerId);
@@ -626,13 +625,7 @@ function BubbleChatSurface({
                 Loading contacts...
               </div>
             </div>
-          ) : error && users.length === 0 ? (
-            <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center">
-              <div className="rounded-[1rem] border border-rose-200 bg-rose-50 px-4 py-5 text-xs text-rose-600">
-                {error}
-              </div>
-            </div>
-          ) : filteredUsers.length > 0 ? (
+          ) : error && users.length === 0 ? null : filteredUsers.length > 0 ? (
             <div className="space-y-2">
               {filteredUsers.map((user) => {
                 const isActive = user.id === selectedPartnerId;
@@ -850,12 +843,6 @@ function BubbleChatSurface({
               )}
             </div>
           </div>
-
-          {error ? (
-            <div className="border-t border-rose-100 bg-rose-50 px-4 py-2 text-xs font-medium text-rose-600">
-              {error}
-            </div>
-          ) : null}
 
           <div
             className={classNames(
@@ -1137,3 +1124,4 @@ export default function BubbleChat({
     </div>
   );
 }
+

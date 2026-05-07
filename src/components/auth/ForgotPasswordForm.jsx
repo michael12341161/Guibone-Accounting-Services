@@ -136,8 +136,6 @@ export default function ForgotPasswordForm({
   codeExpiryMinutes,
   resetWindowMinutes,
   loading,
-  message,
-  error,
   onEmailChange,
   onCodeChange,
   onNewPasswordChange,
@@ -181,18 +179,6 @@ export default function ForgotPasswordForm({
         activeStepIndex={activeStepIndex}
         progressPercent={progressPercent}
       />
-
-      {message ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-          {message}
-        </div>
-      ) : null}
-
-      {error ? (
-        <div className="whitespace-pre-line rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-          {error}
-        </div>
-      ) : null}
 
       {step === "email" ? (
         <>
@@ -349,11 +335,6 @@ export default function ForgotPasswordForm({
         </>
       ) : null}
 
-      {step === "done" ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
-          Password reset finished.
-        </div>
-      ) : null}
     </form>
   );
 }

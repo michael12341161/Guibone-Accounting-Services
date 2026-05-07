@@ -29,7 +29,7 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
-import { showConfirmDialog, showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showConfirmDialog, showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 
 const PAGE_SIZE = 10;
@@ -286,7 +286,6 @@ function AddClientModal({
   onClose,
   onSubmit,
   loading,
-  error,
   canUploadRequiredDocuments,
   documentTypes,
   businessTypes,
@@ -492,8 +491,6 @@ function AddClientModal({
       }
     >
       <form id="secretary-add-client-form" onSubmit={handleSubmit} className="space-y-5">
-        {error ? <div className="whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
@@ -688,8 +685,8 @@ export default function ClientManagementSecretary() {
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [error, setError] = useErrorToastState("");
+  const [, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [businessTypeFilter, setBusinessTypeFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
@@ -704,9 +701,7 @@ export default function ClientManagementSecretary() {
   const [locationClientName, setLocationClientName] = useState("");
   const [locationBusiness, setLocationBusiness] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [locationError, setLocationError] = useState("");
-  useErrorToast(error);
-  useErrorToast(locationError);
+  const [locationError, setLocationError] = useErrorToastState("");
   const [editDocuments, setEditDocuments] = useState([]);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [statusActionClientId, setStatusActionClientId] = useState(null);
@@ -1661,13 +1656,6 @@ export default function ClientManagementSecretary() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {error ? (
-            <div className="whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-          {success ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>
-          ) : null}
-
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative w-full sm:w-80">
               <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
@@ -1754,7 +1742,6 @@ export default function ClientManagementSecretary() {
         onClose={closeAddModal}
         onSubmit={handleCreate}
         loading={loading}
-        error={error}
         canUploadRequiredDocuments={canUploadRequiredDocuments}
         documentTypes={documentTypes}
         businessTypes={businessTypes}
@@ -1779,8 +1766,6 @@ export default function ClientManagementSecretary() {
         }
       >
         <form id="secretary-edit-client-form" onSubmit={handleUpdate} className="space-y-5">
-          {error ? <div className="whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
-
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">First Name</label>
@@ -2137,3 +2122,4 @@ export default function ClientManagementSecretary() {
     </div>
   );
 }
+

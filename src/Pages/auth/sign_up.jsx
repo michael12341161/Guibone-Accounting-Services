@@ -19,7 +19,7 @@ import { validatePasswordValue } from "../../utils/passwordValidation";
 import { isValidEmail, isValidPhoneNumber } from "../../utils/helpers";
 import { normalizeMiddleNameOrNull, normalizePersonName } from "../../utils/person_name";
 import { useTheme } from "../../context/ThemeContext";
-import { useErrorToast } from "../../utils/feedback";
+import { showInfoToast, useErrorToastState } from "../../utils/feedback";
 
 const FALLBACK_BUSINESS_TYPES = [
   { id: 1, name: "Sole Proprietor" },
@@ -219,19 +219,6 @@ function isRequiredSignupDocument(documentType) {
   return key.includes("birth") && key.includes("cert");
 }
 
-function StatusMessage({ tone, children }) {
-  if (!children) return null;
-
-  const styles =
-    tone === "error"
-      ? "border-rose-200 bg-rose-50 text-rose-700"
-      : tone === "warning"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700";
-
-  return <div className={`whitespace-pre-line rounded-md border px-3 py-2 text-xs ${styles}`}>{children}</div>;
-}
-
 function EyeIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-4 w-4">
@@ -416,13 +403,10 @@ export default function SignUpPage({ embedded = false, onClose }) {
   const [documentFiles, setDocumentFiles] = useState({});
   const [createdClientId, setCreatedClientId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [emailError, setEmailError] = useState("");
-  useErrorToast(error);
-  useErrorToast(emailError);
+  const [error, setError] = useErrorToastState("");
+  const [emailError, setEmailError] = useErrorToastState("");
   const [checkingEmail, setCheckingEmail] = useState(false);
   const emailCheckRequestRef = useRef(0);
-  const [warning, setWarning] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const signupDocumentTypes = useMemo(
@@ -481,7 +465,6 @@ export default function SignUpPage({ embedded = false, onClose }) {
     : "Auto-filled once a province and city are selected.";
   const companyName = String(systemConfig.companyName || DEFAULT_SYSTEM_CONFIGURATION.companyName).trim();
   const supportEmail = String(systemConfig.supportEmail || "").trim();
-  const systemNotice = String(systemConfig.systemNotice || "").trim();
   const signupDisabledMessage = systemConfig.allowClientSelfSignup
     ? ""
     : `Client sign-up is currently unavailable.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`;
@@ -525,7 +508,7 @@ export default function SignUpPage({ embedded = false, onClose }) {
         setBusinessTypes(FALLBACK_BUSINESS_TYPES);
         setCivilStatusTypes(FALLBACK_CIVIL_STATUS_TYPES);
         setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
-        setWarning("Live form options are unavailable right now. Default dropdown and document choices are being used.");
+        showInfoToast("Live form options are unavailable right now. Default dropdown and document choices are being used.");
       }
     };
 
@@ -865,7 +848,6 @@ export default function SignUpPage({ embedded = false, onClose }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    setWarning("");
 
     if (!systemConfig.allowClientSelfSignup) {
       setError(signupDisabledMessage || "Client sign-up is currently unavailable.");
@@ -1067,10 +1049,6 @@ export default function SignUpPage({ embedded = false, onClose }) {
 
               <form onSubmit={handleSubmit} className={embedded ? "flex min-h-0 w-full flex-1 flex-col" : "mt-8 space-y-6"}>
                 <div className={embedded ? "shrink-0 space-y-2 border-b border-slate-200/70 px-4 py-3 sm:px-5" : "space-y-3"}>
-                  <StatusMessage tone="error">{error}</StatusMessage>
-                  <StatusMessage tone="warning">{signupDisabledMessage}</StatusMessage>
-                  <StatusMessage tone="warning">{warning}</StatusMessage>
-                  <StatusMessage tone="warning">{systemNotice}</StatusMessage>
                   <SignUpStepper steps={SIGNUP_STEPS} activeIndex={activeStepIndex} onStepChange={goToStep} compact={embedded} />
                 </div>
 
@@ -1473,3 +1451,4 @@ export default function SignUpPage({ embedded = false, onClose }) {
     </div>
   );
 }
+

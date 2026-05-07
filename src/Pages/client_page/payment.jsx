@@ -14,7 +14,7 @@ import {
   resolveBackendAssetUrl,
   submitPaymentReceipt,
 } from "../../services/api";
-import { showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import { useAuth } from "../../hooks/useAuth";
 
 const PAYMENT_SELECTION_STORAGE_PREFIX = "monitoring:client-payment-method";
@@ -298,10 +298,9 @@ export default function PaymentPage() {
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fileError, setFileError] = useState("");
-  const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  useErrorToast(error);
+  const [fileError, setFileError] = useErrorToastState("");
+  const [error, setError] = useErrorToastState("");
+  const [, setSuccessMessage] = useState("");
 
   const requestedAppointmentId = useMemo(
     () => toPositiveInteger(searchParams.get("appointment_id")),
@@ -396,15 +395,6 @@ export default function PaymentPage() {
   const canChooseReceipt =
     Boolean(selectedMethodId && selectedAppointmentId) && !isSubmitting && !isPaymentProcessing && !isPaymentPaid;
   const selectedAppointmentLabel = getAppointmentLabel(selectedAppointment);
-  const paymentStatusMessage = isPaymentPaid
-    ? "This appointment payment has already been approved as Paid."
-    : isPaymentProcessing
-      ? "Your uploaded receipt is currently under admin review."
-      : existingPaymentStatusKey === "reject"
-        ? "The previous receipt was rejected. Please upload a new image."
-        : existingPaymentMethodName
-          ? `${existingPaymentMethodName} receipt submitted.`
-          : "No receipt uploaded yet for this appointment.";
   const paymentMethodSummaryLabel =
     selectedMethod?.name || existingPaymentMethodName || "Choose a payment method";
   const paymentMethodSummaryDescription = selectedMethod
@@ -748,18 +738,6 @@ export default function PaymentPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : null}
-
-      {successMessage ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {successMessage}
-        </div>
-      ) : null}
-
       {!loading && serviceAppointments.length === 0 ? (
         <section className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50/70 px-5 py-10 text-center sm:px-6">
           <div className="mx-auto max-w-lg space-y-4">
@@ -933,21 +911,6 @@ export default function PaymentPage() {
                     </div>
                   </div>
                 </div>
-
-                <div
-                  className={cn(
-                    "mt-4 rounded-2xl border px-4 py-3 text-sm leading-6",
-                    isPaymentPaid
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : isPaymentProcessing
-                        ? "border-sky-200 bg-sky-50 text-sky-700"
-                        : existingPaymentStatusKey === "reject"
-                          ? "border-rose-200 bg-rose-50 text-rose-700"
-                          : "border-slate-200 bg-slate-50 text-slate-600"
-                  )}
-                >
-                  {paymentStatusMessage}
-                </div>
               </div>
             </div>
           </section>
@@ -1012,24 +975,6 @@ export default function PaymentPage() {
                         ) : null}
                       </div>
                     </div>
-
-                    {fileError ? (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                        {fileError}
-                      </div>
-                    ) : null}
-
-                    {isPaymentProcessing ? (
-                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700">
-                        The current receipt is being reviewed. You can upload again if the admin rejects it.
-                      </div>
-                    ) : null}
-
-                    {isPaymentPaid ? (
-                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                        Payment verified successfully. This appointment is already marked as paid.
-                      </div>
-                    ) : null}
 
                     <div className="flex flex-wrap gap-3">
                       <Button
@@ -1110,3 +1055,4 @@ export default function PaymentPage() {
     </div>
   );
 }
+

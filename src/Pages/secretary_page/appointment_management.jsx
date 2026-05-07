@@ -10,7 +10,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { requestModuleAccess } from "../../services/api";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import { formatDocumentTypeLabel, normalizeDocumentKey } from "../../utils/document_management";
 
 const PAGE_SIZE = 10;
@@ -346,8 +346,7 @@ export default function AppointmentManagement() {
   const { user } = useAuth();
   const { permissions } = useModulePermissions();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const [rows, setRows] = useState([]);
   const [updatingId, setUpdatingId] = useState(null);
   const [declineOpen, setDeclineOpen] = useState(false);
@@ -355,7 +354,7 @@ export default function AppointmentManagement() {
   const [declineReason, setDeclineReason] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(createInitialEditForm);
-  const [editError, setEditError] = useState("");
+  const [editError, setEditError] = useErrorToastState("");
   const [documentModalOpen, setDocumentModalOpen] = useState(false);
   const [activeDocumentRow, setActiveDocumentRow] = useState(null);
   const [search, setSearch] = useState("");
@@ -1050,10 +1049,6 @@ export default function AppointmentManagement() {
             </select>
           </div>
 
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
           <DataTable
             columns={columns}
             rows={error ? [] : tableRows}
@@ -1279,11 +1274,6 @@ export default function AppointmentManagement() {
             />
           </div>
 
-          {editError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {editError}
-            </div>
-          ) : null}
         </form>
       </Modal>
 
@@ -1417,3 +1407,4 @@ export default function AppointmentManagement() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import Swal from "sweetalert2";
 import { toast } from "react-hot-toast";
 import {
@@ -11,6 +11,14 @@ const TOAST_STYLE = {
   border: "1px solid #e2e8f0",
   background: "#ffffff",
   color: "#0f172a",
+  borderRadius: "8px",
+  boxShadow: "0 14px 30px -22px rgba(15, 23, 42, 0.45)",
+  fontSize: "12px",
+  fontWeight: 500,
+  lineHeight: "16px",
+  maxWidth: "280px",
+  minHeight: "0",
+  padding: "7px 10px",
 };
 
 let alertDialogQueue = Promise.resolve();
@@ -67,6 +75,11 @@ function buildToastOptions(duration, id) {
 
 export const APP_TOASTER_PROPS = {
   position: "top-right",
+  gutter: 6,
+  containerStyle: {
+    top: 12,
+    right: 12,
+  },
   toastOptions: {
     duration: 2400,
     style: TOAST_STYLE,
@@ -93,27 +106,63 @@ export function showInfoToast(input) {
 
 export function useErrorToast(message, options = {}) {
   const lastMessageRef = useRef("");
-  const { duration, id } = options;
+  const lastTriggerRef = useRef(undefined);
+  const { duration, id, trigger } = options;
 
   useEffect(() => {
     const normalizedMessage = String(message || "").trim();
 
     if (!normalizedMessage) {
       lastMessageRef.current = "";
+      lastTriggerRef.current = trigger;
       return;
     }
 
-    if (normalizedMessage === lastMessageRef.current) {
+    if (
+      normalizedMessage === lastMessageRef.current &&
+      trigger === lastTriggerRef.current
+    ) {
       return;
     }
 
     lastMessageRef.current = normalizedMessage;
+    lastTriggerRef.current = trigger;
     showErrorToast({
       title: normalizedMessage,
       duration,
       id,
     });
-  }, [message, duration, id]);
+  }, [message, duration, id, trigger]);
+}
+
+export function useErrorToastState(initialMessage = "", options = {}) {
+  const [state, dispatch] = useReducer(
+    (current, action) => {
+      const nextValue =
+        typeof action === "function" ? action(current.value) : action;
+      const normalizedValue = String(nextValue || "").trim();
+
+      return {
+        value: nextValue,
+        trigger: normalizedValue ? current.trigger + 1 : current.trigger,
+      };
+    },
+    {
+      value: initialMessage,
+      trigger: 0,
+    }
+  );
+
+  useErrorToast(state.value, {
+    ...options,
+    trigger: state.trigger,
+  });
+
+  const setValue = useCallback((value) => {
+    dispatch(value);
+  }, []);
+
+  return [state.value, setValue];
 }
 
 export function showAlertDialog(options = {}) {

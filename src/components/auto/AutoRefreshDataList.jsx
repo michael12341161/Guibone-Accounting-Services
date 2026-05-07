@@ -1,5 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AUTO_REFRESH_INTERVAL_MS } from "./autoRefreshConfig";
+import { useErrorToastState } from "../../utils/feedback";
+import {
+  getRateLimitRetryDelayMs,
+  isRateLimitResponse,
+  MONITORING_RATE_LIMITED_MESSAGE,
+} from "../../services/api";
 
 const DEFAULT_REFRESH_INTERVAL_MS = AUTO_REFRESH_INTERVAL_MS;
 const DEFAULT_API_BASE_URL =
@@ -42,18 +48,35 @@ function readArrayFromPayload(payload, dataKey) {
   return [];
 }
 
-async function readErrorMessage(response) {
+async function readErrorDetails(response) {
+  let payload = null;
   const fallback =
     response.status === 429
-      ? "Too many requests. Please wait a moment and try again."
+      ? MONITORING_RATE_LIMITED_MESSAGE
       : `Request failed with status ${response.status}.`;
 
   try {
-    const payload = await response.clone().json();
-    return String(payload?.message || fallback).trim();
+    payload = await response.clone().json();
   } catch (_) {
-    return fallback;
+    payload = null;
   }
+
+  const headers = {};
+  try {
+    response.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+  } catch (_) {}
+
+  return {
+    message: String(payload?.message || fallback).trim(),
+    rateLimited: isRateLimitResponse(response),
+    retryDelayMs: getRateLimitRetryDelayMs({
+      status: response.status,
+      headers,
+      data: payload,
+    }),
+  };
 }
 
 function firstPresent(values) {
@@ -104,8 +127,9 @@ export default function AutoRefreshDataList({
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [lastUpdated, setLastUpdated] = useState(null);
+  const itemsRef = useRef([]);
 
   const apiUrl = useMemo(() => resolveApiUrl(endpoint), [endpoint]);
   const refreshDelay = Number(intervalMs) > 0 ? Number(intervalMs) : DEFAULT_REFRESH_INTERVAL_MS;
@@ -114,11 +138,32 @@ export default function AutoRefreshDataList({
     let mounted = true;
     let activeController = null;
     let requestId = 0;
+    let rateLimitCooldownUntil = 0;
+    let retryTimeoutId = null;
+
+    function scheduleRateLimitRetry(delayMs) {
+      if (retryTimeoutId) {
+        window.clearTimeout(retryTimeoutId);
+      }
+
+      retryTimeoutId = window.setTimeout(() => {
+        retryTimeoutId = null;
+        if (mounted) {
+          fetchData({ silent: true });
+        }
+      }, Math.max(1000, Number(delayMs) || refreshDelay));
+    }
 
     async function fetchData({ silent = false } = {}) {
       if (!apiUrl) {
         setError("Missing API endpoint.");
         setLoading(false);
+        return;
+      }
+
+      const cooldownRemainingMs = rateLimitCooldownUntil - Date.now();
+      if (cooldownRemainingMs > 0) {
+        scheduleRateLimitRetry(cooldownRemainingMs);
         return;
       }
 
@@ -148,7 +193,11 @@ export default function AutoRefreshDataList({
         });
 
         if (!response.ok) {
-          throw new Error(await readErrorMessage(response));
+          const errorDetails = await readErrorDetails(response);
+          const requestError = new Error(errorDetails.message);
+          requestError.rateLimited = errorDetails.rateLimited;
+          requestError.retryDelayMs = errorDetails.retryDelayMs;
+          throw requestError;
         }
 
         const payload = await response.json();
@@ -156,6 +205,7 @@ export default function AutoRefreshDataList({
 
         if (!mounted || currentRequestId !== requestId) return;
 
+        itemsRef.current = nextItems;
         setItems((currentItems) => {
           const currentJson = JSON.stringify(currentItems);
           const nextJson = JSON.stringify(nextItems);
@@ -165,6 +215,18 @@ export default function AutoRefreshDataList({
         setError("");
       } catch (err) {
         if (err?.name === "AbortError" || !mounted) return;
+
+        if (err?.rateLimited) {
+          const retryDelayMs = Math.max(1000, Number(err.retryDelayMs) || refreshDelay);
+          rateLimitCooldownUntil = Math.max(rateLimitCooldownUntil, Date.now() + retryDelayMs);
+          scheduleRateLimitRetry(retryDelayMs);
+
+          if (itemsRef.current.length > 0) {
+            setError("");
+            return;
+          }
+        }
+
         setError(err?.message || "Unable to fetch data.");
       } finally {
         if (!mounted || currentRequestId !== requestId) return;
@@ -185,6 +247,9 @@ export default function AutoRefreshDataList({
     return () => {
       mounted = false;
       window.clearInterval(intervalId);
+      if (retryTimeoutId) {
+        window.clearTimeout(retryTimeoutId);
+      }
       if (activeController) {
         activeController.abort();
       }
@@ -211,10 +276,6 @@ export default function AutoRefreshDataList({
         ) : null}
       </div>
 
-      {error ? (
-        <div className="border-b border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-      ) : null}
-
       {loading && items.length === 0 ? (
         <div className="px-4 py-6 text-sm text-slate-600">Loading data...</div>
       ) : items.length === 0 ? (
@@ -240,3 +301,4 @@ export default function AutoRefreshDataList({
     </section>
   );
 }
+

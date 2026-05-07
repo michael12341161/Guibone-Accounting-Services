@@ -9,7 +9,7 @@ import {
   normalizeSecuritySettings,
 } from "../../services/api";
 import { useAuth } from "../../hooks/useAuth";
-import { useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import {
   validatePasswordValue,
 } from "../../utils/passwordValidation";
@@ -73,9 +73,7 @@ export default function ForgotPasswordModal({
   const [resetWindowMinutes, setResetWindowMinutes] = useState(DEFAULT_RESET_WINDOW_MINUTES);
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
 
   const canClose = !loading && (!required || step === "done");
   const activeStepIndex = Math.max(
@@ -130,7 +128,6 @@ export default function ForgotPasswordModal({
     setResetToken("");
     setNewPassword("");
     setConfirmPassword("");
-    setMessage("");
     setError("");
     setCodeExpiryMinutes(DEFAULT_CODE_EXPIRY_MINUTES);
     setResetWindowMinutes(DEFAULT_RESET_WINDOW_MINUTES);
@@ -169,7 +166,6 @@ export default function ForgotPasswordModal({
 
   const sendCode = async () => {
     setError("");
-    setMessage("");
 
     if (!email.trim()) {
       setError("Please enter your registered email.");
@@ -189,7 +185,7 @@ export default function ForgotPasswordModal({
           DEFAULT_CODE_EXPIRY_MINUTES
         );
         setCodeExpiryMinutes(nextCodeExpiryMinutes);
-        setMessage(
+        showSuccessToast(
           `${res.data?.message || "Verification code sent."} The code expires in ${formatMinutesLabel(nextCodeExpiryMinutes)}.`
         );
         setStep("code");
@@ -205,7 +201,6 @@ export default function ForgotPasswordModal({
 
   const verifyCode = async () => {
     setError("");
-    setMessage("");
 
     if (!/^[0-9]{6}$/.test(code.trim())) {
       setError("Enter the 6-digit code sent to your email.");
@@ -232,7 +227,7 @@ export default function ForgotPasswordModal({
         setResetToken(res.data.reset_token);
         setResetWindowMinutes(nextResetWindowMinutes);
         setStep("reset");
-        setMessage(
+        showSuccessToast(
           passwordExpiryDays > 0
             ? `Code verified. You have ${formatMinutesLabel(nextResetWindowMinutes)} to reset your password. Your new password will expire again in ${formatDaysLabel(passwordExpiryDays)}.`
             : `Code verified. You have ${formatMinutesLabel(nextResetWindowMinutes)} to reset your password. Password expiry is currently disabled.`
@@ -249,7 +244,6 @@ export default function ForgotPasswordModal({
 
   const resetPassword = async () => {
     setError("");
-    setMessage("");
 
     const passwordValidationError = validatePasswordValue(newPassword, {
       maxPasswordLength: securitySettings.maxPasswordLength,
@@ -291,7 +285,7 @@ export default function ForgotPasswordModal({
           } catch (_) {}
         }
         setStep("done");
-        setMessage(
+        showSuccessToast(
           passwordExpiryDays > 0
             ? `${res.data?.message || "Password updated successfully."} Your new password will expire again in ${formatDaysLabel(passwordExpiryDays)}.`
             : `${res.data?.message || "Password updated successfully."} Password expiry is currently disabled.`
@@ -314,6 +308,7 @@ export default function ForgotPasswordModal({
       title={title}
       description={description}
       size="sm"
+      densityPreserve
       closeOnOverlayClick={canClose}
       headerClassName="px-4 py-3.5"
       headerContentClassName="space-y-0.5"
@@ -336,8 +331,6 @@ export default function ForgotPasswordModal({
         codeExpiryMinutes={codeExpiryMinutes}
         resetWindowMinutes={resetWindowMinutes}
         loading={loading}
-        message={message}
-        error={error}
         onEmailChange={(event) => setEmail(event.target.value)}
         onCodeChange={(event) =>
           setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
@@ -351,3 +344,4 @@ export default function ForgotPasswordModal({
     </Modal>
   );
 }
+

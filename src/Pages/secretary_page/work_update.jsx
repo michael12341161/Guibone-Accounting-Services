@@ -8,7 +8,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import { useWorkspacePrefix } from "../../hooks/useWorkspacePrefix";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
 import {
   createLocalStepTimestamp,
@@ -480,8 +480,7 @@ export default function WorkUpdate() {
   const { permissions } = useModulePermissions();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const canCheckTaskSteps = hasFeatureActionAccess(user, "work-update", "check-steps", permissions);
   const canApproveSubmittedSteps = hasFeatureActionAccess(user, "work-update", "approve", permissions);
   const canViewTaskUpdateHistory = hasFeatureActionAccess(user, "work-update", "history", permissions);
@@ -1223,11 +1222,7 @@ export default function WorkUpdate() {
       {/* Task cards grid (match screenshot cards) */}
       {loading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading tasks…</div>
-      ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
-          <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
-        </div>
-      ) : filteredTasks.length === 0 ? (
+      ) : error ? null : filteredTasks.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">No tasks found.</div>
       ) : (
         <>
@@ -1995,3 +1990,4 @@ export default function WorkUpdate() {
     </div>
   );
 }
+

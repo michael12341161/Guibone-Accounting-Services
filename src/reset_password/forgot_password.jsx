@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { apiSession } from "../services/api";
 import { MIN_PASSWORD_LENGTH } from "../utils/passwordValidation";
-import { useErrorToast } from "../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../utils/feedback";
 
 export default function ForgotPasswordModal({ open, onClose }) {
   const [step, setStep] = useState("email"); // email | code | reset
@@ -12,9 +12,7 @@ export default function ForgotPasswordModal({ open, onClose }) {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
 
   const canClose = !loading;
 
@@ -26,7 +24,6 @@ export default function ForgotPasswordModal({ open, onClose }) {
     setResetToken("");
     setNewPassword("");
     setConfirmPassword("");
-    setMessage("");
     setError("");
     onClose?.();
   };
@@ -39,7 +36,6 @@ export default function ForgotPasswordModal({ open, onClose }) {
 
   const sendCode = async () => {
     setError("");
-    setMessage("");
     if (!email.trim()) {
       setError("Please enter your registered email.");
       return;
@@ -48,7 +44,7 @@ export default function ForgotPasswordModal({ open, onClose }) {
     try {
       const res = await apiSession.post("password_reset_send_code.php", { email: email.trim() });
       if (res.data?.success) {
-        setMessage(res.data?.message || "Verification code sent.");
+        showSuccessToast(res.data?.message || "Verification code sent.");
         setStep("code");
       } else {
         setError(res.data?.message || "Failed to send code.");
@@ -62,7 +58,6 @@ export default function ForgotPasswordModal({ open, onClose }) {
 
   const verifyCode = async () => {
     setError("");
-    setMessage("");
     if (!/^[0-9]{6}$/.test(code.trim())) {
       setError("Enter the 6-digit code sent to your email.");
       return;
@@ -76,7 +71,7 @@ export default function ForgotPasswordModal({ open, onClose }) {
       if (res.data?.success && res.data?.reset_token) {
         setResetToken(res.data.reset_token);
         setStep("reset");
-        setMessage("Code verified. You can now reset your password.");
+        showSuccessToast("Code verified. You can now reset your password.");
       } else {
         setError(res.data?.message || "Invalid or expired code.");
       }
@@ -89,7 +84,6 @@ export default function ForgotPasswordModal({ open, onClose }) {
 
   const resetPassword = async () => {
     setError("");
-    setMessage("");
     if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
       setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
@@ -106,7 +100,7 @@ export default function ForgotPasswordModal({ open, onClose }) {
         new_password: newPassword,
       });
       if (res.data?.success) {
-        setMessage(res.data?.message || "Password updated successfully.");
+        showSuccessToast(res.data?.message || "Password updated successfully.");
         // Close after short delay
         setTimeout(() => close(), 800);
       } else {
@@ -154,17 +148,6 @@ export default function ForgotPasswordModal({ open, onClose }) {
           </div>
 
           <div className="p-6 space-y-4">
-            {message && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                {message}
-              </div>
-            )}
-            {error && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-                {error}
-              </div>
-            )}
-
             {step === "email" && (
               <div className="space-y-4">
                 <div>
@@ -262,3 +245,4 @@ export default function ForgotPasswordModal({ open, onClose }) {
     </div>
   );
 }
+

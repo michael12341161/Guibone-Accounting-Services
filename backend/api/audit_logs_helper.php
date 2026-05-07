@@ -269,9 +269,9 @@ if (!function_exists('monitoring_fetch_audit_logs')) {
 
         $perPage = isset($filters['per_page'])
             ? (int)$filters['per_page']
-            : (isset($filters['limit']) ? (int)$filters['limit'] : 25);
+            : (isset($filters['limit']) ? (int)$filters['limit'] : 10);
         if ($perPage <= 0) {
-            $perPage = 25;
+            $perPage = 10;
         }
         if ($perPage > 200) {
             $perPage = 200;

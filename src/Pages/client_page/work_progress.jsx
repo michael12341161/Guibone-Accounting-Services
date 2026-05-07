@@ -5,7 +5,7 @@ import TaskStepActivityControls from "../../components/tasks/TaskStepActivityCon
 import { api } from "../../services/api";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import {
   formatStepDateTime,
   parseStepActivities,
@@ -117,8 +117,7 @@ function statusMeta(statusText, progress, options = {}) {
 
 export default function WorkProgress() {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const [tasks, setTasks] = useState([]);
   const [stepsTaskId, setStepsTaskId] = useState(null);
   const [stepActionSaving, setStepActionSaving] = useState("");
@@ -344,13 +343,7 @@ export default function WorkProgress() {
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-6 text-sm text-slate-600">Loading work progress…</div>
-        ) : error ? (
-          <div className="p-6">
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-              {error}
-            </div>
-          </div>
-        ) : activeRows.length === 0 ? (
+        ) : error ? null : activeRows.length === 0 ? (
           historyRows.length > 0 ? (
             <div className="p-6 text-sm text-slate-600">
               No active services right now. Your completed services are available in{" "}
@@ -602,3 +595,4 @@ export default function WorkProgress() {
     </div>
   );
 }
+

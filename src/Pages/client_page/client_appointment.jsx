@@ -12,7 +12,7 @@ import {
 import { fetchConsultationSlots } from "../../services/consultationSlots";
 import { getEstimatedServiceDuration } from "../../utils/serviceDurations";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import {
   DEFAULT_CONSULTATION_TIME_SLOTS,
   getConfiguredConsultationTimesForDate,
@@ -470,9 +470,8 @@ export default function ClientAppointment() {
   const [consultationAvailability, setConsultationAvailability] = useState([]);
   const [consultationSlots, setConsultationSlots] = useState([]);
   const [loadingConsultationSlots, setLoadingConsultationSlots] = useState(false);
-  const [error, setError] = useState("");
-  useErrorToast(error);
-  const [success, setSuccess] = useState("");
+  const [error, setError] = useErrorToastState("");
+  const [, setSuccess] = useState("");
 
   const [appointments, setAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(true);
@@ -516,7 +515,6 @@ export default function ClientAppointment() {
   const appointmentsEnabled = portalConfig.allowClientAppointments !== false;
   const consultationsEnabled = portalConfig.allowClientConsultations !== false;
   const supportEmail = String(portalConfig.supportEmail || "").trim();
-  const portalNotice = String(portalConfig.systemNotice || "").trim();
   const bookingPausedMessage =
     appointmentsEnabled || consultationsEnabled
       ? ""
@@ -1516,39 +1514,6 @@ export default function ClientAppointment() {
           </button>
         </div>
 
-        {bookingPausedMessage ? (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            {bookingPausedMessage}
-          </div>
-        ) : null}
-        {!bookingPausedMessage && serviceAccess.businessPermitExpired ? (
-          <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {serviceRestrictionMessage}
-          </div>
-        ) : null}
-        {!bookingPausedMessage && (!appointmentsEnabled || !consultationsEnabled) ? (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            {!appointmentsEnabled
-              ? `Service appointments are paused.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`
-              : `Consultation requests are paused.${supportEmail ? ` Please contact ${supportEmail}.` : ""}`}
-          </div>
-        ) : null}
-        {portalNotice ? (
-          <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
-            {portalNotice}
-          </div>
-        ) : null}
-
-        {!isCreateOpen && success ? (
-          <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-            {success}
-          </div>
-        ) : null}
-        {!isCreateOpen && error ? (
-          <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {error}
-          </div>
-        ) : null}
       </div>
 
       <Modal
@@ -1559,27 +1524,6 @@ export default function ClientAppointment() {
         size="lg"
       >
         <form onSubmit={onSubmit} className="space-y-4">
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {error}
-            </div>
-          ) : null}
-          {success ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              {success}
-            </div>
-          ) : null}
-          {serviceAccess.restrictedToProcessing ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              {serviceRestrictionMessage}
-            </div>
-          ) : null}
-          {portalNotice ? (
-            <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
-              {portalNotice}
-            </div>
-          ) : null}
-
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-700">
@@ -1849,17 +1793,6 @@ export default function ClientAppointment() {
         size="md"
       >
         <form onSubmit={onRescheduleSubmit} className="space-y-4">
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {error}
-            </div>
-          ) : null}
-          {success ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              {success}
-            </div>
-          ) : null}
-
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
               <div>
@@ -2409,3 +2342,4 @@ export default function ClientAppointment() {
     </div>
   );
 }
+

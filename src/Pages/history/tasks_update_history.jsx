@@ -8,7 +8,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
 import { formatStepDateTime, parseStepCompletionTimestamps } from "../../utils/task_step_metadata";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
 import ArchiveTasksCompleted from "../admin_page/archive_tasks_completed";
 import ArchiveTasksCompletedSecretary from "../secretary_page/archive_tasks_completed_secretary";
@@ -225,7 +225,7 @@ export default function TasksUpdateHistory() {
   const { permissions } = useModulePermissions();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
@@ -234,8 +234,6 @@ export default function TasksUpdateHistory() {
   const [restoreLoadingId, setRestoreLoadingId] = useState("");
   const [viewTaskId, setViewTaskId] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-
-  useErrorToast(error);
 
   const refresh = async ({ silent } = { silent: false }) => {
     try {
@@ -762,10 +760,6 @@ export default function TasksUpdateHistory() {
           </div>
         </div>
 
-        {error ? (
-          <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
-        ) : null}
-
         <DataTable
           columns={historyColumns}
           rows={error ? [] : pagedHistoryRows}
@@ -922,3 +916,4 @@ export default function TasksUpdateHistory() {
     </div>
   );
 }
+

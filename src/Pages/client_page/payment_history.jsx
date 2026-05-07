@@ -6,7 +6,7 @@ import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
 import { useAuth } from "../../hooks/useAuth";
 import { api, resolveBackendAssetUrl } from "../../services/api";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 
 const PAGE_SIZE = 10;
 
@@ -152,14 +152,12 @@ export default function PaymentHistoryPage() {
   const { user: authUser } = useAuth();
   const currentUser = authUser || readStoredSessionUser();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
-
-  useErrorToast(error);
 
   useEffect(() => {
     let mounted = true;
@@ -338,12 +336,6 @@ export default function PaymentHistoryPage() {
 
   return (
     <div className="space-y-4">
-      {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : null}
-
       <section className="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6 sm:py-6">
         <div className="space-y-4">
           <div className="relative w-full md:max-w-md">
@@ -481,3 +473,4 @@ export default function PaymentHistoryPage() {
     </div>
   );
 }
+

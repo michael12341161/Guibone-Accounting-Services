@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Modal } from "../../components/UI/modal";
 import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
 import {
   formatStepDateTime,
@@ -169,12 +169,10 @@ function compareHistoryRows(left, right) {
 
 export default function ClientHistory() {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [tasks, setTasks] = useState([]);
   const [search, setSearch] = useState("");
   const [stepsTaskId, setStepsTaskId] = useState("");
-
-  useErrorToast(error);
 
   const user = useMemo(() => {
     try {
@@ -367,13 +365,7 @@ export default function ClientHistory() {
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-6 text-sm text-slate-600">Loading service history...</div>
-        ) : error ? (
-          <div className="p-6">
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-              {error}
-            </div>
-          </div>
-        ) : filteredRows.length === 0 ? (
+        ) : error ? null : filteredRows.length === 0 ? (
           historyRows.length > 0 ? (
             <div className="p-6 text-sm text-slate-600">No completed services matched your search.</div>
           ) : (
@@ -563,3 +555,4 @@ export default function ClientHistory() {
     </div>
   );
 }
+

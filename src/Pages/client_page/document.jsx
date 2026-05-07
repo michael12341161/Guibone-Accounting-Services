@@ -6,7 +6,7 @@ import { Button } from "../../components/UI/buttons";
 import { Modal } from "../../components/UI/modal";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../services/api";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import {
   buildDocumentSlots,
   getDocumentStatusBadgeClass,
@@ -79,8 +79,7 @@ export default function ClientDocumentsPage() {
   const [clientRecord, setClientRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [todayKey, setTodayKey] = useState(() => getCurrentDateKey());
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const [viewerSlot, setViewerSlot] = useState(null);
 
   const loadDocuments = async ({ silent } = { silent: false }) => {
@@ -188,10 +187,6 @@ export default function ClientDocumentsPage() {
           description="View Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS uploaded by the admin. Only the Business Permit changes registration status."
         />
         <CardContent className="space-y-4">
-          {error ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Card compact variant={getRegistrationCardVariant(registrationStatus)}>
               <CardContent className="space-y-1">
@@ -425,3 +420,4 @@ export default function ClientDocumentsPage() {
     </div>
   );
 }
+

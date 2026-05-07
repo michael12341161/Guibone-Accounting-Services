@@ -14,7 +14,7 @@ import {
   parseStepRemarks,
 } from "../utils/task_step_metadata";
 import Swal from "sweetalert2";
-import { showSuccessToast, useErrorToast } from "../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../utils/feedback";
 
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
 const STEP_LINE_RE = /^\s*Step\s+(\d+)(?:\s*\((Owner|Accountant|Secretary)\))?\s*:\s*(.*)$/i;
@@ -314,8 +314,7 @@ export default function Calendar() {
   const canViewTaskCalendar = isAdmin || isSecretary || isAccountant;
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
 
   // ===== Accountant state =====
   const [tasks, setTasks] = useState([]);
@@ -1575,8 +1574,7 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Error banner (non-blocking) */}
-      {error && <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
     </div>
   );
 }
+

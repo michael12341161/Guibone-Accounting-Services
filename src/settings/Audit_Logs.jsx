@@ -7,8 +7,6 @@ const AUDIT_RANGE_OPTIONS = [
   { value: "all", label: "All time" },
 ];
 
-const AUDIT_PER_PAGE_OPTIONS = [10, 25, 50, 100];
-
 function getAuditActionTone(action) {
   const normalized = String(action ?? "").toLowerCase();
 
@@ -58,9 +56,7 @@ export default function AuditLogsSection({
   auditRange,
   setAuditRange,
   auditPerPage,
-  setAuditPerPage,
   setAuditRefreshKey,
-  auditError,
   auditLogs,
 }) {
   return (
@@ -103,20 +99,9 @@ export default function AuditLogsSection({
                 </option>
               ))}
             </select>
-            <select
-              value={auditPerPage}
-              onChange={(event) => {
-                setAuditPerPage(Number(event.target.value));
-                setAuditPage(1);
-              }}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-            >
-              {AUDIT_PER_PAGE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option} / page
-                </option>
-              ))}
-            </select>
+            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+              {auditPerPage} / page
+            </span>
             <button
               type="button"
               onClick={() => setAuditRefreshKey((value) => value + 1)}
@@ -127,12 +112,6 @@ export default function AuditLogsSection({
             </button>
           </div>
         </div>
-
-        {auditError ? (
-          <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-            {auditError}
-          </div>
-        ) : null}
 
         {auditLoading && auditLogs.length === 0 ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">

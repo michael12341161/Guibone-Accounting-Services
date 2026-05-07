@@ -7,7 +7,7 @@ import {
   mergePermissions,
 } from "../utils/module_permissions";
 import { useAuth } from "../hooks/useAuth";
-import { useErrorToast } from "../utils/feedback";
+import { useErrorToastState } from "../utils/feedback";
 
 const ModulePermissionsContext = createContext(null);
 const MODULE_PERMISSION_CACHE_PREFIX = "monitoring:permissions-cache";
@@ -59,8 +59,7 @@ export function ModulePermissionsProvider({ children }) {
   const initialCachedPermissions = readCachedPermissions(user?.id);
   const [permissions, setPermissions] = useState(() => initialCachedPermissions);
   const [isLoading, setIsLoading] = useState(() => Boolean(user?.id) && !initialCachedPermissions);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const isMountedRef = useRef(false);
 
   useEffect(
@@ -245,3 +244,4 @@ export function useModulePermissions() {
 
   return context;
 }
+

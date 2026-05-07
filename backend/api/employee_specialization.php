@@ -971,7 +971,7 @@ if (!function_exists('monitoring_validate_system_configuration')) {
 }
 
 if (!function_exists('monitoring_upsert_system_configuration')) {
-    function monitoring_upsert_system_configuration(PDO $conn, array $settings): array {
+    function monitoring_upsert_system_configuration(PDO $conn, array $settings, bool $clearRateLimitCounters = true): array {
         monitoring_ensure_settings_table($conn);
 
         $validated = monitoring_validate_system_configuration($settings);
@@ -1006,6 +1006,10 @@ if (!function_exists('monitoring_upsert_system_configuration')) {
                 ':setting_key' => $definitions[$frontendKey]['db_key'],
                 ':setting_value' => $storedValue,
             ]);
+        }
+
+        if ($clearRateLimitCounters && function_exists('monitoring_rate_limit_clear_storage')) {
+            monitoring_rate_limit_clear_storage();
         }
 
         return $validated;
@@ -1114,7 +1118,7 @@ if (!function_exists('monitoring_get_system_configuration')) {
             }
         }
 
-        $result = monitoring_upsert_system_configuration($conn, $settings);
+        $result = monitoring_upsert_system_configuration($conn, $settings, false);
         return is_array($result['settings'] ?? null) ? $result['settings'] : $settings;
     }
 }

@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Modal } from "../../components/UI/modal";
 import { ModuleAccessGate } from "../../components/layout/module_access_gate";
 import { useModulePermissions } from "../../context/ModulePermissionsContext";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import { hasModuleAccess } from "../../utils/module_permissions";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
 import { getTaskDeadlineState } from "../../utils/task_deadline";
@@ -406,9 +406,8 @@ export default function ClientDashboard({ user, onLogout }) {
   const [, setLoadingAppointments] = useState(true);
   const [workProgressRows, setWorkProgressRows] = useState([]);
   const [loadingWorkProgress, setLoadingWorkProgress] = useState(true);
-  const [workProgressError, setWorkProgressError] = useState("");
+  const [workProgressError, setWorkProgressError] = useErrorToastState("");
   const [selectedCalendarTaskId, setSelectedCalendarTaskId] = useState(null);
-  useErrorToast(workProgressError);
 
   const consultationQueryParams = {
     client_id: sessionUser?.client_id ?? sessionUser?.Client_ID ?? undefined,
@@ -1189,3 +1188,4 @@ export default function ClientDashboard({ user, onLogout }) {
     </ClientLayout>
   );
 }
+

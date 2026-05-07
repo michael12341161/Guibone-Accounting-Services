@@ -6,7 +6,7 @@ import { Button } from "../../components/UI/buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/UI/card";
 import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
-import { showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 const PAGE_SIZE = 10;
 
@@ -106,7 +106,7 @@ function buildPaymentRow(row) {
 
 export default function AdminClientPaymentPage() {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -114,7 +114,6 @@ export default function AdminClientPaymentPage() {
   const [activePaymentRow, setActivePaymentRow] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [updatingPaymentId, setUpdatingPaymentId] = useState(null);
-  useErrorToast(error);
 
   const loadClientPayments = async ({ silent } = { silent: false }) => {
     try {
@@ -391,12 +390,6 @@ export default function AdminClientPaymentPage() {
             </select>
           </div>
 
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {error}
-            </div>
-          ) : null}
-
           <DataTable
             columns={columns}
             rows={error ? [] : pagedRows}
@@ -532,3 +525,4 @@ export default function AdminClientPaymentPage() {
     </div>
   );
 }
+

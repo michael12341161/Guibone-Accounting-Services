@@ -11,6 +11,11 @@ const SESSION_ACTIVITY_HEADER = "X-Monitoring-Activity";
 // Keep this short so background polling does not extend inactivity timeouts.
 const RECENT_ACTIVITY_WINDOW_MS = 5 * 1000;
 const PASSIVE_METHODS = new Set(["get", "head", "options"]);
+const RATE_LIMIT_RETRY_BUFFER_MS = 1500;
+const RATE_LIMIT_FALLBACK_RETRY_MS = 60 * 1000;
+const RATE_LIMIT_MAX_RETRY_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX_RETRY_ATTEMPTS = 3;
+const IDEMPOTENT_METHODS = new Set(["get", "head", "options"]);
 export const MONITORING_AUTH_INVALID_EVENT = "monitoring:auth-invalid";
 export const MONITORING_AUTH_USER_SYNC_EVENT = "monitoring:auth-user-sync";
 export const MONITORING_SYSTEM_CONFIG_UPDATED_EVENT = "monitoring:system-config-updated";
@@ -20,6 +25,8 @@ export const MONITORING_SESSION_EXPIRED_MESSAGE = "Session expired. Please log i
 export const MONITORING_RATE_LIMITED_MESSAGE = "Too many requests. Please wait a moment and try again.";
 
 let lastUserInteractionAt = 0;
+let rateLimitCooldownUntil = 0;
+const pendingRateLimitRetries = new Map();
 
 function dispatchAuthInvalidEvent() {
   if (typeof window === "undefined") {
@@ -127,6 +134,229 @@ export function isRateLimitError(error) {
   return error?.response?.status === 429;
 }
 
+export function isRateLimitResponse(response) {
+  return response?.status === 429;
+}
+
+function parseRetryAfterMs(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  const numericValue = Number(normalized);
+  if (Number.isFinite(numericValue)) {
+    return numericValue > 0 ? numericValue * 1000 : 0;
+  }
+
+  const retryAt = Date.parse(normalized);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : 0;
+}
+
+function parseUnixResetMs(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return 0;
+  }
+
+  const resetAtMs = numericValue > 9999999999 ? numericValue : numericValue * 1000;
+  return Math.max(0, resetAtMs - Date.now());
+}
+
+export function getRateLimitRetryDelayMs(response) {
+  if (!isRateLimitResponse(response)) {
+    return 0;
+  }
+
+  const headers = response?.headers || {};
+  const retryAfterMs = parseRetryAfterMs(headers["retry-after"] ?? headers["Retry-After"]);
+  const resetMs = parseUnixResetMs(headers["x-ratelimit-reset"] ?? headers["X-RateLimit-Reset"]);
+  const payloadRetryMs = parseRetryAfterMs(response?.data?.retry_after);
+  const payloadWindowMs = parseRetryAfterMs(response?.data?.window_seconds);
+  const relativeRetryMs = [retryAfterMs, payloadRetryMs]
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => right - left)[0];
+  const candidateMs = relativeRetryMs || resetMs || payloadWindowMs;
+  const delayMs = candidateMs || RATE_LIMIT_FALLBACK_RETRY_MS;
+  return Math.min(RATE_LIMIT_MAX_RETRY_MS, Math.max(1000, delayMs + RATE_LIMIT_RETRY_BUFFER_MS));
+}
+
+function rememberRateLimitCooldown(response) {
+  const retryDelayMs = getRateLimitRetryDelayMs(response);
+  rateLimitCooldownUntil = Math.max(rateLimitCooldownUntil, Date.now() + retryDelayMs);
+  return retryDelayMs;
+}
+
+function clearRateLimitCooldown() {
+  rateLimitCooldownUntil = 0;
+  pendingRateLimitRetries.clear();
+}
+
+function makeCanceledError(message = "Request canceled during rate-limit cooldown.") {
+  if (typeof axios.CanceledError === "function") {
+    return new axios.CanceledError(message);
+  }
+
+  const error = new Error(message);
+  error.code = "ERR_CANCELED";
+  return error;
+}
+
+function wait(ms, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(makeCanceledError());
+  }
+
+  const delayMs = Math.max(0, Number(ms) || 0);
+  if (delayMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    let timeoutId = null;
+    const abort = () => {
+      if (timeoutId !== null) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(timeoutId);
+        } else {
+          clearTimeout(timeoutId);
+        }
+      }
+      if (signal) {
+        signal.removeEventListener("abort", abort);
+      }
+      reject(makeCanceledError());
+    };
+    const complete = () => {
+      if (signal) {
+        signal.removeEventListener("abort", abort);
+      }
+      resolve();
+    };
+
+    if (signal) {
+      signal.addEventListener("abort", abort, { once: true });
+    }
+    timeoutId = typeof window !== "undefined"
+      ? window.setTimeout(complete, delayMs)
+      : setTimeout(complete, delayMs);
+  });
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (typeof FormData !== "undefined" && value instanceof FormData) {
+    return "[form-data]";
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    .join(",")}}`;
+}
+
+function rateLimitRetryKey(config = {}) {
+  const method = String(config.method || "get").toLowerCase();
+  const url = String(config.url || "");
+  const base = String(config.baseURL || "");
+  return `${method}:${base}${url}:${stableStringify(config.params || {})}`;
+}
+
+function getRateLimitRetryCount(config = {}) {
+  const retryCount = Number(config.__monitoringRateLimitRetryCount || 0);
+  return Number.isFinite(retryCount) && retryCount > 0 ? Math.trunc(retryCount) : 0;
+}
+
+function shouldRetryRateLimitedRequest(config = {}) {
+  if (!config || config.monitoringRateLimitRetry === false) {
+    return false;
+  }
+
+  if (getRateLimitRetryCount(config) >= RATE_LIMIT_MAX_RETRY_ATTEMPTS) {
+    return false;
+  }
+
+  const method = String(config.method || "get").toLowerCase();
+  return IDEMPOTENT_METHODS.has(method) || config.monitoringRateLimitRetry === true;
+}
+
+function shouldWaitForRateLimitCooldown(config = {}) {
+  if (!config || config.monitoringRateLimitBypassCooldown === true) {
+    return false;
+  }
+
+  if (config.monitoringRateLimitWaitForCooldown === true) {
+    return true;
+  }
+
+  const headers = config.headers || {};
+  const activityMode = String(
+    headers[SESSION_ACTIVITY_HEADER] ?? headers[SESSION_ACTIVITY_HEADER.toLowerCase()] ?? ""
+  ).trim().toLowerCase();
+  if (activityMode === "passive") {
+    return false;
+  }
+
+  const method = String(config.method || "get").toLowerCase();
+  return IDEMPOTENT_METHODS.has(method);
+}
+
+function prepareMonitoringRequest(config) {
+  const nextConfig = attachMonitoringActivity(config);
+  if (!shouldWaitForRateLimitCooldown(nextConfig)) {
+    return nextConfig;
+  }
+
+  const cooldownDelayMs = Math.max(0, rateLimitCooldownUntil - Date.now());
+  if (cooldownDelayMs <= 0) {
+    return nextConfig;
+  }
+
+  return wait(cooldownDelayMs, nextConfig.signal).then(() => nextConfig);
+}
+
+function retryRateLimitedRequest(instance, error) {
+  normalizeRateLimitError(error);
+
+  const originalConfig = error?.config || {};
+  const retryDelayMs = rememberRateLimitCooldown(error.response);
+  if (!shouldRetryRateLimitedRequest(originalConfig)) {
+    return Promise.reject(error);
+  }
+
+  const method = String(originalConfig.method || "get").toLowerCase();
+  const retryConfig = {
+    ...originalConfig,
+    __monitoringRateLimitRetryCount: getRateLimitRetryCount(originalConfig) + 1,
+  };
+  const cooldownDelayMs = Math.max(retryDelayMs, rateLimitCooldownUntil - Date.now());
+
+  const runRetry = () =>
+    wait(cooldownDelayMs, retryConfig.signal).then(() => instance.request(retryConfig));
+
+  if (!IDEMPOTENT_METHODS.has(method)) {
+    return runRetry();
+  }
+
+  const key = rateLimitRetryKey(originalConfig);
+  if (pendingRateLimitRetries.has(key)) {
+    return pendingRateLimitRetries.get(key);
+  }
+
+  const retryPromise = runRetry().finally(() => {
+    pendingRateLimitRetries.delete(key);
+  });
+  pendingRateLimitRetries.set(key, retryPromise);
+  return retryPromise;
+}
+
 function normalizeRateLimitError(error) {
   if (!isRateLimitError(error)) {
     return error;
@@ -180,8 +410,8 @@ export const apiSession = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use(attachMonitoringActivity);
-apiSession.interceptors.request.use(attachMonitoringActivity);
+api.interceptors.request.use(prepareMonitoringRequest);
+apiSession.interceptors.request.use(prepareMonitoringRequest);
 
 api.interceptors.response.use(
   (response) => {
@@ -191,7 +421,7 @@ api.interceptors.response.use(
   (error) => {
     syncUserFromResponse(error?.response);
     if (error?.response?.status === 429) {
-      normalizeRateLimitError(error);
+      return retryRateLimitedRequest(api, error);
     }
     if (error?.response?.status === 401) {
       clearStoredAuthToken();
@@ -210,7 +440,7 @@ apiSession.interceptors.response.use(
   (error) => {
     syncUserFromResponse(error?.response);
     if (error?.response?.status === 429) {
-      normalizeRateLimitError(error);
+      return retryRateLimitedRequest(apiSession, error);
     }
     if (error?.response?.status === 401) {
       clearStoredAuthToken();
@@ -814,8 +1044,13 @@ export async function saveSystemConfiguration(settings, config = {}) {
       action: "save_system_configuration",
       settings,
     },
-    config
+    {
+      monitoringRateLimitRetry: true,
+      monitoringRateLimitBypassCooldown: true,
+      ...config,
+    }
   );
+  clearRateLimitCooldown();
 
   return {
     ...response,

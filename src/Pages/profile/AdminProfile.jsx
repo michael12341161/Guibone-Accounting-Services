@@ -8,7 +8,7 @@ import {
   normalizeMiddleNameOrNull,
   normalizePersonName,
 } from "../../utils/person_name";
-import { showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 const EMPTY_FORM = Object.freeze({
   first_name: "",
@@ -95,14 +95,12 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated, co
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  useErrorToast(error);
-  useErrorToast(saveError);
-  const [successMessage, setSuccessMessage] = useState("");
+  const [saveError, setSaveError] = useErrorToastState("");
+  const [, setSuccessMessage] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -393,11 +391,7 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated, co
               <div className="h-20 animate-pulse rounded-2xl bg-slate-100" />
             </div>
           </div>
-        ) : error ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </div>
-        ) : (
+        ) : error ? null : (
           <div className="space-y-5">
             <input
               ref={fileInputRef}
@@ -435,18 +429,6 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated, co
                 <p className="mt-1 break-all text-sm text-slate-200">{profile?.email || "-"}</p>
               </div>
             </div>
-
-            {successMessage ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {successMessage}
-              </div>
-            ) : null}
-
-            {saveError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {saveError}
-              </div>
-            ) : null}
 
             {isEditing ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -558,3 +540,4 @@ export default function AdminProfile({ open, onClose, user, onProfileUpdated, co
     </>
   );
 }
+

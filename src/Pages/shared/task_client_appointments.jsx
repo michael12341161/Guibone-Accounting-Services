@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import ApprovedAppointmentsCard from "../../components/tasks/ApprovedAppointmentsCard";
 import { api } from "../../services/api";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 
 function isActiveClient(client) {
   const statusText = String(client?.status || "").trim().toLowerCase();
@@ -17,8 +17,7 @@ export default function TaskClientAppointmentsPage() {
   const [clients, setClients] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
 
   const tasksPath = (() => {
     const p = location.pathname || "";
@@ -96,12 +95,6 @@ export default function TaskClientAppointmentsPage() {
 
   return (
     <div className="space-y-4">
-      {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : null}
-
       <ApprovedAppointmentsCard
         appointments={appointments}
         tasks={tasks}
@@ -112,3 +105,4 @@ export default function TaskClientAppointmentsPage() {
     </div>
   );
 }
+

@@ -9,7 +9,7 @@ import {
   fetchSpecializationTypes,
   updateSpecializationType,
 } from "../../services/api";
-import { showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 function normalizeSpecializationName(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -28,15 +28,13 @@ export default function NewSpecialization() {
   const [specializations, setSpecializations] = useState([]);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [submitting, setSubmitting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [form, setForm] = useState(createInitialForm);
-  const [fieldError, setFieldError] = useState("");
+  const [fieldError, setFieldError] = useErrorToastState("");
   const [search, setSearch] = useState("");
-
-  useErrorToast(error);
 
   const loadSpecializations = async ({ silent } = { silent: false }) => {
     try {
@@ -520,11 +518,9 @@ export default function NewSpecialization() {
             </div>
           </div>
 
-          {fieldError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{fieldError}</div>
-          ) : null}
         </form>
       </Modal>
     </div>
   );
 }
+

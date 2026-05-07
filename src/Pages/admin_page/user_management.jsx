@@ -855,7 +855,7 @@ export default function UserManagement({
   const [viewUser, setViewUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
@@ -1473,14 +1473,6 @@ export default function UserManagement({
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {error ? (
-            <div className="whitespace-pre-line rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
-          {success ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>
-          ) : null}
-
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative w-full sm:w-80">
               <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">

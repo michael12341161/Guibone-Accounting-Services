@@ -16,6 +16,7 @@ import {
   reverseGeocodePhilippineLocation,
   searchPhilippineLocationSuggestions,
 } from "../../utils/business_location";
+import { useErrorToastState } from "../../utils/feedback";
 
 const BUSINESS_MARKER_ICON = L.icon({
   iconRetinaUrl: markerIcon2x,
@@ -177,7 +178,7 @@ function BusinessAddressMapSelector({
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [noResultsMessage, setNoResultsMessage] = useState("");
   const [loadingMessage, setLoadingMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const requestIdRef = useRef(0);
   const activeControllerRef = useRef(null);
   const skipNextAutocompleteRef = useRef("");
@@ -565,10 +566,6 @@ function BusinessAddressMapSelector({
         </div>
       ) : null}
 
-      {error ? (
-        <div className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-2xl px-4 py-3 text-sm"} border border-rose-200 bg-rose-50 text-rose-700`}>{error}</div>
-      ) : null}
-
       {selectedLocation?.displayName ? (
         <div className={`${compact ? "rounded-md px-3 py-2 text-[11px]" : "rounded-2xl px-4 py-3 text-sm"} border border-emerald-200 bg-emerald-50/70 text-slate-700`}>
           <div className="flex items-center gap-2 font-medium text-emerald-700">
@@ -702,3 +699,4 @@ const MemoizedBusinessAddressMapSelector = memo(BusinessAddressMapSelector);
 MemoizedBusinessAddressMapSelector.displayName = "BusinessAddressMapSelector";
 
 export default MemoizedBusinessAddressMapSelector;
+

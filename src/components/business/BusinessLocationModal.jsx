@@ -7,7 +7,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { Modal } from "../UI/modal";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import {
   buildBusinessAddress,
   buildBusinessAddressDetails,
@@ -39,9 +39,7 @@ export default function BusinessLocationModal({
   emptyMessage = "No business details are available yet.",
 }) {
   const [mapLoading, setMapLoading] = useState(false);
-  const [mapError, setMapError] = useState("");
-  useErrorToast(error);
-  useErrorToast(mapError);
+  const [mapError, setMapError] = useErrorToastState("");
   const [mapLocation, setMapLocation] = useState(null);
 
   const businessAddress = useMemo(() => buildBusinessAddress(business), [business]);
@@ -115,9 +113,7 @@ export default function BusinessLocationModal({
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-600">
             {loadingMessage}
           </div>
-        ) : error ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
-        ) : !business ? (
+        ) : error ? null : !business ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-600">
             {emptyMessage}
           </div>
@@ -125,9 +121,7 @@ export default function BusinessLocationModal({
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-600">
             Finding this business on the map...
           </div>
-        ) : mapError ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">{mapError}</div>
-        ) : mapLocation ? (
+        ) : mapError ? null : mapLocation ? (
           <div className="space-y-3">
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <MapContainer
@@ -167,3 +161,4 @@ export default function BusinessLocationModal({
     </Modal>
   );
 }
+

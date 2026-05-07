@@ -31,8 +31,6 @@ const RATE_LIMIT_FIELDS = [
 ];
 
 export default function RateLimitingSection({
-  StatusBanner,
-  systemStatus,
   systemLoading,
   system,
   systemErrors,
@@ -53,8 +51,6 @@ export default function RateLimitingSection({
       </div>
 
       <div className="flex-1 space-y-5 p-5">
-        <StatusBanner type={systemStatus.type}>{systemStatus.text}</StatusBanner>
-
         {systemLoading ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
             Loading rate limiting settings...

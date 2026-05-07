@@ -68,6 +68,15 @@ export function DashboardShell({
   const showCollapsedDesktopSidebar = desktopSidebarCollapsible && !desktopSidebarOpen && desktopSidebarCollapseMode === "icons";
   const desktopSidebarVisible = !desktopSidebarCollapsible || desktopSidebarOpen || showCollapsedDesktopSidebar;
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    document.body.classList.add("monitoring-dashboard-density");
+    return () => document.body.classList.remove("monitoring-dashboard-density");
+  }, []);
+
   const toggleSidebar = () => {
     if (desktopSidebarCollapsible && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
       setDesktopSidebarOpen((open) => !open);
@@ -235,7 +244,7 @@ export function DashboardShell({
 
   return (
     <RouteLoadingContext.Provider value={{ routeLoading, startRouteLoading }}>
-      <div className={rootClassName}>
+      <div className={classNames("monitoring-compact-ui", rootClassName)}>
         <Navbar {...resolvedNavbarProps} />
 
         {desktopSidebarVisible ? (

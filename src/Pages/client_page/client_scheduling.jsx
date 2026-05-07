@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { AUTO_REFRESH_INTERVAL_MS } from "../../components/auto/autoRefreshConfig";
 import { api } from "../../services/api";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 const SCHEDULING_CHANGED_EVENT = "client:scheduling:changed";
 
@@ -61,8 +61,7 @@ export default function ClientScheduling() {
     null;
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
 
   const [timeSlots, setTimeSlots] = useState([]); // [{value,label}]
   const [appointments, setAppointments] = useState([]); // raw list from backend
@@ -484,10 +483,6 @@ export default function ClientScheduling() {
               />
             </div>
 
-            {error ? (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
-            ) : null}
-
             <button
               type="submit"
               className="w-full inline-flex items-center justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
@@ -641,3 +636,4 @@ export default function ClientScheduling() {
     </div>
   );
 }
+

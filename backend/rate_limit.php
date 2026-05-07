@@ -62,6 +62,16 @@ function monitoring_rate_limit_message($value, string $fallback): string
     return substr($message, 0, 240);
 }
 
+function monitoring_rate_limit_storage_driver(): string
+{
+    $driver = strtolower(trim((string)(getenv('RATE_LIMIT_STORAGE') ?: '')));
+    if (in_array($driver, ['auto', 'file', 'redis'], true)) {
+        return $driver;
+    }
+
+    return (getenv('REDIS_HOST') !== false || getenv('REDIS_PORT') !== false) ? 'auto' : 'file';
+}
+
 function monitoring_rate_limit_default_settings(): array
 {
     $defaultWindowSeconds = monitoring_rate_limit_positive_int(getenv('RATE_LIMIT_WINDOW_SECONDS'), 60);
@@ -189,12 +199,16 @@ function monitoring_rate_limit_config(): array
 
     return [
         'enabled' => !empty($settings['enabled']),
+        'storage' => monitoring_rate_limit_storage_driver(),
         'redis' => [
             'scheme' => 'tcp',
             'host' => getenv('REDIS_HOST') ?: '127.0.0.1',
             'port' => monitoring_rate_limit_positive_int(getenv('REDIS_PORT'), 6379),
             'timeout' => 0.5,
             'read_write_timeout' => 0.5,
+        ],
+        'file' => [
+            'directory' => getenv('RATE_LIMIT_FILE_DIR') ?: __DIR__ . '/data/rate_limit',
         ],
         'default' => [
             'max_requests' => max(1, (int)$settings['default_max_requests']),
@@ -254,10 +268,54 @@ function monitoring_rate_limit_has_auth_cookie(): bool
     return false;
 }
 
+function monitoring_rate_limit_skip_passive_requests(): bool
+{
+    return monitoring_rate_limit_bool(getenv('RATE_LIMIT_SKIP_PASSIVE_REQUESTS'), true);
+}
+
+function monitoring_rate_limit_limit_read_requests(): bool
+{
+    return monitoring_rate_limit_bool(getenv('RATE_LIMIT_LIMIT_READ_REQUESTS'), false);
+}
+
+function monitoring_rate_limit_is_settings_update(string $endpoint): bool
+{
+    $endpointName = strtolower(basename(trim($endpoint)));
+    $method = strtoupper(trim((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')));
+    if ($endpointName !== 'user_update.php' || $method !== 'POST') {
+        return false;
+    }
+
+    $rawPayload = file_get_contents('php://input');
+    if (!is_string($rawPayload) || trim($rawPayload) === '') {
+        return false;
+    }
+
+    $payload = json_decode($rawPayload, true);
+    if (!is_array($payload)) {
+        return false;
+    }
+
+    return strtolower(trim((string)($payload['action'] ?? ''))) === 'save_system_configuration';
+}
+
 function monitoring_rate_limit_should_skip_passive_request(string $endpoint): bool
 {
     $method = strtoupper(trim((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')));
     if (!in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+        return false;
+    }
+
+    $endpointName = strtolower(basename(trim($endpoint)));
+    if (in_array($endpointName, ['login.php', 'logout.php'], true)) {
+        return false;
+    }
+
+    if (!monitoring_rate_limit_limit_read_requests()) {
+        return true;
+    }
+
+    if (!monitoring_rate_limit_skip_passive_requests()) {
         return false;
     }
 
@@ -269,8 +327,7 @@ function monitoring_rate_limit_should_skip_passive_request(string $endpoint): bo
         return false;
     }
 
-    $endpointName = strtolower(basename(trim($endpoint)));
-    return !in_array($endpointName, ['login.php', 'logout.php'], true);
+    return true;
 }
 
 function monitoring_rate_limit_settings_for_endpoint(array $config, string $endpoint): array
@@ -312,6 +369,213 @@ function monitoring_rate_limit_redis_client(array $config)
     $client->ping();
 
     return $client;
+}
+
+function monitoring_rate_limit_redis_increment(array $config, string $key, int $windowSeconds): array
+{
+    $redis = monitoring_rate_limit_redis_client($config);
+    $currentCount = (int)$redis->incr($key);
+
+    if ($currentCount === 1) {
+        $redis->expire($key, $windowSeconds);
+    }
+
+    $ttl = (int)$redis->ttl($key);
+    if ($ttl < 0) {
+        $redis->expire($key, $windowSeconds);
+        $ttl = $windowSeconds;
+    }
+
+    return [
+        'count' => $currentCount,
+        'ttl' => max(1, $ttl),
+        'storage' => 'redis',
+    ];
+}
+
+function monitoring_rate_limit_file_directory(array $config): string
+{
+    $fileConfig = is_array($config['file'] ?? null) ? $config['file'] : [];
+    $directory = trim((string)($fileConfig['directory'] ?? ''));
+    return $directory !== '' ? $directory : __DIR__ . '/data/rate_limit';
+}
+
+function monitoring_rate_limit_file_directories(array $config): array
+{
+    return array_values(array_unique([
+        monitoring_rate_limit_file_directory($config),
+        rtrim(sys_get_temp_dir(), "\\/") . DIRECTORY_SEPARATOR . 'monitoring_rate_limit',
+    ]));
+}
+
+function monitoring_rate_limit_ensure_file_directory(string $directory): string
+{
+    if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+        throw new RuntimeException('Rate limiter file directory could not be created: ' . $directory);
+    }
+
+    if (!is_writable($directory)) {
+        throw new RuntimeException('Rate limiter file directory is not writable: ' . $directory);
+    }
+
+    return $directory;
+}
+
+function monitoring_rate_limit_file_path(array $config, string $key): string
+{
+    $directories = monitoring_rate_limit_file_directories($config);
+    $errors = [];
+
+    foreach (array_unique($directories) as $directory) {
+        try {
+            $directory = monitoring_rate_limit_ensure_file_directory($directory);
+            return rtrim($directory, "\\/") . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.json';
+        } catch (Throwable $e) {
+            $errors[] = $e->getMessage();
+        }
+    }
+
+    throw new RuntimeException('Rate limiter file directory is unavailable: ' . implode('; ', $errors));
+}
+
+function monitoring_rate_limit_file_increment(array $config, string $key, int $windowSeconds): array
+{
+    $path = monitoring_rate_limit_file_path($config, $key);
+    $handle = @fopen($path, 'c+');
+    if ($handle === false) {
+        throw new RuntimeException('Rate limiter file could not be opened.');
+    }
+
+    $locked = false;
+    try {
+        if (!flock($handle, LOCK_EX)) {
+            throw new RuntimeException('Rate limiter file could not be locked.');
+        }
+
+        $locked = true;
+        rewind($handle);
+        $raw = stream_get_contents($handle);
+        $state = json_decode((string)$raw, true);
+        if (!is_array($state)) {
+            $state = [];
+        }
+
+        $now = time();
+        $expiresAt = monitoring_rate_limit_positive_int($state['expires_at'] ?? 0, 0, 0);
+        $currentCount = monitoring_rate_limit_positive_int($state['count'] ?? 0, 0, 0);
+        if ($expiresAt <= $now) {
+            $expiresAt = $now + $windowSeconds;
+            $currentCount = 0;
+        }
+
+        $currentCount++;
+        $payload = json_encode([
+            'count' => $currentCount,
+            'expires_at' => $expiresAt,
+        ]);
+        if ($payload === false) {
+            throw new RuntimeException('Rate limiter file state could not be encoded.');
+        }
+
+        rewind($handle);
+        if (!ftruncate($handle, 0)) {
+            throw new RuntimeException('Rate limiter file could not be truncated.');
+        }
+        if (fwrite($handle, $payload) === false) {
+            throw new RuntimeException('Rate limiter file could not be written.');
+        }
+        fflush($handle);
+
+        return [
+            'count' => $currentCount,
+            'ttl' => max(1, $expiresAt - $now),
+            'storage' => 'file',
+        ];
+    } finally {
+        if ($locked) {
+            flock($handle, LOCK_UN);
+        }
+        fclose($handle);
+    }
+}
+
+function monitoring_rate_limit_clear_file_storage(array $config): int
+{
+    $deleted = 0;
+
+    foreach (monitoring_rate_limit_file_directories($config) as $directory) {
+        $directory = rtrim((string)$directory, "\\/");
+        if ($directory === '' || !is_dir($directory)) {
+            continue;
+        }
+
+        $realDirectory = realpath($directory);
+        if ($realDirectory === false) {
+            continue;
+        }
+
+        $files = glob($directory . DIRECTORY_SEPARATOR . '*.json');
+        if (!is_array($files)) {
+            continue;
+        }
+
+        foreach ($files as $file) {
+            $realFile = realpath((string)$file);
+            if ($realFile === false || !is_file($realFile)) {
+                continue;
+            }
+
+            $directoryPrefix = rtrim($realDirectory, "\\/") . DIRECTORY_SEPARATOR;
+            if (stripos($realFile, $directoryPrefix) !== 0) {
+                continue;
+            }
+
+            if (@unlink($realFile)) {
+                $deleted++;
+            }
+        }
+    }
+
+    return $deleted;
+}
+
+function monitoring_rate_limit_clear_redis_storage(array $config): int
+{
+    $redis = monitoring_rate_limit_redis_client($config);
+    $keys = $redis->keys('monitoring:rate_limit:*');
+    if (empty($keys)) {
+        return 0;
+    }
+
+    return (int)$redis->del($keys);
+}
+
+function monitoring_rate_limit_clear_storage(): array
+{
+    $config = monitoring_rate_limit_config();
+    $storageDriver = strtolower(trim((string)($config['storage'] ?? 'file')));
+    $result = [
+        'file' => 0,
+        'redis' => 0,
+    ];
+
+    if (in_array($storageDriver, ['file', 'auto'], true)) {
+        try {
+            $result['file'] = monitoring_rate_limit_clear_file_storage($config);
+        } catch (Throwable $fileError) {
+            error_log('Rate limiter file counters were not cleared: ' . $fileError->getMessage());
+        }
+    }
+
+    if (in_array($storageDriver, ['redis', 'auto'], true)) {
+        try {
+            $result['redis'] = monitoring_rate_limit_clear_redis_storage($config);
+        } catch (Throwable $redisError) {
+            error_log('Rate limiter Redis counters were not cleared: ' . $redisError->getMessage());
+        }
+    }
+
+    return $result;
 }
 
 function monitoring_rate_limit_key(string $endpoint, string $ip): string
@@ -397,6 +661,10 @@ function monitoring_enforce_rate_limit(?string $endpoint = null): void
     }
 
     $currentEndpoint = trim((string)($endpoint ?: monitoring_rate_limit_current_endpoint()));
+    if (monitoring_rate_limit_is_settings_update($currentEndpoint)) {
+        return;
+    }
+
     if (monitoring_rate_limit_should_skip_passive_request($currentEndpoint)) {
         return;
     }
@@ -407,49 +675,76 @@ function monitoring_enforce_rate_limit(?string $endpoint = null): void
     $message = $settings['message'] !== '' ? $settings['message'] : 'Too many requests.';
     $clientIp = monitoring_rate_limit_client_ip();
     $key = monitoring_rate_limit_key($currentEndpoint, $clientIp);
+    $storageDriver = strtolower(trim((string)($config['storage'] ?? 'file')));
 
-    try {
-        $redis = monitoring_rate_limit_redis_client($config);
-        $currentCount = (int)$redis->incr($key);
+    if ($storageDriver === 'file') {
+        try {
+            $rateLimitResult = monitoring_rate_limit_file_increment($config, $key, $windowSeconds);
+        } catch (Throwable $fileError) {
+            error_log('Rate limiter file store unavailable, trying Redis: ' . $fileError->getMessage());
 
-        if ($currentCount === 1) {
-            $redis->expire($key, $windowSeconds);
+            try {
+                $rateLimitResult = monitoring_rate_limit_redis_increment($config, $key, $windowSeconds);
+            } catch (Throwable $redisError) {
+                error_log(
+                    'Rate limiter skipped: file store unavailable (' . $fileError->getMessage()
+                    . ') and Redis unavailable (' . $redisError->getMessage() . ')'
+                );
+
+                if (!empty($config['fail_open'])) {
+                    return;
+                }
+
+                monitoring_rate_limit_json_response(503, [
+                    'success' => false,
+                    'message' => 'Rate limiter is unavailable. Please try again later.',
+                ]);
+            }
         }
+    } else {
+        try {
+            $rateLimitResult = monitoring_rate_limit_redis_increment($config, $key, $windowSeconds);
+        } catch (Throwable $redisError) {
+            error_log('Rate limiter Redis unavailable, using file store: ' . $redisError->getMessage());
 
-        $ttl = (int)$redis->ttl($key);
-        if ($ttl < 0) {
-            $redis->expire($key, $windowSeconds);
-            $ttl = $windowSeconds;
+            try {
+                $rateLimitResult = monitoring_rate_limit_file_increment($config, $key, $windowSeconds);
+            } catch (Throwable $fileError) {
+                error_log(
+                    'Rate limiter skipped: Redis unavailable (' . $redisError->getMessage()
+                    . ') and file store unavailable (' . $fileError->getMessage() . ')'
+                );
+
+                if (!empty($config['fail_open'])) {
+                    return;
+                }
+
+                monitoring_rate_limit_json_response(503, [
+                    'success' => false,
+                    'message' => 'Rate limiter is unavailable. Please try again later.',
+                ]);
+            }
         }
-
-        $remaining = max(0, $maxRequests - $currentCount);
-        header('X-RateLimit-Limit: ' . $maxRequests);
-        header('X-RateLimit-Remaining: ' . $remaining);
-        header('X-RateLimit-Reset: ' . (time() + $ttl));
-
-        if ($currentCount <= $maxRequests) {
-            return;
-        }
-
-        header('Retry-After: ' . max(1, $ttl));
-        monitoring_rate_limit_json_response(429, [
-            'success' => false,
-            'rate_limited' => true,
-            'message' => $message,
-            'limit' => $maxRequests,
-            'window_seconds' => $windowSeconds,
-            'retry_after' => max(1, $ttl),
-        ]);
-    } catch (Throwable $e) {
-        error_log('Rate limiter skipped: ' . $e->getMessage());
-
-        if (!empty($config['fail_open'])) {
-            return;
-        }
-
-        monitoring_rate_limit_json_response(503, [
-            'success' => false,
-            'message' => 'Rate limiter is unavailable. Please try again later.',
-        ]);
     }
+
+    $currentCount = max(1, (int)($rateLimitResult['count'] ?? 1));
+    $ttl = max(1, (int)($rateLimitResult['ttl'] ?? $windowSeconds));
+    $remaining = max(0, $maxRequests - $currentCount);
+    header('X-RateLimit-Limit: ' . $maxRequests);
+    header('X-RateLimit-Remaining: ' . $remaining);
+    header('X-RateLimit-Reset: ' . (time() + $ttl));
+
+    if ($currentCount <= $maxRequests) {
+        return;
+    }
+
+    header('Retry-After: ' . $ttl);
+    monitoring_rate_limit_json_response(429, [
+        'success' => false,
+        'rate_limited' => true,
+        'message' => $message,
+        'limit' => $maxRequests,
+        'window_seconds' => $windowSeconds,
+        'retry_after' => $ttl,
+    ]);
 }

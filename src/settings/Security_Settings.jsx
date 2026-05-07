@@ -38,8 +38,6 @@ const SECURITY_FIELDS = [
 ];
 
 export default function SecuritySettingsSection({
-  StatusBanner,
-  securityStatus,
   securityLoading,
   security,
   securityErrors,
@@ -58,8 +56,6 @@ export default function SecuritySettingsSection({
       </div>
 
       <div className="space-y-5 p-5">
-        <StatusBanner type={securityStatus.type}>{securityStatus.text}</StatusBanner>
-
         {securityLoading ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
             Loading security settings...

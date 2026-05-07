@@ -21,6 +21,7 @@ export function Modal({
   closeButtonClassName = "",
   bodyClassName = "",
   footerClassName = "",
+  densityPreserve = false,
 }) {
   const [visible, setVisible] = useState(open);
   const [rendered, setRendered] = useState(open);
@@ -98,8 +99,9 @@ export function Modal({
             aria-describedby={description ? descriptionId : undefined}
             onClick={(event) => event.stopPropagation()}
             className={cn(
-              "relative w-full",
+              "monitoring-density-panel relative w-full",
               sizeClasses,
+              densityPreserve && "monitoring-density-preserve",
               "rounded-lg border border-slate-200 bg-white text-slate-900 shadow-lg",
               "transition-[opacity,transform] duration-200 ease-out",
               visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",

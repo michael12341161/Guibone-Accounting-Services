@@ -11,7 +11,7 @@ import { useModulePermissions } from "../../context/ModulePermissionsContext";
 import { useAuth } from "../../hooks/useAuth";
 import { formatDate } from "../../utils/helpers";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
-import { showErrorToast, showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showErrorToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 import {
   DEFAULT_CONSULTATION_TIME_SLOTS,
   getConfiguredConsultationTimesForDate,
@@ -214,7 +214,7 @@ export default function SchedulingManagementAdmin() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [rows, setRows] = useState([]);
   const [updatingId, setUpdatingId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -223,8 +223,8 @@ export default function SchedulingManagementAdmin() {
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [slotsSaving, setSlotsSaving] = useState(false);
-  const [slotError, setSlotError] = useState("");
-  const [slotNotice, setSlotNotice] = useState("");
+  const [slotError, setSlotError] = useErrorToastState("");
+  const [, setSlotNotice] = useState("");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null); // { id, status }
@@ -236,11 +236,8 @@ export default function SchedulingManagementAdmin() {
     reason: "",
   });
   const [rescheduling, setRescheduling] = useState(false);
-  const [rescheduleError, setRescheduleError] = useState("");
-  useErrorToast(error);
-  useErrorToast(slotError);
-  useErrorToast(rescheduleError);
-  const [rescheduleNotice, setRescheduleNotice] = useState("");
+  const [rescheduleError, setRescheduleError] = useErrorToastState("");
+  const [, setRescheduleNotice] = useState("");
 
   const needsConsultationSlots =
     canConfigureConsultationTimes || canRescheduleConsultations;
@@ -914,16 +911,6 @@ export default function SchedulingManagementAdmin() {
             </select>
           </div>
 
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
-          {rescheduleNotice ? (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              {rescheduleNotice}
-            </div>
-          ) : null}
-
           <DataTable
             columns={columns}
             rows={error ? [] : tableRows}
@@ -1023,12 +1010,6 @@ export default function SchedulingManagementAdmin() {
         size="md"
       >
         <form onSubmit={onRescheduleSubmit} className="space-y-4">
-          {rescheduleError ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {rescheduleError}
-            </div>
-          ) : null}
-
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-4">
               <div>
@@ -1214,18 +1195,6 @@ export default function SchedulingManagementAdmin() {
               </div>
             </div>
 
-            {slotError ? (
-              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {slotError}
-              </div>
-            ) : null}
-
-            {slotNotice ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {slotNotice}
-              </div>
-            ) : null}
-
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
@@ -1279,3 +1248,4 @@ export default function SchedulingManagementAdmin() {
     </div>
   );
 }
+

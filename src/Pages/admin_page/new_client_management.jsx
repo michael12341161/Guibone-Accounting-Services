@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { DataTable } from "../../components/UI/table";
 import { Modal } from "../../components/UI/modal";
 import { joinPersonName } from "../../utils/person_name";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 
 const PAGE_SIZE = 10;
 
@@ -121,8 +121,8 @@ function matchesSearch(client, search) {
 export default function NewClientManagement() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [error, setError] = useErrorToastState("");
+  const [, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [actionState, setActionState] = useState({ clientId: null, status: "" });
@@ -134,9 +134,7 @@ export default function NewClientManagement() {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectTargetClient, setRejectTargetClient] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
-  const [rejectionError, setRejectionError] = useState("");
-  useErrorToast(error);
-  useErrorToast(rejectionError);
+  const [rejectionError, setRejectionError] = useErrorToastState("");
 
   const loadClients = async ({ silent } = { silent: false }) => {
     try {
@@ -535,16 +533,6 @@ export default function NewClientManagement() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {error ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
-          {success ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {success}
-            </div>
-          ) : null}
-
           <DataTable
             columns={columns}
             rows={pagedClients}
@@ -636,9 +624,6 @@ export default function NewClientManagement() {
             <div className="mt-1 text-xs text-slate-500">Be specific so the client knows what needs to be corrected before resubmitting.</div>
           </div>
 
-          {rejectionError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{rejectionError}</div>
-          ) : null}
         </div>
       </Modal>
 
@@ -811,3 +796,4 @@ export default function NewClientManagement() {
     </div>
   );
 }
+

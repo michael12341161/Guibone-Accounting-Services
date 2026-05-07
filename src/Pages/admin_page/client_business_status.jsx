@@ -12,7 +12,7 @@ import { api } from "../../services/api";
 import { getDocumentStatusBadgeClass } from "../../utils/document_management";
 import { hasFeatureActionAccess, hasModuleAccess } from "../../utils/module_permissions";
 import { joinPersonName } from "../../utils/person_name";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 
 function fullName(client) {
   return joinPersonName([client?.first_name, client?.middle_name, client?.last_name]) || "-";
@@ -47,8 +47,7 @@ export default function ClientBusinessStatusPage() {
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useErrorToast(error);
+  const [error, setError] = useErrorToastState("");
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -240,11 +239,6 @@ export default function ClientBusinessStatusPage() {
           title="Business Status"
           description="Review which client businesses are already registered and which ones still need a Business Permit."
         />
-        <CardContent className="space-y-4">
-          {error ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-        </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -370,3 +364,4 @@ export default function ClientBusinessStatusPage() {
     </div>
   );
 }
+

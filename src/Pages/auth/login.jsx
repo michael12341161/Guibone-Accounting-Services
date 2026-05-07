@@ -12,7 +12,7 @@ import LoginVisualPanel from "../../components/login_UI/login_visual_panel";
 import { RouteLoadingPanel } from "../../components/layout/route_loading_panel";
 import { useTheme } from "../../context/ThemeContext";
 import { captureAuditContext } from "../../utils/audit";
-import { showInfoToast, showSuccessToast } from "../../utils/feedback";
+import { showInfoToast, showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 function createCaptcha() {
   return {
@@ -40,8 +40,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [captcha, setCaptcha] = useState(() => createCaptcha());
   const [sum, setSum] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [captchaError, setCaptchaError] = useState("");
+  const [loginError, setLoginError] = useErrorToastState("");
+  const [captchaError, setCaptchaError] = useErrorToastState("");
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotRequired, setForgotRequired] = useState(false);

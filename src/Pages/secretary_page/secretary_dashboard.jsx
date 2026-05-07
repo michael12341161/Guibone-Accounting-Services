@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import PieChart from "../../components/charts/PieChart";
 import Barchart from "../../components/charts/Barchart";
 import { hasModuleAccess } from "../../utils/module_permissions";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 
 const TASK_WINDOW_COLORS = {
   Today: "#6366f1",
@@ -40,8 +40,7 @@ export default function SecretaryDashboard({ user, onLogout }) {
   const [clients, setClients] = useState([]);
   const [taskAddOpen, setTaskAddOpen] = useState(false);
   const [tLoading, setTLoading] = useState(false);
-  const [tError, setTError] = useState("");
-  useErrorToast(tError);
+  const [tError, setTError] = useErrorToastState("");
   const [tSuccess, setTSuccess] = useState("");
   const [taskForm, setTaskForm] = useState({ client_id: "", title: "", description: "", deadline: "", status: "Pending" });
 
@@ -336,3 +335,4 @@ export default function SecretaryDashboard({ user, onLogout }) {
     </SecretaryLayout>
   );
 }
+

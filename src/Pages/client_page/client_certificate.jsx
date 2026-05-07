@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "../../components/UI/card";
 import { Modal } from "../../components/UI/modal";
 import { useAuth } from "../../hooks/useAuth";
 import { api, fetchCertificateRecord } from "../../services/api";
-import { useErrorToast } from "../../utils/feedback";
+import { useErrorToastState } from "../../utils/feedback";
 import { joinPersonName, normalizeNameForComparison } from "../../utils/person_name";
 
 const PREVIEW_NAVIGATION_THRESHOLD = 3;
@@ -286,7 +286,7 @@ export default function ClientCertificatePage() {
   const requestedPreviewIdsRef = useRef(new Set());
   const isMountedRef = useRef(true);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [tasks, setTasks] = useState([]);
   const [previewSearchTerm, setPreviewSearchTerm] = useState("");
   const [selectedCertificateId, setSelectedCertificateId] = useState("");
@@ -295,8 +295,6 @@ export default function ClientCertificatePage() {
   const [certificatePreviewErrorMap, setCertificatePreviewErrorMap] = useState({});
   const [canScrollPreviewLeft, setCanScrollPreviewLeft] = useState(false);
   const [canScrollPreviewRight, setCanScrollPreviewRight] = useState(false);
-
-  useErrorToast(error);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -599,10 +597,6 @@ export default function ClientCertificatePage() {
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">My Certificate</h1>
         </CardHeader>
         <CardContent>
-          {error ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
           {!loading && certificateEntries.length > 0 ? (
             <div className="mb-4 flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <label className="relative block w-full sm:max-w-[320px]">
@@ -781,3 +775,4 @@ export default function ClientCertificatePage() {
     </div>
   );
 }
+

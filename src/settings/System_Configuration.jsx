@@ -22,14 +22,15 @@ import {
   MONITORING_SCHEDULED_BACKUP_EVENT,
   MONITORING_SYSTEM_CONFIG_UPDATED_EVENT,
   normalizeBackupSchedule,
-  normalizeFeatureOptions,
   saveBackupSchedule,
   saveSecuritySettings,
   saveSystemConfiguration,
   sendSystemTestEmail,
 } from "../services/api";
 import { formatDateTime } from "../utils/helpers";
-import { showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToast } from "../utils/feedback";
+import { showDangerConfirmDialog, showErrorToast, showSuccessToast, useErrorToastState } from "../utils/feedback";
+
+const AUDIT_LOGS_PER_PAGE = 10;
 
 function parseSecurityNumber(value) {
   const normalized = String(value ?? "").trim();
@@ -98,72 +99,6 @@ function isValidUrlValue(value) {
 
 function isValidEmailValue(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim());
-}
-
-function sanitizeFeatureOptionKey(value) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "")
-    .replace(/^[^a-z]+/, "");
-}
-
-function humanizeFeatureOptionKey(value) {
-  const normalized = String(value ?? "").trim().replace(/[_-]+/g, " ");
-  return normalized
-    ? normalized.replace(/\b\w/g, (letter) => letter.toUpperCase())
-    : "Feature option";
-}
-
-function createFeatureOption() {
-  return {
-    key: "",
-    label: "",
-    description: "",
-    enabled: false,
-  };
-}
-
-function buildFeatureOptionsPayload(options) {
-  return normalizeFeatureOptions(options).map((option) => ({
-    ...option,
-    label: String(option.label || humanizeFeatureOptionKey(option.key)).trim(),
-  }));
-}
-
-function validateFeatureOptions(options) {
-  const source = Array.isArray(options) ? options : [];
-  const seen = new Set();
-
-  if (source.length > 25) {
-    return "Feature options cannot exceed 25 items.";
-  }
-
-  for (const option of source) {
-    const key = String(option?.key ?? "").trim().toLowerCase();
-    const label = String(option?.label ?? "").trim();
-    const description = String(option?.description ?? "").trim();
-
-    if (!key && !label && !description) {
-      continue;
-    }
-    if (!/^[a-z][a-z0-9_]{1,63}$/.test(key)) {
-      return "Feature option keys must start with a letter and use lowercase letters, numbers, or underscores.";
-    }
-    if (seen.has(key)) {
-      return "Feature option keys must be unique.";
-    }
-    if (label.length > 80) {
-      return "Feature option labels must be 80 characters or fewer.";
-    }
-    if (description.length > 200) {
-      return "Feature option descriptions must be 200 characters or fewer.";
-    }
-    seen.add(key);
-  }
-
-  return "";
 }
 
 function validateSystemConfiguration(values) {
@@ -258,11 +193,6 @@ function validateSystemConfiguration(values) {
     errors.rateLimitLoginMessage = "Login rate limit message must be 240 characters or fewer.";
   }
 
-  const featureOptionsError = validateFeatureOptions(values.featureOptions);
-  if (featureOptionsError) {
-    errors.featureOptions = featureOptionsError;
-  }
-
   if (!smtpHost) {
     errors.smtpHost = "SMTP host is required.";
   } else if (/\s/.test(smtpHost)) {
@@ -328,7 +258,6 @@ function buildSystemPayload(values) {
       String(values.rateLimitMessage ?? "").trim() || DEFAULT_SYSTEM_CONFIGURATION.rateLimitMessage,
     rateLimitLoginMessage:
       String(values.rateLimitLoginMessage ?? "").trim() || DEFAULT_SYSTEM_CONFIGURATION.rateLimitLoginMessage,
-    featureOptions: buildFeatureOptionsPayload(values.featureOptions),
     smtpHost: String(values.smtpHost ?? "").trim() || DEFAULT_SYSTEM_CONFIGURATION.smtpHost,
     smtpPort: parseSecurityNumber(values.smtpPort) ?? DEFAULT_SYSTEM_CONFIGURATION.smtpPort,
     smtpUsername: String(values.smtpUsername ?? "").trim(),
@@ -417,20 +346,7 @@ function parseDateTimeLocalInput(value) {
   return date.toISOString();
 }
 
-function StatusBanner({ type, children }) {
-  if (!children) return null;
-
-  const tone =
-    type === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : "border-rose-200 bg-rose-50 text-rose-700";
-
-  return <div className={`rounded-lg border px-4 py-3 text-xs ${tone}`}>{children}</div>;
-}
-
 function SystemConfigurationSection({
-  StatusBanner,
-  systemStatus,
   systemLoading,
   systemSummaryCards,
   system,
@@ -438,9 +354,6 @@ function SystemConfigurationSection({
   updateSystemText,
   updateSystemToggle,
   updateSystemReminderInterval,
-  addFeatureOption,
-  updateFeatureOption,
-  removeFeatureOption,
   systemTestRecipient,
   updateSystemTestRecipient,
   user,
@@ -459,8 +372,6 @@ function SystemConfigurationSection({
         </p>
       </div>
       <div className="flex-1 space-y-5 p-5">
-        <StatusBanner type={systemStatus.type}>{systemStatus.text}</StatusBanner>
-
         {systemLoading ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
             Loading system configuration...
@@ -703,102 +614,6 @@ function SystemConfigurationSection({
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-800">Feature Options</h4>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Store named switches that upcoming modules can read when they are connected.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={addFeatureOption}
-                  disabled={(Array.isArray(system.featureOptions) ? system.featureOptions.length : 0) >= 25}
-                  className="inline-flex items-center justify-center rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  Add Option
-                </button>
-              </div>
-
-              {systemErrors.featureOptions ? (
-                <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  {systemErrors.featureOptions}
-                </div>
-              ) : null}
-
-              {Array.isArray(system.featureOptions) && system.featureOptions.length > 0 ? (
-                <div className="space-y-3">
-                  {system.featureOptions.map((option, index) => (
-                    <div key={index} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,0.8fr)_minmax(0,1fr)_auto_auto] lg:items-end">
-                        <div>
-                          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Key
-                          </label>
-                          <input
-                            type="text"
-                            value={option.key}
-                            onChange={(event) => updateFeatureOption(index, "key", event.target.value)}
-                            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-                            placeholder="client_portal_v2"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Label
-                          </label>
-                          <input
-                            type="text"
-                            value={option.label}
-                            onChange={(event) => updateFeatureOption(index, "label", event.target.value.trimStart())}
-                            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-                            placeholder={humanizeFeatureOptionKey(option.key)}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Description
-                          </label>
-                          <input
-                            type="text"
-                            value={option.description}
-                            onChange={(event) => updateFeatureOption(index, "description", event.target.value.trimStart())}
-                            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15"
-                            placeholder="Optional note"
-                          />
-                        </div>
-
-                        <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={!!option.enabled}
-                            onChange={(event) => updateFeatureOption(index, "enabled", event.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
-                          />
-                          Enabled
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => removeFeatureOption(index)}
-                          className="rounded-md border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
-                  No feature options configured yet.
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
               <div className="mb-4">
                 <h4 className="text-sm font-semibold text-slate-800">Email (SMTP)</h4>
                 <p className="mt-1 text-xs text-slate-500">
@@ -952,7 +767,7 @@ export default function AdminSettings() {
   const [securityErrors, setSecurityErrors] = React.useState({});
   const [securityLoading, setSecurityLoading] = React.useState(false);
   const [securitySaving, setSecuritySaving] = React.useState(false);
-  const [securityStatus, setSecurityStatus] = React.useState({ type: "", text: "" });
+  const [, setSecurityStatus] = React.useState({ type: "", text: "" });
   const [system, setSystem] = React.useState(DEFAULT_SYSTEM_CONFIGURATION);
   const [savedSystem, setSavedSystem] = React.useState(DEFAULT_SYSTEM_CONFIGURATION);
   const [systemErrors, setSystemErrors] = React.useState({});
@@ -960,7 +775,7 @@ export default function AdminSettings() {
   const [systemSaving, setSystemSaving] = React.useState(false);
   const [systemTestSending, setSystemTestSending] = React.useState(false);
   const [systemTestRecipient, setSystemTestRecipient] = React.useState(() => String(user?.email ?? "").trim());
-  const [systemStatus, setSystemStatus] = React.useState({ type: "", text: "" });
+  const [, setSystemStatus] = React.useState({ type: "", text: "" });
   const [backupSummary, setBackupSummary] = React.useState({
     database_name: "",
     table_count: 0,
@@ -984,24 +799,23 @@ export default function AdminSettings() {
   const [backupScheduleSaving, setBackupScheduleSaving] = React.useState(false);
   const [backupDownloading, setBackupDownloading] = React.useState("");
   const [backupDeleting, setBackupDeleting] = React.useState("");
-  const [backupStatus, setBackupStatus] = React.useState({ type: "", text: "" });
+  const [, setBackupStatus] = React.useState({ type: "", text: "" });
   const [backupExportTable, setBackupExportTable] = React.useState("");
   const [backupExportFormat, setBackupExportFormat] = React.useState("csv");
   const [backupCleanupDays, setBackupCleanupDays] = React.useState(30);
   const [backupRefreshKey, setBackupRefreshKey] = React.useState(0);
   const [auditLogs, setAuditLogs] = React.useState([]);
   const [auditLoading, setAuditLoading] = React.useState(false);
-  const [auditError, setAuditError] = React.useState("");
-  useErrorToast(auditError);
+  const [auditError, setAuditError] = useErrorToastState("");
   const [auditSearch, setAuditSearch] = React.useState("");
   const [auditRange, setAuditRange] = React.useState("30d");
   const [auditPage, setAuditPage] = React.useState(1);
-  const [auditPerPage, setAuditPerPage] = React.useState(25);
+  const auditPerPage = AUDIT_LOGS_PER_PAGE;
   const [auditRefreshKey, setAuditRefreshKey] = React.useState(0);
   const [auditMeta, setAuditMeta] = React.useState({
     total: 0,
     page: 1,
-    per_page: 25,
+    per_page: AUDIT_LOGS_PER_PAGE,
     total_pages: 1,
   });
   const deferredAuditSearch = React.useDeferredValue(auditSearch);
@@ -1402,54 +1216,6 @@ export default function AdminSettings() {
     setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
   };
 
-  const updateFeatureOption = (index, key, value) => {
-    setSystem((current) => {
-      const featureOptions = Array.isArray(current.featureOptions) ? [...current.featureOptions] : [];
-      const option = featureOptions[index] || createFeatureOption();
-      featureOptions[index] = {
-        ...option,
-        [key]: key === "key" ? sanitizeFeatureOptionKey(value) : value,
-      };
-      return {
-        ...current,
-        featureOptions,
-      };
-    });
-    setSystemErrors((current) => {
-      if (!current.featureOptions) return current;
-
-      const nextErrors = { ...current };
-      delete nextErrors.featureOptions;
-      return nextErrors;
-    });
-    setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
-  };
-
-  const addFeatureOption = () => {
-    setSystem((current) => ({
-      ...current,
-      featureOptions: [...(Array.isArray(current.featureOptions) ? current.featureOptions : []), createFeatureOption()],
-    }));
-    setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
-  };
-
-  const removeFeatureOption = (index) => {
-    setSystem((current) => ({
-      ...current,
-      featureOptions: (Array.isArray(current.featureOptions) ? current.featureOptions : []).filter(
-        (_, optionIndex) => optionIndex !== index
-      ),
-    }));
-    setSystemErrors((current) => {
-      if (!current.featureOptions) return current;
-
-      const nextErrors = { ...current };
-      delete nextErrors.featureOptions;
-      return nextErrors;
-    });
-    setSystemStatus((current) => (current.type ? { type: "", text: "" } : current));
-  };
-
   const handleSaveSecurity = async () => {
     const errors = validateSecuritySettings(security);
     if (Object.keys(errors).length > 0) {
@@ -1539,10 +1305,6 @@ export default function AdminSettings() {
       setSystem(savedSettings);
       setSavedSystem(savedSettings);
       setSystemErrors({});
-      setSystemStatus({
-        type: "success",
-        text: response?.data?.message || "System configuration saved successfully.",
-      });
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -1558,7 +1320,7 @@ export default function AdminSettings() {
           ? savedSettings.sendClientStatusEmails
             ? "Client approval and rejection emails are now enabled."
             : "Client approval and rejection emails are now disabled."
-          : response?.data?.message || "System configuration saved successfully.",
+          : "",
       });
     } catch (error) {
       setSystemErrors(error?.response?.data?.errors || {});
@@ -2034,8 +1796,6 @@ export default function AdminSettings() {
   ];
 
   const sectionProps = {
-    StatusBanner,
-    securityStatus,
     securityLoading,
     security,
     securityErrors,
@@ -2043,7 +1803,6 @@ export default function AdminSettings() {
     updateLoginVerificationToggle,
     handleSaveSecurity,
     securitySaving,
-    backupStatus,
     backupLoading,
     backupSummary,
     backupCreating,
@@ -2075,7 +1834,6 @@ export default function AdminSettings() {
     handleDownloadBackup,
     backupDeleting,
     handleDeleteBackup,
-    systemStatus,
     systemLoading,
     systemSummaryCards,
     system,
@@ -2083,9 +1841,6 @@ export default function AdminSettings() {
     updateSystemText,
     updateSystemToggle,
     updateSystemReminderInterval,
-    addFeatureOption,
-    updateFeatureOption,
-    removeFeatureOption,
     systemTestRecipient,
     updateSystemTestRecipient,
     user,
@@ -2103,9 +1858,7 @@ export default function AdminSettings() {
     auditRange,
     setAuditRange,
     auditPerPage,
-    setAuditPerPage,
     setAuditRefreshKey,
-    auditError,
     auditLogs,
   };
 
@@ -2159,3 +1912,4 @@ export default function AdminSettings() {
     </div>
   );
 }
+

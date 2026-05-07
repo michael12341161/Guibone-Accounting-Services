@@ -8,21 +8,6 @@ import {
 import { formatDateTime } from "../utils/helpers";
 import { showDangerConfirmDialog, showErrorToast, showSuccessToast } from "../utils/feedback";
 
-function StatusMessage({ type, children }) {
-  if (!children) return null;
-
-  const classes =
-    type === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : "border-rose-200 bg-rose-50 text-rose-700";
-
-  return (
-    <div className={`rounded-lg border px-4 py-3 text-sm ${classes}`} role={type === "error" ? "alert" : "status"}>
-      {children}
-    </div>
-  );
-}
-
 function EntryTypeBadge({ type }) {
   const isEmail = type === "email";
   return (
@@ -70,7 +55,7 @@ export default function TempMailBlockerSection() {
   const [deletingId, setDeletingId] = React.useState("");
   const [newEntry, setNewEntry] = React.useState("");
   const [search, setSearch] = React.useState("");
-  const [status, setStatus] = React.useState({ type: "", text: "" });
+  const [, setStatus] = React.useState({ type: "", text: "" });
   const deferredSearch = React.useDeferredValue(search);
 
   const loadEntries = React.useCallback(async () => {
@@ -106,7 +91,9 @@ export default function TempMailBlockerSection() {
     event.preventDefault();
     const value = newEntry.trim();
     if (!value) {
-      setStatus({ type: "error", text: "Enter an email address or domain to block." });
+      const message = "Enter an email address or domain to block.";
+      setStatus({ type: "error", text: message });
+      showErrorToast(message);
       return;
     }
 
@@ -175,8 +162,6 @@ export default function TempMailBlockerSection() {
       </div>
 
       <div className="flex-1 space-y-4 p-5">
-        <StatusMessage type={status.type}>{status.text}</StatusMessage>
-
         <form onSubmit={handleAdd} className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4 lg:grid-cols-[1fr_auto]">
           <div>
             <label htmlFor="temp-mail-entry" className="block text-sm font-medium text-slate-700">

@@ -29,3 +29,4 @@ yarn-error.log*
 backend/api/smtp_config.php
 backend/data/jwt_secret.php
 backend/data/backups/
+backend/data/rate_limit/

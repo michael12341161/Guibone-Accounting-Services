@@ -10,7 +10,7 @@ import Barchart from "../../components/charts/Barchart";
 import { DataTable } from "../../components/UI/table";
 import { api } from "../../services/api";
 import { firstNonEmptyString, readBracketMetaValue } from "../../utils/descriptionMeta";
-import { showSuccessToast, useErrorToast } from "../../utils/feedback";
+import { showSuccessToast, useErrorToastState } from "../../utils/feedback";
 
 const CLIENT_APPROVAL_COLORS = {
   Approved: "#10b981",
@@ -397,10 +397,8 @@ export default function AdminReports() {
   const [consultations, setConsultations] = useState([]);
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorToastState("");
   const [currentPage, setCurrentPage] = useState(1);
-
-  useErrorToast(error);
 
   const loadReports = useCallback(async ({ silent } = { silent: false }) => {
     try {
@@ -1008,10 +1006,6 @@ export default function AdminReports() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
           <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
             <div className="flex min-w-0 flex-col gap-1 sm:w-40">
               <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500" htmlFor="admin-report-range">
@@ -1153,3 +1147,4 @@ export default function AdminReports() {
     </div>
   );
 }
+

@@ -20,7 +20,7 @@ import {
   resolveDocumentUrl,
 } from "../../utils/document_management";
 import { hasFeatureActionAccess } from "../../utils/module_permissions";
-import { showConfirmDialog, useErrorToast } from "../../utils/feedback";
+import { showConfirmDialog, useErrorToastState } from "../../utils/feedback";
 
 const MANAGED_DOCUMENT_KEYS = new Set([
   "business_permit",
@@ -175,9 +175,8 @@ export default function DocumentAdminPage() {
   const [watchlistDocumentsByClient, setWatchlistDocumentsByClient] = useState({});
   const [loadingWatchlistDocuments, setLoadingWatchlistDocuments] = useState(true);
   const [todayKey, setTodayKey] = useState(() => getCurrentDateKey());
-  const [error, setError] = useState("");
-  useErrorToast(error);
-  const [success, setSuccess] = useState("");
+  const [error, setError] = useErrorToastState("");
+  const [, setSuccess] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [pendingFiles, setPendingFiles] = useState({});
   const [pendingDurationDays, setPendingDurationDays] = useState({});
@@ -807,14 +806,6 @@ export default function DocumentAdminPage() {
           description="Manage Business Permit, DTI, SEC, BIR, PhilHealth, Pag-IBIG, and SSS files here. Only the Business Permit marks the client business as registered."
         />
         <CardContent className="space-y-4">
-          {error ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-          ) : null}
-
-          {success ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
-          ) : null}
-
           {isViewOnlyMode ? (
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
               View Only access is enabled for this role. Uploaded files can be reviewed here, but upload and replace actions are disabled.
@@ -1191,3 +1182,4 @@ export default function DocumentAdminPage() {
     </div>
   );
 }
+

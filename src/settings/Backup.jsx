@@ -47,8 +47,6 @@ export function formatBytes(value) {
 }
 
 export default function BackupSection({
-  StatusBanner,
-  backupStatus,
   backupLoading,
   backupSummary,
   backupCreating,
@@ -90,8 +88,6 @@ export default function BackupSection({
         </p>
       </div>
       <div className="space-y-5 p-5">
-        <StatusBanner type={backupStatus.type}>{backupStatus.text}</StatusBanner>
-
         {backupLoading ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
             Loading backup and export tools...
@@ -282,11 +278,6 @@ export default function BackupSection({
                     </p>
                   </div>
 
-                  {backupSchedule.last_attempt_status === "error" && backupSchedule.last_attempt_message ? (
-                    <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
-                      <div>{backupSchedule.last_attempt_message}</div>
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">

@@ -18,7 +18,7 @@ try {
     $range = isset($_GET['range']) ? (string)$_GET['range'] : '30d';
     $search = isset($_GET['search']) ? (string)$_GET['search'] : '';
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-    $perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : (isset($_GET['limit']) ? (int)$_GET['limit'] : 25);
+    $perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : (isset($_GET['limit']) ? (int)$_GET['limit'] : 10);
 
     $result = monitoring_fetch_audit_logs($conn, [
         'range' => $range,
