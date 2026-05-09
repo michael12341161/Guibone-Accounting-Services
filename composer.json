@@ -1,0 +1,7 @@
+{
+    "name": "micha/monitoring",
+    "require": {
+        "predis/predis": "^3.4",
+        "fgribreau/mailchecker": "^6.0"
+    }
+}

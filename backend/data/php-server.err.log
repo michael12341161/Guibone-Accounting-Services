@@ -1,0 +1,848 @@
+[Sat May  9 16:23:41 2026] PHP 8.2.12 Development Server (http://localhost:8000) started
+[Sat May  9 16:45:39 2026] [::1]:57655 Accepted
+[Sat May  9 16:45:41 2026] Rate limiter settings read skipped: SQLSTATE[HY000] [2002] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+[Sat May  9 16:45:41 2026] PHP Warning:  session_start(): open(C:\xampp\tmp\sess_nti5chgivoqdcelqui2q9s4pa3, O_RDWR) failed: Permission denied (13) in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 91
+[Sat May  9 16:45:41 2026] PHP Warning:  session_start(): Failed to read session data: files (path: C:\xampp\tmp) in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 91
+[Sat May  9 16:45:43 2026] Health check database failure: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[Sat May  9 16:45:43 2026] [::1]:57655 [503]: GET /backend/api/health.php
+[Sat May  9 16:45:43 2026] [::1]:57655 Closing
+[Sat May  9 16:45:52 2026] [::1]:59061 Accepted
+[Sat May  9 16:45:54 2026] Rate limiter settings read skipped: SQLSTATE[HY000] [2002] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+[Sat May  9 16:45:54 2026] PHP Warning:  session_start(): open(C:\xampp\tmp\sess_benenjo6r4u3749kpnso2d6va8, O_RDWR) failed: Permission denied (13) in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 91
+[Sat May  9 16:45:54 2026] PHP Warning:  session_start(): Failed to read session data: files (path: C:\xampp\tmp) in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 91
+[Sat May  9 16:45:56 2026] Health check database failure: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[Sat May  9 16:45:56 2026] [::1]:59061 [503]: GET /backend/api/health.php
+[Sat May  9 16:45:56 2026] [::1]:59061 Closing
+[Sat May  9 16:46:31 2026] [::1]:59081 Accepted
+[Sat May  9 16:46:33 2026] Rate limiter settings read skipped: SQLSTATE[HY000] [2002] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+[Sat May  9 16:46:35 2026] Health check database failure: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[Sat May  9 16:46:35 2026] [::1]:59081 [503]: GET /backend/api/health.php
+[Sat May  9 16:46:35 2026] [::1]:59081 Closing
+[Sat May  9 16:47:07 2026] [::1]:51421 Accepted
+[Sat May  9 16:47:07 2026] [::1]:51421 [200]: GET /backend/api/health.php
+[Sat May  9 16:47:07 2026] [::1]:51421 Closing
+[Sat May  9 16:49:05 2026] [::1]:51451 Accepted
+[Sat May  9 16:49:05 2026] [::1]:51452 Accepted
+[Sat May  9 16:49:05 2026] [::1]:51451 [200]: GET /backend/api/health.php
+[Sat May  9 16:49:05 2026] [::1]:51451 Closing
+[Sat May  9 16:49:05 2026] [::1]:51453 Accepted
+[Sat May  9 16:49:06 2026] [::1]:51452 [400]: POST /backend/api/login.php
+[Sat May  9 16:49:06 2026] [::1]:51452 Closing
+[Sat May  9 16:49:06 2026] [::1]:51453 [204]: OPTIONS /backend/api/login.php
+[Sat May  9 16:49:06 2026] [::1]:51453 Closing
+[Sat May  9 16:49:17 2026] [::1]:51462 Accepted
+[Sat May  9 16:49:17 2026] [::1]:51462 [400]: POST /backend/api/login.php
+[Sat May  9 16:49:17 2026] [::1]:51462 Closing
+[Sat May  9 16:49:39 2026] [::1]:51466 Accepted
+[Sat May  9 16:49:39 2026] Login error: Class "Fgribreau\MailChecker" not found
+[Sat May  9 16:49:39 2026] [::1]:51466 [500]: POST /backend/api/login.php
+[Sat May  9 16:49:39 2026] [::1]:51466 Closing
+[Sat May  9 16:51:24 2026] [::1]:61574 Accepted
+[Sat May  9 16:51:24 2026] [::1]:61574 [200]: GET /backend/api/health.php
+[Sat May  9 16:51:24 2026] [::1]:61574 Closing
+[Sat May  9 16:51:25 2026] [::1]:61578 Accepted
+[Sat May  9 16:51:25 2026] [::1]:61578 [200]: POST /backend/api/login.php
+[Sat May  9 16:51:25 2026] [::1]:61578 Closing
+[Sat May  9 16:51:46 2026] [::1]:53126 Accepted
+[Sat May  9 16:51:47 2026] [::1]:53126 [200]: POST /backend/api/login.php
+[Sat May  9 16:51:47 2026] [::1]:53126 Closing
+[Sat May  9 16:52:58 2026] [::1]:53144 Accepted
+[Sat May  9 16:52:58 2026] PHP Warning:  session_regenerate_id(): Session object destruction failed. ID: files (path: C:\xampp\htdocs\Monitoring\monitoring\backend/data/sessions) in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth_jwt.php on line 327
+[Sat May  9 16:52:58 2026] [::1]:53144 [200]: POST /backend/api/login.php
+[Sat May  9 16:52:58 2026] [::1]:53144 Closing
+[Sat May  9 16:53:17 2026] [::1]:53152 Accepted
+[Sat May  9 16:53:17 2026] Unable to regenerate MONITORINGSESSID session id using save path: C:\xampp\htdocs\Monitoring\monitoring\backend/data/sessions
+[Sat May  9 16:53:17 2026] [::1]:53152 [200]: POST /backend/api/login.php
+[Sat May  9 16:53:17 2026] [::1]:53152 Closing
+[Sat May  9 16:53:50 2026] [::1]:53161 Accepted
+[Sat May  9 16:53:50 2026] [::1]:53161 [200]: GET /backend/api/health.php
+[Sat May  9 16:53:50 2026] [::1]:53161 Closing
+[Sat May  9 16:53:50 2026] [::1]:53164 Accepted
+[Sat May  9 16:53:50 2026] [::1]:53164 [204]: OPTIONS /backend/api/login.php
+[Sat May  9 16:53:50 2026] [::1]:53164 Closing
+[Sat May  9 16:57:41 2026] [::1]:53949 Accepted
+[Sat May  9 16:57:41 2026] [::1]:53949 [200]: GET /backend/api/health.php
+[Sat May  9 16:57:41 2026] [::1]:53949 Closing
+[Sat May  9 17:53:50 2026] [::1]:49306 Accepted
+[Sat May  9 17:53:50 2026] [::1]:49306 [204]: OPTIONS /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:53:50 2026] [::1]:49306 Closing
+[Sat May  9 17:53:50 2026] [::1]:64982 Accepted
+[Sat May  9 17:53:50 2026] [::1]:64982 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:53:50 2026] [::1]:64982 Closing
+[Sat May  9 17:53:55 2026] [::1]:58371 Accepted
+[Sat May  9 17:53:55 2026] [::1]:58371 [204]: OPTIONS /backend/api/login.php
+[Sat May  9 17:53:55 2026] [::1]:58371 Closing
+[Sat May  9 17:53:55 2026] [::1]:54475 Accepted
+[Sat May  9 17:53:56 2026] Unable to regenerate MONITORINGSESSID session id using save path: C:\xampp\htdocs\Monitoring\monitoring\backend/data/sessions
+[Sat May  9 17:53:56 2026] [::1]:54475 [200]: POST /backend/api/login.php
+[Sat May  9 17:53:56 2026] [::1]:54475 Closing
+[Sat May  9 17:53:56 2026] [::1]:62424 Accepted
+[Sat May  9 17:53:56 2026] [::1]:62424 [204]: OPTIONS /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:53:56 2026] [::1]:62424 Closing
+[Sat May  9 17:53:56 2026] [::1]:49525 Accepted
+[Sat May  9 17:53:56 2026] [::1]:64827 Accepted
+[Sat May  9 17:53:56 2026] [::1]:49525 [204]: OPTIONS /backend/api/notification_list.php
+[Sat May  9 17:53:56 2026] [::1]:49525 Closing
+[Sat May  9 17:53:56 2026] [::1]:54195 Accepted
+[Sat May  9 17:53:56 2026] [::1]:64827 [204]: OPTIONS /backend/api/backup_data.php
+[Sat May  9 17:53:56 2026] [::1]:64827 Closing
+[Sat May  9 17:53:56 2026] [::1]:55218 Accepted
+[Sat May  9 17:53:56 2026] [::1]:54195 [204]: OPTIONS /backend/api/task_list.php
+[Sat May  9 17:53:56 2026] [::1]:54195 Closing
+[Sat May  9 17:53:56 2026] [::1]:59117 Accepted
+[Sat May  9 17:53:56 2026] [::1]:55218 [204]: OPTIONS /backend/api/module_permissions.php
+[Sat May  9 17:53:56 2026] [::1]:55218 Closing
+[Sat May  9 17:53:56 2026] [::1]:58265 Accepted
+[Sat May  9 17:53:56 2026] [::1]:59117 [200]: GET /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:53:56 2026] [::1]:59117 Closing
+[Sat May  9 17:53:56 2026] [::1]:54285 Accepted
+[Sat May  9 17:53:56 2026] [::1]:58265 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:53:56 2026] [::1]:58265 Closing
+[Sat May  9 17:53:56 2026] [::1]:58498 Accepted
+[Sat May  9 17:53:57 2026] [::1]:54285 [200]: POST /backend/api/backup_data.php
+[Sat May  9 17:53:57 2026] [::1]:54285 Closing
+[Sat May  9 17:53:57 2026] [::1]:61030 Accepted
+[Sat May  9 17:53:57 2026] [::1]:58498 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:53:57 2026] [::1]:58498 Closing
+[Sat May  9 17:53:57 2026] [::1]:58572 Accepted
+[Sat May  9 17:53:58 2026] [::1]:61030 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:53:58 2026] [::1]:61030 Closing
+[Sat May  9 17:53:58 2026] [::1]:54507 Accepted
+[Sat May  9 17:53:58 2026] [::1]:58572 [204]: OPTIONS /backend/api/client_list.php
+[Sat May  9 17:53:58 2026] [::1]:58572 Closing
+[Sat May  9 17:53:58 2026] [::1]:56456 Accepted
+[Sat May  9 17:53:58 2026] [::1]:54507 [204]: OPTIONS /backend/api/chat.php?action=unread_count
+[Sat May  9 17:53:58 2026] [::1]:54507 Closing
+[Sat May  9 17:53:58 2026] [::1]:53235 Accepted
+[Sat May  9 17:53:58 2026] [::1]:56456 [204]: OPTIONS /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:53:58 2026] [::1]:56456 Closing
+[Sat May  9 17:53:58 2026] [::1]:56878 Accepted
+[Sat May  9 17:53:58 2026] [::1]:53235 [204]: OPTIONS /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:53:58 2026] [::1]:53235 Closing
+[Sat May  9 17:53:58 2026] [::1]:61654 Accepted
+[Sat May  9 17:53:58 2026] [::1]:56878 [204]: OPTIONS /backend/api/appointment_list.php
+[Sat May  9 17:53:58 2026] [::1]:56878 Closing
+[Sat May  9 17:53:58 2026] [::1]:49499 Accepted
+[Sat May  9 17:53:58 2026] [::1]:61654 [204]: OPTIONS /backend/api/user_list.php
+[Sat May  9 17:53:58 2026] [::1]:61654 Closing
+[Sat May  9 17:53:58 2026] [::1]:58265 Accepted
+[Sat May  9 17:53:58 2026] [::1]:49499 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:53:58 2026] [::1]:49499 Closing
+[Sat May  9 17:53:58 2026] [::1]:62123 Accepted
+[Sat May  9 17:53:58 2026] [::1]:58265 [204]: OPTIONS /backend/api/chat.php?action=unread_count
+[Sat May  9 17:53:58 2026] [::1]:58265 Closing
+[Sat May  9 17:53:58 2026] [::1]:58267 Accepted
+[Sat May  9 17:53:58 2026] [::1]:62123 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:53:58 2026] [::1]:62123 Closing
+[Sat May  9 17:53:58 2026] [::1]:55210 Accepted
+[Sat May  9 17:53:58 2026] [::1]:58267 [204]: OPTIONS /backend/api/client_list.php
+[Sat May  9 17:53:58 2026] [::1]:58267 Closing
+[Sat May  9 17:53:58 2026] [::1]:54922 Accepted
+[Sat May  9 17:53:58 2026] [::1]:55210 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:53:58 2026] [::1]:55210 Closing
+[Sat May  9 17:53:58 2026] [::1]:54663 Accepted
+[Sat May  9 17:53:58 2026] [::1]:54922 [204]: OPTIONS /backend/api/user_list.php
+[Sat May  9 17:53:58 2026] [::1]:54922 Closing
+[Sat May  9 17:53:58 2026] [::1]:60827 Accepted
+[Sat May  9 17:53:58 2026] [::1]:54663 [200]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:53:58 2026] [::1]:54663 Closing
+[Sat May  9 17:53:58 2026] [::1]:60682 Accepted
+[Sat May  9 17:53:58 2026] [::1]:60827 [204]: OPTIONS /backend/api/appointment_list.php
+[Sat May  9 17:53:58 2026] [::1]:60827 Closing
+[Sat May  9 17:53:58 2026] [::1]:54860 Accepted
+[Sat May  9 17:53:58 2026] [::1]:60682 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:53:58 2026] [::1]:60682 Closing
+[Sat May  9 17:53:58 2026] [::1]:58268 Accepted
+[Sat May  9 17:53:59 2026] [::1]:54860 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:53:59 2026] [::1]:54860 Closing
+[Sat May  9 17:53:59 2026] [::1]:52213 Accepted
+[Sat May  9 17:53:59 2026] [::1]:58268 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:53:59 2026] [::1]:58268 Closing
+[Sat May  9 17:53:59 2026] [::1]:64660 Accepted
+[Sat May  9 17:53:59 2026] [::1]:52213 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:53:59 2026] [::1]:52213 Closing
+[Sat May  9 17:53:59 2026] [::1]:61970 Accepted
+[Sat May  9 17:53:59 2026] [::1]:64660 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:53:59 2026] [::1]:64660 Closing
+[Sat May  9 17:53:59 2026] [::1]:59666 Accepted
+[Sat May  9 17:53:59 2026] [::1]:61970 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:53:59 2026] [::1]:61970 Closing
+[Sat May  9 17:53:59 2026] [::1]:63278 Accepted
+[Sat May  9 17:53:59 2026] [::1]:59666 [200]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:53:59 2026] [::1]:59666 Closing
+[Sat May  9 17:53:59 2026] [::1]:54285 Accepted
+[Sat May  9 17:54:00 2026] [::1]:63278 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:00 2026] [::1]:63278 Closing
+[Sat May  9 17:54:00 2026] [::1]:53750 Accepted
+[Sat May  9 17:54:00 2026] [::1]:54285 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:00 2026] [::1]:54285 Closing
+[Sat May  9 17:54:00 2026] [::1]:62738 Accepted
+[Sat May  9 17:54:00 2026] [::1]:53750 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:00 2026] [::1]:53750 Closing
+[Sat May  9 17:54:00 2026] [::1]:62162 Accepted
+[Sat May  9 17:54:01 2026] [::1]:62738 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:01 2026] [::1]:62738 Closing
+[Sat May  9 17:54:01 2026] [::1]:60448 Accepted
+[Sat May  9 17:54:01 2026] [::1]:62162 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:01 2026] [::1]:62162 Closing
+[Sat May  9 17:54:01 2026] [::1]:60448 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:01 2026] [::1]:60448 Closing
+[Sat May  9 17:54:01 2026] [::1]:59768 Accepted
+[Sat May  9 17:54:01 2026] [::1]:59768 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:01 2026] [::1]:59768 Closing
+[Sat May  9 17:54:07 2026] [::1]:61452 Accepted
+[Sat May  9 17:54:07 2026] [::1]:49917 Accepted
+[Sat May  9 17:54:07 2026] [::1]:61452 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:07 2026] [::1]:61452 Closing
+[Sat May  9 17:54:07 2026] [::1]:55209 Accepted
+[Sat May  9 17:54:07 2026] [::1]:49917 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:54:07 2026] [::1]:49917 Closing
+[Sat May  9 17:54:07 2026] [::1]:58283 Accepted
+[Sat May  9 17:54:07 2026] [::1]:55209 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:07 2026] [::1]:55209 Closing
+[Sat May  9 17:54:07 2026] [::1]:55092 Accepted
+[Sat May  9 17:54:07 2026] [::1]:58283 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:54:07 2026] [::1]:58283 Closing
+[Sat May  9 17:54:07 2026] [::1]:50843 Accepted
+[Sat May  9 17:54:08 2026] [::1]:55092 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:08 2026] [::1]:55092 Closing
+[Sat May  9 17:54:08 2026] [::1]:58265 Accepted
+[Sat May  9 17:54:08 2026] [::1]:50843 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:08 2026] [::1]:50843 Closing
+[Sat May  9 17:54:08 2026] [::1]:58265 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:08 2026] [::1]:58265 Closing
+[Sat May  9 17:54:09 2026] [::1]:54088 Accepted
+[Sat May  9 17:54:09 2026] [::1]:54088 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:09 2026] [::1]:54088 Closing
+[Sat May  9 17:54:09 2026] [::1]:50575 Accepted
+[Sat May  9 17:54:09 2026] [::1]:50575 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:09 2026] [::1]:50575 Closing
+[Sat May  9 17:54:14 2026] [::1]:59178 Accepted
+[Sat May  9 17:54:14 2026] [::1]:59178 [204]: OPTIONS /backend/api/session_status.php
+[Sat May  9 17:54:14 2026] [::1]:59178 Closing
+[Sat May  9 17:54:14 2026] [::1]:60506 Accepted
+[Sat May  9 17:54:14 2026] [::1]:60506 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:54:14 2026] [::1]:60506 Closing
+[Sat May  9 17:54:17 2026] [::1]:55150 Accepted
+[Sat May  9 17:54:17 2026] [::1]:54847 Accepted
+[Sat May  9 17:54:17 2026] [::1]:55150 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:17 2026] [::1]:55150 Closing
+[Sat May  9 17:54:17 2026] [::1]:55613 Accepted
+[Sat May  9 17:54:17 2026] [::1]:54847 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:54:17 2026] [::1]:54847 Closing
+[Sat May  9 17:54:17 2026] [::1]:58443 Accepted
+[Sat May  9 17:54:17 2026] [::1]:55613 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:17 2026] [::1]:55613 Closing
+[Sat May  9 17:54:17 2026] [::1]:55361 Accepted
+[Sat May  9 17:54:17 2026] [::1]:58443 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:54:17 2026] [::1]:58443 Closing
+[Sat May  9 17:54:17 2026] [::1]:52188 Accepted
+[Sat May  9 17:54:17 2026] [::1]:55361 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:17 2026] [::1]:55361 Closing
+[Sat May  9 17:54:17 2026] [::1]:64417 Accepted
+[Sat May  9 17:54:18 2026] [::1]:52188 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:18 2026] [::1]:52188 Closing
+[Sat May  9 17:54:18 2026] [::1]:64417 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:18 2026] [::1]:64417 Closing
+[Sat May  9 17:54:19 2026] [::1]:54559 Accepted
+[Sat May  9 17:54:19 2026] [::1]:54559 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:19 2026] [::1]:54559 Closing
+[Sat May  9 17:54:19 2026] [::1]:62986 Accepted
+[Sat May  9 17:54:19 2026] [::1]:62986 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:19 2026] [::1]:62986 Closing
+[Sat May  9 17:54:27 2026] [::1]:52095 Accepted
+[Sat May  9 17:54:27 2026] [::1]:52095 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:27 2026] [::1]:52095 Closing
+[Sat May  9 17:54:27 2026] [::1]:59833 Accepted
+[Sat May  9 17:54:27 2026] [::1]:53265 Accepted
+[Sat May  9 17:54:27 2026] [::1]:59833 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:54:27 2026] [::1]:59833 Closing
+[Sat May  9 17:54:27 2026] [::1]:54297 Accepted
+[Sat May  9 17:54:27 2026] [::1]:53265 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:27 2026] [::1]:53265 Closing
+[Sat May  9 17:54:27 2026] [::1]:52130 Accepted
+[Sat May  9 17:54:27 2026] [::1]:54297 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:54:27 2026] [::1]:54297 Closing
+[Sat May  9 17:54:27 2026] [::1]:64194 Accepted
+[Sat May  9 17:54:28 2026] [::1]:52130 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:28 2026] [::1]:52130 Closing
+[Sat May  9 17:54:28 2026] [::1]:60513 Accepted
+[Sat May  9 17:54:28 2026] [::1]:64194 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:28 2026] [::1]:64194 Closing
+[Sat May  9 17:54:28 2026] [::1]:60513 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:28 2026] [::1]:60513 Closing
+[Sat May  9 17:54:29 2026] [::1]:55220 Accepted
+[Sat May  9 17:54:29 2026] [::1]:55220 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:29 2026] [::1]:55220 Closing
+[Sat May  9 17:54:29 2026] [::1]:64036 Accepted
+[Sat May  9 17:54:29 2026] [::1]:64036 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:29 2026] [::1]:64036 Closing
+[Sat May  9 17:54:37 2026] [::1]:50261 Accepted
+[Sat May  9 17:54:37 2026] [::1]:59968 Accepted
+[Sat May  9 17:54:37 2026] [::1]:50261 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:37 2026] [::1]:50261 Closing
+[Sat May  9 17:54:37 2026] [::1]:49495 Accepted
+[Sat May  9 17:54:37 2026] [::1]:59968 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:54:37 2026] [::1]:59968 Closing
+[Sat May  9 17:54:37 2026] [::1]:51717 Accepted
+[Sat May  9 17:54:37 2026] [::1]:49495 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:37 2026] [::1]:49495 Closing
+[Sat May  9 17:54:37 2026] [::1]:56441 Accepted
+[Sat May  9 17:54:37 2026] [::1]:51717 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:54:37 2026] [::1]:51717 Closing
+[Sat May  9 17:54:37 2026] [::1]:54699 Accepted
+[Sat May  9 17:54:38 2026] [::1]:56441 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:38 2026] [::1]:56441 Closing
+[Sat May  9 17:54:38 2026] [::1]:56785 Accepted
+[Sat May  9 17:54:38 2026] [::1]:54699 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:38 2026] [::1]:54699 Closing
+[Sat May  9 17:54:38 2026] [::1]:56785 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:38 2026] [::1]:56785 Closing
+[Sat May  9 17:54:39 2026] [::1]:51597 Accepted
+[Sat May  9 17:54:39 2026] [::1]:51597 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:39 2026] [::1]:51597 Closing
+[Sat May  9 17:54:39 2026] [::1]:49205 Accepted
+[Sat May  9 17:54:39 2026] [::1]:49205 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:39 2026] [::1]:49205 Closing
+[Sat May  9 17:54:47 2026] [::1]:61583 Accepted
+[Sat May  9 17:54:47 2026] [::1]:50261 Accepted
+[Sat May  9 17:54:47 2026] [::1]:61583 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:47 2026] [::1]:61583 Closing
+[Sat May  9 17:54:47 2026] [::1]:58836 Accepted
+[Sat May  9 17:54:47 2026] [::1]:50261 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:54:47 2026] [::1]:50261 Closing
+[Sat May  9 17:54:47 2026] [::1]:64847 Accepted
+[Sat May  9 17:54:47 2026] [::1]:58836 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:47 2026] [::1]:58836 Closing
+[Sat May  9 17:54:47 2026] [::1]:60173 Accepted
+[Sat May  9 17:54:48 2026] [::1]:64847 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:54:48 2026] [::1]:64847 Closing
+[Sat May  9 17:54:48 2026] [::1]:58449 Accepted
+[Sat May  9 17:54:48 2026] [::1]:60173 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:48 2026] [::1]:60173 Closing
+[Sat May  9 17:54:48 2026] [::1]:52693 Accepted
+[Sat May  9 17:54:48 2026] [::1]:58449 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:48 2026] [::1]:58449 Closing
+[Sat May  9 17:54:48 2026] [::1]:52693 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:48 2026] [::1]:52693 Closing
+[Sat May  9 17:54:49 2026] [::1]:59180 Accepted
+[Sat May  9 17:54:49 2026] [::1]:59180 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:49 2026] [::1]:59180 Closing
+[Sat May  9 17:54:49 2026] [::1]:59613 Accepted
+[Sat May  9 17:54:49 2026] [::1]:59613 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:49 2026] [::1]:59613 Closing
+[Sat May  9 17:54:57 2026] [::1]:59085 Accepted
+[Sat May  9 17:54:57 2026] [::1]:59350 Accepted
+[Sat May  9 17:54:57 2026] [::1]:59085 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:54:57 2026] [::1]:59085 Closing
+[Sat May  9 17:54:57 2026] [::1]:58265 Accepted
+[Sat May  9 17:54:57 2026] [::1]:59350 [200]: POST /backend/api/backup_data.php
+[Sat May  9 17:54:57 2026] [::1]:59350 Closing
+[Sat May  9 17:54:57 2026] [::1]:58614 Accepted
+[Sat May  9 17:54:57 2026] [::1]:58265 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:54:57 2026] [::1]:58265 Closing
+[Sat May  9 17:54:57 2026] [::1]:56583 Accepted
+[Sat May  9 17:54:57 2026] [::1]:58614 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:57 2026] [::1]:58614 Closing
+[Sat May  9 17:54:57 2026] [::1]:54380 Accepted
+[Sat May  9 17:54:57 2026] [::1]:56583 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:54:57 2026] [::1]:56583 Closing
+[Sat May  9 17:54:57 2026] [::1]:60775 Accepted
+[Sat May  9 17:54:58 2026] [::1]:54380 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:54:58 2026] [::1]:54380 Closing
+[Sat May  9 17:54:58 2026] [::1]:59359 Accepted
+[Sat May  9 17:54:58 2026] [::1]:60775 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:54:58 2026] [::1]:60775 Closing
+[Sat May  9 17:54:58 2026] [::1]:59359 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:58 2026] [::1]:59359 Closing
+[Sat May  9 17:54:59 2026] [::1]:50261 Accepted
+[Sat May  9 17:54:59 2026] [::1]:50261 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:54:59 2026] [::1]:50261 Closing
+[Sat May  9 17:54:59 2026] [::1]:57166 Accepted
+[Sat May  9 17:54:59 2026] [::1]:57166 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:54:59 2026] [::1]:57166 Closing
+[Sat May  9 17:55:08 2026] [::1]:54351 Accepted
+[Sat May  9 17:55:08 2026] [::1]:52748 Accepted
+[Sat May  9 17:55:08 2026] [::1]:54351 [204]: OPTIONS /backend/api/session_status.php
+[Sat May  9 17:55:08 2026] [::1]:54351 Closing
+[Sat May  9 17:55:08 2026] [::1]:52748 [204]: OPTIONS /backend/api/session_status.php
+[Sat May  9 17:55:08 2026] [::1]:52748 Closing
+[Sat May  9 17:55:08 2026] [::1]:65004 Accepted
+[Sat May  9 17:55:08 2026] [::1]:65004 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:55:08 2026] [::1]:65004 Closing
+[Sat May  9 17:55:08 2026] [::1]:56713 Accepted
+[Sat May  9 17:55:08 2026] [::1]:56713 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:55:08 2026] [::1]:56713 Closing
+[Sat May  9 17:55:10 2026] [::1]:61010 Accepted
+[Sat May  9 17:55:10 2026] [::1]:61010 [204]: OPTIONS /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:55:10 2026] [::1]:61010 Closing
+[Sat May  9 17:55:10 2026] [::1]:50723 Accepted
+[Sat May  9 17:55:10 2026] [::1]:50723 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:55:10 2026] [::1]:50723 Closing
+[Sat May  9 17:55:18 2026] [::1]:54168 Accepted
+[Sat May  9 17:55:18 2026] [::1]:54168 [204]: OPTIONS /backend/api/login.php
+[Sat May  9 17:55:18 2026] [::1]:54168 Closing
+[Sat May  9 17:55:18 2026] [::1]:54409 Accepted
+[Sat May  9 17:55:18 2026] Unable to regenerate MONITORINGSESSID session id using save path: C:\xampp\htdocs\Monitoring\monitoring\backend/data/sessions
+[Sat May  9 17:55:18 2026] [::1]:54409 [200]: POST /backend/api/login.php
+[Sat May  9 17:55:18 2026] [::1]:54409 Closing
+[Sat May  9 17:55:18 2026] [::1]:52315 Accepted
+[Sat May  9 17:55:18 2026] [::1]:50265 Accepted
+[Sat May  9 17:55:18 2026] [::1]:63331 Accepted
+[Sat May  9 17:55:18 2026] [::1]:65505 Accepted
+[Sat May  9 17:55:18 2026] [::1]:50266 Accepted
+[Sat May  9 17:55:18 2026] [::1]:50265 [204]: OPTIONS /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:55:18 2026] [::1]:50265 Closing
+[Sat May  9 17:55:18 2026] [::1]:52315 [204]: OPTIONS /backend/api/backup_data.php
+[Sat May  9 17:55:18 2026] [::1]:52315 Closing
+[Sat May  9 17:55:18 2026] [::1]:63331 [204]: OPTIONS /backend/api/module_permissions.php
+[Sat May  9 17:55:18 2026] [::1]:63331 Closing
+[Sat May  9 17:55:18 2026] [::1]:65505 [204]: OPTIONS /backend/api/notification_list.php
+[Sat May  9 17:55:18 2026] [::1]:65505 Closing
+[Sat May  9 17:55:18 2026] [::1]:50266 [204]: OPTIONS /backend/api/task_list.php
+[Sat May  9 17:55:18 2026] [::1]:50266 Closing
+[Sat May  9 17:55:18 2026] [::1]:58908 Accepted
+[Sat May  9 17:55:18 2026] [::1]:49214 Accepted
+[Sat May  9 17:55:18 2026] [::1]:58908 [200]: GET /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:55:18 2026] [::1]:58908 Closing
+[Sat May  9 17:55:18 2026] [::1]:52145 Accepted
+[Sat May  9 17:55:19 2026] [::1]:49214 [401]: POST /backend/api/backup_data.php
+[Sat May  9 17:55:19 2026] [::1]:49214 Closing
+[Sat May  9 17:55:19 2026] [::1]:62019 Accepted
+[Sat May  9 17:55:19 2026] [::1]:52145 [401]: GET /backend/api/module_permissions.php
+[Sat May  9 17:55:19 2026] [::1]:52145 Closing
+[Sat May  9 17:55:19 2026] [::1]:49618 Accepted
+[Sat May  9 17:55:19 2026] [::1]:62019 [401]: GET /backend/api/notification_list.php
+[Sat May  9 17:55:19 2026] [::1]:62019 Closing
+[Sat May  9 17:55:19 2026] [::1]:58774 Accepted
+[Sat May  9 17:55:19 2026] [::1]:49618 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:19 2026] [::1]:49618 Closing
+[Sat May  9 17:55:19 2026] [::1]:50522 Accepted
+[Sat May  9 17:55:19 2026] [::1]:58774 [204]: OPTIONS /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:55:19 2026] [::1]:58774 Closing
+[Sat May  9 17:55:19 2026] [::1]:51319 Accepted
+[Sat May  9 17:55:19 2026] [::1]:50522 [204]: OPTIONS /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:19 2026] [::1]:50522 Closing
+[Sat May  9 17:55:19 2026] [::1]:53064 Accepted
+[Sat May  9 17:55:19 2026] [::1]:51319 [204]: OPTIONS /backend/api/client_list.php
+[Sat May  9 17:55:19 2026] [::1]:51319 Closing
+[Sat May  9 17:55:19 2026] [::1]:57065 Accepted
+[Sat May  9 17:55:19 2026] [::1]:53064 [204]: OPTIONS /backend/api/user_list.php
+[Sat May  9 17:55:19 2026] [::1]:53064 Closing
+[Sat May  9 17:55:19 2026] [::1]:54880 Accepted
+[Sat May  9 17:55:19 2026] [::1]:57065 [204]: OPTIONS /backend/api/appointment_list.php
+[Sat May  9 17:55:19 2026] [::1]:57065 Closing
+[Sat May  9 17:55:19 2026] [::1]:56897 Accepted
+[Sat May  9 17:55:19 2026] [::1]:54880 [204]: OPTIONS /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:55:19 2026] [::1]:54880 Closing
+[Sat May  9 17:55:19 2026] [::1]:52469 Accepted
+[Sat May  9 17:55:19 2026] [::1]:56897 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:19 2026] [::1]:56897 Closing
+[Sat May  9 17:55:19 2026] [::1]:62081 Accepted
+[Sat May  9 17:55:19 2026] [::1]:52469 [204]: OPTIONS /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:19 2026] [::1]:52469 Closing
+[Sat May  9 17:55:19 2026] [::1]:49347 Accepted
+[Sat May  9 17:55:19 2026] [::1]:62081 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:55:19 2026] [::1]:62081 Closing
+[Sat May  9 17:55:19 2026] [::1]:62118 Accepted
+[Sat May  9 17:55:19 2026] [::1]:49347 [204]: OPTIONS /backend/api/client_list.php
+[Sat May  9 17:55:19 2026] [::1]:49347 Closing
+[Sat May  9 17:55:19 2026] [::1]:61313 Accepted
+[Sat May  9 17:55:19 2026] [::1]:62118 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:19 2026] [::1]:62118 Closing
+[Sat May  9 17:55:19 2026] [::1]:59613 Accepted
+[Sat May  9 17:55:19 2026] [::1]:61313 [204]: OPTIONS /backend/api/user_list.php
+[Sat May  9 17:55:19 2026] [::1]:61313 Closing
+[Sat May  9 17:55:19 2026] [::1]:49177 Accepted
+[Sat May  9 17:55:19 2026] [::1]:59613 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:55:19 2026] [::1]:59613 Closing
+[Sat May  9 17:55:19 2026] [::1]:56921 Accepted
+[Sat May  9 17:55:19 2026] [::1]:49177 [204]: OPTIONS /backend/api/appointment_list.php
+[Sat May  9 17:55:19 2026] [::1]:49177 Closing
+[Sat May  9 17:55:19 2026] [::1]:64606 Accepted
+[Sat May  9 17:55:19 2026] [::1]:56921 [204]: OPTIONS /backend/api/logout.php
+[Sat May  9 17:55:19 2026] [::1]:56921 Closing
+[Sat May  9 17:55:19 2026] [::1]:50450 Accepted
+[Sat May  9 17:55:19 2026] [::1]:64606 [204]: OPTIONS /backend/api/logout.php
+[Sat May  9 17:55:19 2026] [::1]:64606 Closing
+[Sat May  9 17:55:19 2026] [::1]:58435 Accepted
+[Sat May  9 17:55:20 2026] [::1]:50450 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:55:20 2026] [::1]:50450 Closing
+[Sat May  9 17:55:20 2026] [::1]:61909 Accepted
+[Sat May  9 17:55:20 2026] [::1]:58435 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:55:20 2026] [::1]:58435 Closing
+[Sat May  9 17:55:20 2026] [::1]:63615 Accepted
+[Sat May  9 17:55:20 2026] [::1]:61909 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:20 2026] [::1]:61909 Closing
+[Sat May  9 17:55:20 2026] [::1]:53924 Accepted
+[Sat May  9 17:55:20 2026] [::1]:63615 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:55:20 2026] [::1]:63615 Closing
+[Sat May  9 17:55:20 2026] [::1]:61885 Accepted
+[Sat May  9 17:55:20 2026] [::1]:53924 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:55:20 2026] [::1]:53924 Closing
+[Sat May  9 17:55:20 2026] [::1]:61812 Accepted
+[Sat May  9 17:55:20 2026] [::1]:61885 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:20 2026] [::1]:61885 Closing
+[Sat May  9 17:55:20 2026] [::1]:58850 Accepted
+[Sat May  9 17:55:20 2026] [::1]:61812 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:55:20 2026] [::1]:61812 Closing
+[Sat May  9 17:55:20 2026] [::1]:63962 Accepted
+[Sat May  9 17:55:20 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:55:20 2026] [::1]:58850 [200]: POST /backend/api/logout.php
+[Sat May  9 17:55:20 2026] [::1]:58850 Closing
+[Sat May  9 17:55:20 2026] [::1]:58340 Accepted
+[Sat May  9 17:55:20 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:55:20 2026] [::1]:63962 [200]: POST /backend/api/logout.php
+[Sat May  9 17:55:20 2026] [::1]:63962 Closing
+[Sat May  9 17:55:20 2026] [::1]:58176 Accepted
+[Sat May  9 17:55:20 2026] [::1]:58340 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:55:20 2026] [::1]:58340 Closing
+[Sat May  9 17:55:20 2026] [::1]:58176 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:55:20 2026] [::1]:58176 Closing
+[Sat May  9 17:55:20 2026] [::1]:50714 Accepted
+[Sat May  9 17:55:20 2026] [::1]:58940 Accepted
+[Sat May  9 17:55:20 2026] [::1]:63585 Accepted
+[Sat May  9 17:55:20 2026] [::1]:50714 [401]: POST /backend/api/backup_data.php
+[Sat May  9 17:55:20 2026] [::1]:50714 Closing
+[Sat May  9 17:55:20 2026] [::1]:64528 Accepted
+[Sat May  9 17:55:21 2026] [::1]:58940 [200]: GET /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:55:21 2026] [::1]:58940 Closing
+[Sat May  9 17:55:21 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:55:21 2026] [::1]:63585 [200]: POST /backend/api/logout.php
+[Sat May  9 17:55:21 2026] [::1]:63585 Closing
+[Sat May  9 17:55:21 2026] [::1]:58932 Accepted
+[Sat May  9 17:55:21 2026] [::1]:64528 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:21 2026] [::1]:64528 Closing
+[Sat May  9 17:55:21 2026] [::1]:61519 Accepted
+[Sat May  9 17:55:21 2026] [::1]:58932 [401]: GET /backend/api/notification_list.php
+[Sat May  9 17:55:21 2026] [::1]:58932 Closing
+[Sat May  9 17:55:21 2026] [::1]:54113 Accepted
+[Sat May  9 17:55:21 2026] [::1]:61519 [401]: GET /backend/api/module_permissions.php
+[Sat May  9 17:55:21 2026] [::1]:61519 Closing
+[Sat May  9 17:55:21 2026] [::1]:54113 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:55:21 2026] [::1]:54113 Closing
+[Sat May  9 17:55:40 2026] [::1]:61292 Accepted
+[Sat May  9 17:55:40 2026] [::1]:61292 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:55:40 2026] [::1]:61292 Closing
+[Sat May  9 17:55:40 2026] [::1]:50774 Accepted
+[Sat May  9 17:55:40 2026] [::1]:55955 Accepted
+[Sat May  9 17:55:40 2026] [::1]:50774 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:40 2026] [::1]:50774 Closing
+[Sat May  9 17:55:40 2026] [::1]:65150 Accepted
+[Sat May  9 17:55:41 2026] [::1]:55955 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:55:41 2026] [::1]:55955 Closing
+[Sat May  9 17:55:41 2026] [::1]:50310 Accepted
+[Sat May  9 17:55:41 2026] [::1]:65150 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:55:41 2026] [::1]:65150 Closing
+[Sat May  9 17:55:41 2026] [::1]:49828 Accepted
+[Sat May  9 17:55:41 2026] [::1]:50310 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:55:41 2026] [::1]:50310 Closing
+[Sat May  9 17:55:41 2026] [::1]:51974 Accepted
+[Sat May  9 17:55:41 2026] [::1]:49828 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:55:41 2026] [::1]:49828 Closing
+[Sat May  9 17:55:41 2026] [::1]:57169 Accepted
+[Sat May  9 17:55:41 2026] Unable to regenerate MONITORINGSESSID session id using save path: C:\xampp\htdocs\Monitoring\monitoring\backend/data/sessions
+[Sat May  9 17:55:41 2026] [::1]:51974 [200]: POST /backend/api/login.php
+[Sat May  9 17:55:41 2026] [::1]:51974 Closing
+[Sat May  9 17:55:41 2026] [::1]:49831 Accepted
+[Sat May  9 17:55:41 2026] [::1]:57169 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:55:41 2026] [::1]:57169 Closing
+[Sat May  9 17:55:42 2026] [::1]:49831 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:55:42 2026] [::1]:49831 Closing
+[Sat May  9 17:55:42 2026] [::1]:60254 Accepted
+[Sat May  9 17:55:42 2026] [::1]:60254 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:55:42 2026] [::1]:60254 Closing
+[Sat May  9 17:55:43 2026] [::1]:56221 Accepted
+[Sat May  9 17:55:43 2026] [::1]:60719 Accepted
+[Sat May  9 17:55:43 2026] [::1]:56221 [401]: POST /backend/api/backup_data.php
+[Sat May  9 17:55:43 2026] [::1]:56221 Closing
+[Sat May  9 17:55:43 2026] [::1]:65241 Accepted
+[Sat May  9 17:55:44 2026] [::1]:60719 [200]: GET /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:55:44 2026] [::1]:60719 Closing
+[Sat May  9 17:55:44 2026] [::1]:57969 Accepted
+[Sat May  9 17:55:44 2026] [::1]:65241 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:44 2026] [::1]:65241 Closing
+[Sat May  9 17:55:44 2026] [::1]:62104 Accepted
+[Sat May  9 17:55:44 2026] [::1]:57969 [401]: GET /backend/api/notification_list.php
+[Sat May  9 17:55:44 2026] [::1]:57969 Closing
+[Sat May  9 17:55:44 2026] [::1]:55142 Accepted
+[Sat May  9 17:55:44 2026] [::1]:62104 [401]: GET /backend/api/module_permissions.php
+[Sat May  9 17:55:44 2026] [::1]:62104 Closing
+[Sat May  9 17:55:44 2026] [::1]:56011 Accepted
+[Sat May  9 17:55:44 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:55:44 2026] [::1]:55142 [200]: POST /backend/api/logout.php
+[Sat May  9 17:55:44 2026] [::1]:55142 Closing
+[Sat May  9 17:55:44 2026] [::1]:53103 Accepted
+[Sat May  9 17:55:44 2026] [::1]:56011 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:55:44 2026] [::1]:56011 Closing
+[Sat May  9 17:55:44 2026] [::1]:60988 Accepted
+[Sat May  9 17:55:44 2026] [::1]:53103 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:44 2026] [::1]:53103 Closing
+[Sat May  9 17:55:44 2026] [::1]:50274 Accepted
+[Sat May  9 17:55:44 2026] [::1]:60988 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:55:44 2026] [::1]:60988 Closing
+[Sat May  9 17:55:44 2026] [::1]:54712 Accepted
+[Sat May  9 17:55:45 2026] [::1]:50274 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:55:45 2026] [::1]:50274 Closing
+[Sat May  9 17:55:45 2026] [::1]:59080 Accepted
+[Sat May  9 17:55:45 2026] [::1]:54712 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:55:45 2026] [::1]:54712 Closing
+[Sat May  9 17:55:45 2026] [::1]:60764 Accepted
+[Sat May  9 17:55:45 2026] [::1]:59080 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:45 2026] [::1]:59080 Closing
+[Sat May  9 17:55:45 2026] [::1]:65021 Accepted
+[Sat May  9 17:55:45 2026] [::1]:60764 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:55:45 2026] [::1]:60764 Closing
+[Sat May  9 17:55:45 2026] [::1]:59426 Accepted
+[Sat May  9 17:55:45 2026] [::1]:65021 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:55:45 2026] [::1]:65021 Closing
+[Sat May  9 17:55:45 2026] [::1]:63543 Accepted
+[Sat May  9 17:55:45 2026] [::1]:59426 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:55:45 2026] [::1]:59426 Closing
+[Sat May  9 17:55:45 2026] [::1]:50296 Accepted
+[Sat May  9 17:55:45 2026] [::1]:63543 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:55:45 2026] [::1]:63543 Closing
+[Sat May  9 17:55:45 2026] [::1]:64020 Accepted
+[Sat May  9 17:55:45 2026] [::1]:50296 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:55:45 2026] [::1]:50296 Closing
+[Sat May  9 17:55:45 2026] [::1]:61071 Accepted
+[Sat May  9 17:55:45 2026] [::1]:64020 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:55:45 2026] [::1]:64020 Closing
+[Sat May  9 17:55:45 2026] [::1]:61071 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:55:45 2026] [::1]:61071 Closing
+[Sat May  9 17:55:57 2026] [::1]:52863 Accepted
+[Sat May  9 17:55:57 2026] [::1]:52863 [200]: POST /backend/api/backup_data.php
+[Sat May  9 17:55:57 2026] [::1]:52863 Closing
+[Sat May  9 17:56:40 2026] [::1]:63787 Accepted
+[Sat May  9 17:56:40 2026] [::1]:63787 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:56:40 2026] [::1]:63787 Closing
+[Sat May  9 17:56:40 2026] [::1]:56733 Accepted
+[Sat May  9 17:56:40 2026] [::1]:57530 Accepted
+[Sat May  9 17:56:40 2026] [::1]:56733 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:56:40 2026] [::1]:56733 Closing
+[Sat May  9 17:56:40 2026] [::1]:57977 Accepted
+[Sat May  9 17:56:40 2026] [::1]:57530 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:56:40 2026] [::1]:57530 Closing
+[Sat May  9 17:56:40 2026] [::1]:50855 Accepted
+[Sat May  9 17:56:40 2026] [::1]:57977 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:56:40 2026] [::1]:57977 Closing
+[Sat May  9 17:56:40 2026] [::1]:59022 Accepted
+[Sat May  9 17:56:41 2026] [::1]:50855 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:56:41 2026] [::1]:50855 Closing
+[Sat May  9 17:56:41 2026] [::1]:64913 Accepted
+[Sat May  9 17:56:41 2026] [::1]:59022 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:56:41 2026] [::1]:59022 Closing
+[Sat May  9 17:56:41 2026] [::1]:50694 Accepted
+[Sat May  9 17:56:41 2026] [::1]:64913 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:56:41 2026] [::1]:64913 Closing
+[Sat May  9 17:56:41 2026] [::1]:50694 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:56:41 2026] [::1]:50694 Closing
+[Sat May  9 17:56:41 2026] [::1]:53062 Accepted
+[Sat May  9 17:56:41 2026] [::1]:53062 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:56:41 2026] [::1]:53062 Closing
+[Sat May  9 17:56:57 2026] [::1]:52309 Accepted
+[Sat May  9 17:56:57 2026] [::1]:52309 [200]: POST /backend/api/backup_data.php
+[Sat May  9 17:56:57 2026] [::1]:52309 Closing
+[Sat May  9 17:57:19 2026] [::1]:53338 Accepted
+[Sat May  9 17:57:19 2026] [::1]:53338 [200]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:57:19 2026] [::1]:53338 Closing
+[Sat May  9 17:57:19 2026] [::1]:54444 Accepted
+[Sat May  9 17:57:19 2026] [::1]:60538 Accepted
+[Sat May  9 17:57:19 2026] [::1]:54444 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:57:19 2026] [::1]:54444 Closing
+[Sat May  9 17:57:19 2026] [::1]:49937 Accepted
+[Sat May  9 17:57:20 2026] [::1]:60538 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:57:20 2026] [::1]:60538 Closing
+[Sat May  9 17:57:20 2026] [::1]:51377 Accepted
+[Sat May  9 17:57:20 2026] [::1]:49937 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:57:20 2026] [::1]:49937 Closing
+[Sat May  9 17:57:20 2026] [::1]:65219 Accepted
+[Sat May  9 17:57:20 2026] [::1]:51377 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:57:20 2026] [::1]:51377 Closing
+[Sat May  9 17:57:20 2026] [::1]:50261 Accepted
+[Sat May  9 17:57:20 2026] [::1]:65219 [200]: GET /backend/api/client_list.php
+[Sat May  9 17:57:20 2026] [::1]:65219 Closing
+[Sat May  9 17:57:20 2026] [::1]:61086 Accepted
+[Sat May  9 17:57:21 2026] [::1]:50261 [200]: GET /backend/api/user_list.php
+[Sat May  9 17:57:21 2026] [::1]:50261 Closing
+[Sat May  9 17:57:21 2026] [::1]:57615 Accepted
+[Sat May  9 17:57:21 2026] [::1]:61086 [200]: GET /backend/api/appointment_list.php
+[Sat May  9 17:57:21 2026] [::1]:61086 Closing
+[Sat May  9 17:57:21 2026] [::1]:61007 Accepted
+[Sat May  9 17:57:21 2026] [::1]:57615 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:57:21 2026] [::1]:57615 Closing
+[Sat May  9 17:57:21 2026] [::1]:57062 Accepted
+[Sat May  9 17:57:21 2026] [::1]:61007 [200]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:57:21 2026] [::1]:61007 Closing
+[Sat May  9 17:57:21 2026] [::1]:52223 Accepted
+[Sat May  9 17:57:21 2026] [::1]:57062 [200]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:57:21 2026] [::1]:57062 Closing
+[Sat May  9 17:57:21 2026] [::1]:62682 Accepted
+[Sat May  9 17:57:22 2026] [::1]:52223 [200]: GET /backend/api/module_permissions.php
+[Sat May  9 17:57:22 2026] [::1]:52223 Closing
+[Sat May  9 17:57:22 2026] [::1]:51915 Accepted
+[Sat May  9 17:57:22 2026] [::1]:62682 [200]: GET /backend/api/notification_list.php
+[Sat May  9 17:57:22 2026] [::1]:62682 Closing
+[Sat May  9 17:57:22 2026] [::1]:51915 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:57:22 2026] [::1]:51915 Closing
+[Sat May  9 17:57:22 2026] [::1]:53567 Accepted
+[Sat May  9 17:57:22 2026] [::1]:53567 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:57:22 2026] [::1]:53567 Closing
+[Sat May  9 17:57:23 2026] [::1]:61345 Accepted
+[Sat May  9 17:57:23 2026] [::1]:61345 [200]: GET /backend/api/task_list.php
+[Sat May  9 17:57:23 2026] [::1]:61345 Closing
+[Sat May  9 17:57:25 2026] [::1]:56611 Accepted
+[Sat May  9 17:57:25 2026] [::1]:56611 [204]: OPTIONS /backend/api/logout.php
+[Sat May  9 17:57:25 2026] [::1]:56611 Closing
+[Sat May  9 17:57:25 2026] [::1]:53080 Accepted
+[Sat May  9 17:57:25 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:57:25 2026] [::1]:53080 [200]: POST /backend/api/logout.php
+[Sat May  9 17:57:25 2026] [::1]:53080 Closing
+[Sat May  9 17:57:25 2026] [::1]:52803 Accepted
+[Sat May  9 17:57:25 2026] [::1]:52803 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:57:25 2026] [::1]:52803 Closing
+[Sat May  9 17:57:47 2026] [::1]:65074 Accepted
+[Sat May  9 17:57:47 2026] [::1]:61595 Accepted
+[Sat May  9 17:57:47 2026] [::1]:61595 [204]: OPTIONS /backend/api/session_status.php
+[Sat May  9 17:57:47 2026] [::1]:61595 Closing
+[Sat May  9 17:57:47 2026] [::1]:65074 [204]: OPTIONS /backend/api/session_status.php
+[Sat May  9 17:57:47 2026] [::1]:65074 Closing
+[Sat May  9 17:57:47 2026] [::1]:56708 Accepted
+[Sat May  9 17:57:47 2026] [::1]:56708 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:57:47 2026] [::1]:56708 Closing
+[Sat May  9 17:57:47 2026] [::1]:59685 Accepted
+[Sat May  9 17:57:47 2026] [::1]:59685 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:57:47 2026] [::1]:59685 Closing
+[Sat May  9 17:58:29 2026] [::1]:61928 Accepted
+[Sat May  9 17:58:29 2026] [::1]:61928 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:58:29 2026] [::1]:61928 Closing
+[Sat May  9 17:58:29 2026] [::1]:55056 Accepted
+[Sat May  9 17:58:29 2026] [::1]:55056 [200]: GET /backend/api/session_status.php
+[Sat May  9 17:58:29 2026] [::1]:55056 Closing
+[Sat May  9 17:58:31 2026] [::1]:58771 Accepted
+[Sat May  9 17:58:32 2026] [::1]:58771 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:58:32 2026] [::1]:58771 Closing
+[Sat May  9 17:58:36 2026] [::1]:55109 Accepted
+[Sat May  9 17:58:37 2026] Unable to regenerate MONITORINGSESSID session id using save path: C:\xampp\htdocs\Monitoring\monitoring\backend/data/sessions
+[Sat May  9 17:58:37 2026] [::1]:55109 [200]: POST /backend/api/login.php
+[Sat May  9 17:58:37 2026] [::1]:55109 Closing
+[Sat May  9 17:58:37 2026] [::1]:57123 Accepted
+[Sat May  9 17:58:37 2026] [::1]:59067 Accepted
+[Sat May  9 17:58:37 2026] [::1]:59067 [200]: GET /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:58:37 2026] [::1]:59067 Closing
+[Sat May  9 17:58:37 2026] [::1]:64457 Accepted
+[Sat May  9 17:58:37 2026] [::1]:57123 [401]: POST /backend/api/backup_data.php
+[Sat May  9 17:58:37 2026] [::1]:57123 Closing
+[Sat May  9 17:58:37 2026] [::1]:52032 Accepted
+[Sat May  9 17:58:37 2026] [::1]:64457 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:58:37 2026] [::1]:64457 Closing
+[Sat May  9 17:58:37 2026] [::1]:59903 Accepted
+[Sat May  9 17:58:37 2026] [::1]:52032 [401]: GET /backend/api/notification_list.php
+[Sat May  9 17:58:37 2026] [::1]:52032 Closing
+[Sat May  9 17:58:37 2026] [::1]:54048 Accepted
+[Sat May  9 17:58:37 2026] [::1]:59903 [401]: GET /backend/api/module_permissions.php
+[Sat May  9 17:58:37 2026] [::1]:59903 Closing
+[Sat May  9 17:58:37 2026] [::1]:63828 Accepted
+[Sat May  9 17:58:37 2026] [::1]:54048 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:58:37 2026] [::1]:54048 Closing
+[Sat May  9 17:58:37 2026] [::1]:61968 Accepted
+[Sat May  9 17:58:38 2026] [::1]:63828 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:58:38 2026] [::1]:63828 Closing
+[Sat May  9 17:58:38 2026] [::1]:64234 Accepted
+[Sat May  9 17:58:38 2026] [::1]:61968 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:58:38 2026] [::1]:61968 Closing
+[Sat May  9 17:58:38 2026] [::1]:50909 Accepted
+[Sat May  9 17:58:38 2026] [::1]:64234 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:58:38 2026] [::1]:64234 Closing
+[Sat May  9 17:58:38 2026] [::1]:50260 Accepted
+[Sat May  9 17:58:38 2026] [::1]:50909 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:58:38 2026] [::1]:50909 Closing
+[Sat May  9 17:58:38 2026] [::1]:60900 Accepted
+[Sat May  9 17:58:38 2026] [::1]:50260 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:58:38 2026] [::1]:50260 Closing
+[Sat May  9 17:58:38 2026] [::1]:53806 Accepted
+[Sat May  9 17:58:38 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:58:38 2026] [::1]:60900 [200]: POST /backend/api/logout.php
+[Sat May  9 17:58:38 2026] [::1]:60900 Closing
+[Sat May  9 17:58:38 2026] [::1]:62583 Accepted
+[Sat May  9 17:58:38 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:58:38 2026] [::1]:53806 [200]: POST /backend/api/logout.php
+[Sat May  9 17:58:38 2026] [::1]:53806 Closing
+[Sat May  9 17:58:38 2026] [::1]:55596 Accepted
+[Sat May  9 17:58:38 2026] [::1]:62583 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:58:38 2026] [::1]:62583 Closing
+[Sat May  9 17:58:38 2026] [::1]:49828 Accepted
+[Sat May  9 17:58:38 2026] [::1]:55596 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:58:38 2026] [::1]:55596 Closing
+[Sat May  9 17:58:38 2026] [::1]:53546 Accepted
+[Sat May  9 17:58:39 2026] [::1]:49828 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:58:39 2026] [::1]:49828 Closing
+[Sat May  9 17:58:39 2026] [::1]:52368 Accepted
+[Sat May  9 17:58:39 2026] [::1]:53546 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:58:39 2026] [::1]:53546 Closing
+[Sat May  9 17:58:39 2026] [::1]:62091 Accepted
+[Sat May  9 17:58:39 2026] [::1]:52368 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:58:39 2026] [::1]:52368 Closing
+[Sat May  9 17:58:39 2026] [::1]:56396 Accepted
+[Sat May  9 17:58:39 2026] [::1]:62091 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:58:39 2026] [::1]:62091 Closing
+[Sat May  9 17:58:39 2026] [::1]:56396 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:58:39 2026] [::1]:56396 Closing
+[Sat May  9 17:58:39 2026] [::1]:52534 Accepted
+[Sat May  9 17:58:39 2026] [::1]:61238 Accepted
+[Sat May  9 17:58:39 2026] [::1]:59396 Accepted
+[Sat May  9 17:58:39 2026] [::1]:53566 Accepted
+[Sat May  9 17:58:39 2026] [::1]:55726 Accepted
+[Sat May  9 17:58:39 2026] [::1]:52534 [401]: POST /backend/api/backup_data.php
+[Sat May  9 17:58:39 2026] [::1]:52534 Closing
+[Sat May  9 17:58:39 2026] [::1]:61238 [200]: GET /backend/api/user_list.php?scope=system_configuration
+[Sat May  9 17:58:39 2026] [::1]:61238 Closing
+[Sat May  9 17:58:39 2026] [::1]:59396 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:58:39 2026] [::1]:59396 Closing
+[Sat May  9 17:58:39 2026] [::1]:53566 [401]: GET /backend/api/notification_list.php
+[Sat May  9 17:58:39 2026] [::1]:53566 Closing
+[Sat May  9 17:58:40 2026] [::1]:55726 [401]: GET /backend/api/module_permissions.php
+[Sat May  9 17:58:40 2026] [::1]:55726 Closing
+[Sat May  9 17:58:40 2026] [::1]:57694 Accepted
+[Sat May  9 17:58:40 2026] [::1]:61351 Accepted
+[Sat May  9 17:58:40 2026] PHP Warning:  session_destroy(): Session object destruction failed in C:\xampp\htdocs\Monitoring\monitoring\backend\api\auth.php on line 130
+[Sat May  9 17:58:40 2026] [::1]:57694 [200]: POST /backend/api/logout.php
+[Sat May  9 17:58:40 2026] [::1]:57694 Closing
+[Sat May  9 17:58:40 2026] [::1]:63173 Accepted
+[Sat May  9 17:58:40 2026] [::1]:61351 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:58:40 2026] [::1]:61351 Closing
+[Sat May  9 17:58:40 2026] [::1]:58669 Accepted
+[Sat May  9 17:58:40 2026] [::1]:63173 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:58:40 2026] [::1]:63173 Closing
+[Sat May  9 17:58:40 2026] [::1]:50614 Accepted
+[Sat May  9 17:58:40 2026] [::1]:58669 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:58:40 2026] [::1]:58669 Closing
+[Sat May  9 17:58:40 2026] [::1]:56396 Accepted
+[Sat May  9 17:58:40 2026] [::1]:50614 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:58:40 2026] [::1]:50614 Closing
+[Sat May  9 17:58:40 2026] [::1]:55224 Accepted
+[Sat May  9 17:58:40 2026] [::1]:56396 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:58:40 2026] [::1]:56396 Closing
+[Sat May  9 17:58:40 2026] [::1]:60244 Accepted
+[Sat May  9 17:58:40 2026] [::1]:55224 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:58:40 2026] [::1]:55224 Closing
+[Sat May  9 17:58:40 2026] [::1]:59613 Accepted
+[Sat May  9 17:58:40 2026] [::1]:60244 [200]: GET /backend/api/user_list.php?scope=security_settings
+[Sat May  9 17:58:40 2026] [::1]:60244 Closing
+[Sat May  9 17:58:40 2026] [::1]:52719 Accepted
+[Sat May  9 17:58:40 2026] [::1]:59613 [401]: GET /backend/api/chat.php?action=heartbeat
+[Sat May  9 17:58:40 2026] [::1]:59613 Closing
+[Sat May  9 17:58:40 2026] [::1]:50308 Accepted
+[Sat May  9 17:58:40 2026] [::1]:52719 [401]: GET /backend/api/chat.php?action=unread_count
+[Sat May  9 17:58:40 2026] [::1]:52719 Closing
+[Sat May  9 17:58:40 2026] [::1]:55426 Accepted
+[Sat May  9 17:58:40 2026] [::1]:50308 [401]: GET /backend/api/client_list.php
+[Sat May  9 17:58:40 2026] [::1]:50308 Closing
+[Sat May  9 17:58:40 2026] [::1]:62097 Accepted
+[Sat May  9 17:58:40 2026] [::1]:55426 [401]: GET /backend/api/user_list.php
+[Sat May  9 17:58:40 2026] [::1]:55426 Closing
+[Sat May  9 17:58:40 2026] [::1]:57460 Accepted
+[Sat May  9 17:58:40 2026] [::1]:62097 [401]: GET /backend/api/appointment_list.php
+[Sat May  9 17:58:40 2026] [::1]:62097 Closing
+[Sat May  9 17:58:40 2026] [::1]:57460 [401]: GET /backend/api/task_list.php
+[Sat May  9 17:58:40 2026] [::1]:57460 Closing
